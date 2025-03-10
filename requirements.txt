@@ -1,0 +1,6 @@
+icpp-pro>=5.0.3
+ic-py==1.0.1
+jupyter-black
+black==23.12.1
+pylint==2.13.9
+mypy==1.8.0
