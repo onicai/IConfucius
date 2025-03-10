@@ -527,6 +527,7 @@ actor class IConfuciusCtrlbCanister() {
         // Return the generated quote
         let quoteOutput : Types.GeneratedQuote = {
             generationId : Text = generationId;
+            generationTopic : Text = quoteTopic;
             generationSeed : Nat32 = seed;
             generatedTimestamp : Nat64 = Nat64.fromNat(Int.abs(Time.now()));
             generatedByLlmId : Text = Principal.toText(Principal.fromActor(llmCanister));

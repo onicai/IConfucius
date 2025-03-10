@@ -5,6 +5,7 @@ module Types {
 
     public type GeneratedQuote = {
         generationId : Text;
+        generationTopic : Text;
         generationSeed : Nat32;
         generatedTimestamp : Nat64;
         generatedByLlmId : Text;
