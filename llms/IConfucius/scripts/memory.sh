@@ -2,7 +2,7 @@
 
 #######################################################################
 # run from parent folder as:
-# scripts/register-ctrlb-canister.sh --network [local|ic]
+# scripts/memory.sh --network [local|ic]
 #######################################################################
 
 # Default network type is local
@@ -18,9 +18,7 @@ while [ $# -gt 0 ]; do
             shift
             if [ "$1" = "local" ] || [ "$1" = "ic" ]; then
                 NETWORK_TYPE=$1
-                if [ "$NETWORK_TYPE" = "ic" ]; then
-                    CANISTER_ID_ICONFUCIUS_CTRLB_CANISTER="dpljb-diaaa-aaaaa-qafsq-cai"
-                fi
+                CANISTER_ID_ICONFUCIUS_CTRLB_CANISTER="b77ix-eeaaa-aaaaa-qaada-cai"
             else
                 echo "Invalid network type: $1. Use 'local' or 'ic'."
                 exit 1
@@ -38,21 +36,24 @@ done
 echo "Using network type: $NETWORK_TYPE"
 echo "NUM_LLMS_DEPLOYED : $NUM_LLMS_DEPLOYED"
 echo " "
-echo "CANISTER_ID_ICONFUCIUS_CTRLB_CANISTER: $CANISTER_ID_ICONFUCIUS_CTRLB_CANISTER"
-echo "Making $CANISTER_ID_ICONFUCIUS_CTRLB_CANISTER a controller of LLMs"
-# read -p "Proceed? (yes/no): " confirm
-# if [[ $confirm != "yes" ]]; then
-#     echo "Aborting script."
-#     exit 1
-# fi
 
 #######################################################################
 llm_id_start=0
 llm_id_end=$((NUM_LLMS_DEPLOYED - 1))
 
+echo " "
+echo "- dfx identity"
+dfx identity whoami
+
 for i in $(seq $llm_id_start $llm_id_end)
 do
-    echo "==================================================="
-    echo "Making $CANISTER_ID_ICONFUCIUS_CTRLB_CANISTER a controller of llm_$i"
-    dfx canister update-settings llm_$i --add-controller $CANISTER_ID_ICONFUCIUS_CTRLB_CANISTER  --network $NETWORK_TYPE
+    echo " "
+	echo "- llm_$i "
+    dfx canister status llm_$i --network $NETWORK_TYPE 2>&1 | grep "Memory Size: "
 done
+
+echo " "
+echo "- CANISTER_ID_ICONFUCIUS_CTRLB_CANISTER: $CANISTER_ID_ICONFUCIUS_CTRLB_CANISTER"
+dfx canister status $CANISTER_ID_ICONFUCIUS_CTRLB_CANISTER --network $NETWORK_TYPE 2>&1 | grep "Memory Size: "
+
+echo " "

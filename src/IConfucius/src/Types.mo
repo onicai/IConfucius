@@ -1,17 +1,19 @@
 import Nat64 "mo:base/Nat64";
 
 module Types {
-    public type GeneratedChallenge = {
+    public type NatResult = Result<Nat, ApiError>;
+
+    public type GeneratedQuote = {
         generationId : Text;
         generationSeed : Nat32;
         generatedTimestamp : Nat64;
         generatedByLlmId : Text;
         generationPrompt : Text;
-        generatedChallengeText : Text;
+        generatedQuoteText : Text;
     };
 
-    public type GeneratedChallengeResult = Result<GeneratedChallenge, ApiError>;
-    public type GeneratedChallengesResult = Result<[GeneratedChallenge], ApiError>;
+    public type GeneratedQuoteResult = Result<GeneratedQuote, ApiError>;
+    public type GeneratedQuotesResult = Result<[GeneratedQuote], ApiError>;
 
     public type CanisterIDRecordResult = Result<CanisterIDRecord, ApiError>;
     public type CanisterIDRecord = {
@@ -41,52 +43,36 @@ module Types {
         remove_prompt_cache : (InputRecord) -> async OutputRecordResult;
     };
 
-    // Game State canister
     type CanisterAddress = Text;
 
-    public type ChallengeTopicStatus = {
+    public type QuoteTopicStatus = {
         #Open;
         #Closed;
         #Archived;
         #Other : Text;
     };
 
-    type ChallengeStatus = {
-        #Open;
-        #Closed;
-        #Archived;
-        #Other : Text;
+    public type QuoteTopicInput = {
+        quoteTopic : Text;
+    };
+    public type QuoteTopic = QuoteTopicInput and {
+        quoteTopicId : Text;
+        quoteTopicCreationTimestamp : Nat64;
+        quoteTopicStatus : QuoteTopicStatus;
+    };
+    public type QuoteTopicResult = Result<QuoteTopic, ApiError>;
+
+    public type NewQuoteInput = QuoteTopic and {
+        quoteQuestion : Text;
+        quoteQuestionSeed : Nat32;
     };
 
-    public type ChallengeTopicInput = {
-        challengeTopic : Text;
-    };
-    public type ChallengeTopic = ChallengeTopicInput and {
-        challengeTopicId : Text;
-        challengeTopicCreationTimestamp : Nat64;
-        challengeTopicStatus : ChallengeTopicStatus;
-    };
-    public type ChallengeTopicResult = Result<ChallengeTopic, ApiError>;
-
-    public type NewChallengeInput = ChallengeTopic and {
-        challengeQuestion : Text;
-        challengeQuestionSeed : Nat32;
-    };
-
-    public type Challenge = NewChallengeInput and {
-        challengeId : Text;
-        challengeCreationTimestamp : Nat64;
-        challengeCreatedBy : CanisterAddress;
-        challengeStatus : ChallengeStatus;
-        challengeClosedTimestamp : ?Nat64;
+    public type Quote = NewQuoteInput and {
+        quoteId : Text;
+        quoteCreationTimestamp : Nat64;
+        quoteCreatedBy : CanisterAddress;
+        quoteClosedTimestamp : ?Nat64;
         submissionCyclesRequired : Nat;
-    };
-
-    public type ChallengeAdditionResult = Result<Challenge, ApiError>;
-
-    public type GameStateCanister_Actor = actor {
-        getRandomOpenChallengeTopic : () -> async ChallengeTopicResult;
-        addChallenge : (NewChallengeInput) -> async ChallengeAdditionResult;
     };
 
     //--

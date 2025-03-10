@@ -8,7 +8,8 @@ import Nat "mo:base/Nat";
 import Nat32 "mo:base/Nat32";
 import Nat64 "mo:base/Nat64";
 import Bool "mo:base/Bool";
-// import HashMap "mo:base/HashMap";
+import HashMap "mo:base/HashMap";
+import Iter "mo:base/Iter";
 import List "mo:base/List";
 import Int "mo:base/Int";
 import Float "mo:base/Float";
@@ -20,69 +21,120 @@ import Timer "mo:base/Timer";
 import Types "Types";
 import Utils "Utils";
 
-actor class ChallengerCtrlbCanister() {
-
-    stable var GAME_STATE_CANISTER_ID : Text = "b77ix-eeaaa-aaaaa-qaada-cai"; // local dev: "b77ix-eeaaa-aaaaa-qaada-cai";
+actor class IConfuciusCtrlbCanister() {
     
-    stable var gameStateCanisterActor = actor (GAME_STATE_CANISTER_ID) : Types.GameStateCanister_Actor;
-
-    public shared (msg) func setGameStateCanisterId(_game_state_canister_id : Text) : async Types.StatusCodeRecordResult {
-        if (not Principal.isController(msg.caller)) {
-            return #Err(#StatusCode(401));
-        };
-        GAME_STATE_CANISTER_ID := _game_state_canister_id;
-        gameStateCanisterActor := actor (GAME_STATE_CANISTER_ID);
-        return #Ok({ status_code = 200 });
-    };
-
-    public query (msg) func getGameStateCanisterId() : async Text {
-        if (not Principal.isController(msg.caller)) {
-            return "#Err(#StatusCode(401))";
-        };
-
-        return GAME_STATE_CANISTER_ID;
-    };
-
     // Orthogonal Persisted Data storage
 
     // timer ID, so we can stop it after starting
     stable var recurringTimerId : ?Timer.TimerId = null;
 
-    // Record of all generated challenges
-    stable var generatedChallenges : List.List<Types.GeneratedChallenge> = List.nil<Types.GeneratedChallenge>();
+    // Open topics for Quotes to be generated
+    stable var openQuoteTopicsStorageStable : [(Text, Types.QuoteTopic)] = [];
+    var openQuoteTopicsStorage : HashMap.HashMap<Text, Types.QuoteTopic> = HashMap.HashMap(0, Text.equal, Text.hash);
 
-    private func putGeneratedChallenge(challengeEntry : Types.GeneratedChallenge) : Bool {
-        generatedChallenges := List.push<Types.GeneratedChallenge>(challengeEntry, generatedChallenges);
+    private func putOpenQuoteTopic(quoteTopicId : Text, quoteTopicEntry : Types.QuoteTopic) : Bool {
+        openQuoteTopicsStorage.put(quoteTopicId, quoteTopicEntry);
         return true;
     };
 
-    private func getGeneratedChallenge(generationId : Text) : ?Types.GeneratedChallenge {
-        return List.find<Types.GeneratedChallenge>(generatedChallenges, func(challengeEntry : Types.GeneratedChallenge) : Bool { challengeEntry.generationId == generationId });
+    private func getOpenQuoteTopic(quoteTopicId : Text) : ?Types.QuoteTopic {
+        switch (openQuoteTopicsStorage.get(quoteTopicId)) {
+            case (null) { return null; };
+            case (?quoteTopicEntry) { return ?quoteTopicEntry; };
+        };
     };
 
-    private func getGeneratedChallenges() : [Types.GeneratedChallenge] {
-        return List.toArray<Types.GeneratedChallenge>(generatedChallenges);
+    private func getOpenQuoteTopics() : [Types.QuoteTopic] {
+        return Iter.toArray(openQuoteTopicsStorage.vals());
     };
 
-    private func removeGeneratedChallenge(generationId : Text) : Bool {
-        generatedChallenges := List.filter(generatedChallenges, func(challengeEntry : Types.GeneratedChallenge) : Bool { challengeEntry.generationId != generationId });
-        return true;
+    private func getRandomQuoteTopic(challengeTopicStatus : Types.QuoteTopicStatus) : async ?Types.QuoteTopic {
+        D.print("IConfucius: getRandomQuoteTopic - challengeTopicStatus: " # debug_show(challengeTopicStatus));
+        switch (challengeTopicStatus) {
+            case (#Open) {
+                let topicIds : [Text] = Iter.toArray(openQuoteTopicsStorage.keys());
+                let numberOfTopics : Nat = topicIds.size();
+                let randomInt : ?Int = await Utils.nextRandomInt(0, numberOfTopics-1);
+                switch (randomInt) {
+                    case (?intToUse) {
+                        return getOpenQuoteTopic(topicIds[Int.abs(intToUse)]);
+                    };
+                    case (_) { return null; };
+                };
+            };
+            case (_) { return null; };
+        };
     };
 
-    public shared query (msg) func getChallengesAdmin() : async Types.GeneratedChallengesResult {
+    public shared (msg) func setInitialQuoteTopics() : async Types.StatusCodeRecordResult {
         if (not Principal.isController(msg.caller)) {
             return #Err(#Unauthorized);
         };
-        let challenges : [Types.GeneratedChallenge] = getGeneratedChallenges();
-        return #Ok(challenges);
+        D.print("IConfucius: setInitialQuoteTopics - entered");
+        // Start with some initial topics
+        let initialTopics : [Text] = [
+            "crypto",     "nature",      "space", "history", "science", 
+            "technology", "engineering", "math",  "art",     "music"
+        ];
+        for (initialTopic in Iter.fromArray(initialTopics)) {
+            let quoteTopicId : Text = await Utils.newRandomUniqueId();
+
+            let quoteTopic : Types.QuoteTopic = {
+                quoteTopic : Text = initialTopic;
+                quoteTopicId : Text = quoteTopicId;
+                quoteTopicCreationTimestamp : Nat64 = Nat64.fromNat(Int.abs(Time.now()));
+                quoteTopicStatus : Types.QuoteTopicStatus = #Open;
+            };
+
+            D.print("IConfucius: init - Adding quoteTopic: " # debug_show(quoteTopic));
+            let _ = putOpenQuoteTopic(quoteTopicId, quoteTopic);
+        };
+        return #Ok({ status_code = 200 });
     };
 
-    public query (msg) func getChallengesListAdmin() : async List.List<Types.GeneratedChallenge> {
+    // Record of all generated quotes
+    stable var generatedQuotes : List.List<Types.GeneratedQuote> = List.nil<Types.GeneratedQuote>();
+
+    private func putGeneratedQuote(quoteEntry : Types.GeneratedQuote) : Bool {
+        generatedQuotes := List.push<Types.GeneratedQuote>(quoteEntry, generatedQuotes);
+        return true;
+    };
+
+    private func getGeneratedQuote(generationId : Text) : ?Types.GeneratedQuote {
+        return List.find<Types.GeneratedQuote>(generatedQuotes, func(quoteEntry : Types.GeneratedQuote) : Bool { quoteEntry.generationId == generationId });
+    };
+
+    private func getGeneratedQuotes() : [Types.GeneratedQuote] {
+        return List.toArray<Types.GeneratedQuote>(generatedQuotes);
+    };
+
+    private func removeGeneratedQuote(generationId : Text) : Bool {
+        generatedQuotes := List.filter(generatedQuotes, func(quoteEntry : Types.GeneratedQuote) : Bool { quoteEntry.generationId != generationId });
+        return true;
+    };
+
+    public shared query (msg) func getQuotesAdmin() : async Types.GeneratedQuotesResult {
         if (not Principal.isController(msg.caller)) {
-            return List.nil<Types.GeneratedChallenge>();
+            return #Err(#Unauthorized);
+        };
+        let quotes : [Types.GeneratedQuote] = getGeneratedQuotes();
+        return #Ok(quotes);
+    };
+
+    public shared query (msg) func getNumQuotesAdmin() : async Types.NatResult {
+        if (not Principal.isController(msg.caller)) {
+            return #Err(#Unauthorized);
+        };
+        let quotes : [Types.GeneratedQuote] = getGeneratedQuotes();
+        return #Ok(quotes.size());
+    };
+
+    public query (msg) func getQuotesListAdmin() : async List.List<Types.GeneratedQuote> {
+        if (not Principal.isController(msg.caller)) {
+            return List.nil<Types.GeneratedQuote>();
         };
 
-        return generatedChallenges;
+        return generatedQuotes;
     };
 
     // Round-robin load balancer for LLM canisters to call
@@ -202,117 +254,76 @@ actor class ChallengerCtrlbCanister() {
         return #Ok({ status_code = 200 });
     };
 
-    // Endpoint to generate a new challenge
-    public shared (msg) func generateNewChallenge() : async Types.GeneratedChallengeResult {
+    // Endpoint to generate a new quote
+    public shared (msg) func generateNewQuote() : async Types.GeneratedQuoteResult {
         if (not Principal.isController(msg.caller)) {
             return #Err(#StatusCode(401));
         };
 
-        let generatedChallengeOutput : Types.GeneratedChallengeResult = await generateChallenge();
-        return generatedChallengeOutput;
+        let generatedQuoteOutput : Types.GeneratedQuoteResult = await generateQuote();
+        return generatedQuoteOutput;
     };
 
-    private func getChallengeTopicFromGameStateCanister() : async Types.ChallengeTopicResult {
-        D.print("IConfucius:  calling getRandomOpenChallengeTopic of gameStateCanisterActor = " # Principal.toText(Principal.fromActor(gameStateCanisterActor)));
-        let result : Types.ChallengeTopicResult = await gameStateCanisterActor.getRandomOpenChallengeTopic();
-        D.print("IConfucius:  getRandomOpenChallengeTopic returned.");
-        return result;
-    };
+    private func generateQuote() : async Types.GeneratedQuoteResult {
+        D.print("IConfucius: generateQuote - calling getQuoteTopicFromIConfuciusCanister.");
+        let quoteTopicResult : ?Types.QuoteTopic = await getRandomQuoteTopic(#Open);
+        D.print("IConfucius: generateQuote - received quoteResult from getQuoteTopicFromIConfuciusCanister: " # debug_show (quoteTopicResult));
+        switch (quoteTopicResult) {
+            case (?quoteTopic) {
+                D.print("IConfucius: generateQuote - quoteTopic = " # debug_show(quoteTopic));
 
-    private func generateChallenge() : async Types.GeneratedChallengeResult {
-        // Get the next topic to generate a Challenge for
-        
-        D.print("IConfucius: generateChallenge - calling getChallengeTopicFromGameStateCanister.");
-        let challengeTopicResult : Types.ChallengeTopicResult = await getChallengeTopicFromGameStateCanister();
-        D.print("IConfucius: generateChallenge - received challengeResult from getChallengeTopicFromGameStateCanister: " # debug_show (challengeTopicResult));
-        switch (challengeTopicResult) {
-            case (#Err(error)) {
-                D.print("IConfucius: generateChallenge - challengeTopicResult error : " # debug_show (error));
-                return #Err(error);
-            };
-            case (#Ok(challengeTopic : Types.ChallengeTopic)) {
-                D.print("IConfucius: generateChallenge - challengeTopic = " # debug_show(challengeTopic));
+                let generatedQuoteOutput : Types.GeneratedQuoteResult = await quoteGenerationDoIt_(quoteTopic.quoteTopic);
 
-                let generatedChallengeOutput : Types.GeneratedChallengeResult = await challengeGenerationDoIt_(challengeTopic.challengeTopic);
-
-                D.print("IConfucius: generateChallenge generatedChallengeOutput");
-                print(debug_show (generatedChallengeOutput));
-                switch (generatedChallengeOutput) {
+                D.print("IConfucius: generateQuote generatedQuoteOutput");
+                print(debug_show (generatedQuoteOutput));
+                switch (generatedQuoteOutput) {
                     case (#Err(error)) {
-                        D.print("IConfucius: generateChallenge generatedChallengeOutput error");
+                        D.print("IConfucius: generateQuote generatedQuoteOutput error");
                         print(debug_show (error));
                         return #Err(error);
                     };
-                    case (#Ok(generatedChallenge)) {
-                        // Store challenge
-                        let pushResult = putGeneratedChallenge(generatedChallenge);
+                    case (#Ok(generatedQuote)) {
+                        // Store quote
+                        let pushResult = putGeneratedQuote(generatedQuote);
 
-                        // Add challenge to Game State canister
-                        let newChallenge : Types.NewChallengeInput = {
-                            challengeTopic : Text = challengeTopic.challengeTopic;
-                            challengeTopicId : Text = challengeTopic.challengeTopicId;
-                            challengeTopicCreationTimestamp : Nat64 = challengeTopic.challengeTopicCreationTimestamp;
-                            challengeTopicStatus : Types.ChallengeTopicStatus = challengeTopic.challengeTopicStatus;
-                            challengeQuestion : Text = generatedChallenge.generatedChallengeText;
-                            challengeQuestionSeed : Nat32 = generatedChallenge.generationSeed;
+                        // Add quote to Game State canister
+                        let newQuote : Types.NewQuoteInput = {
+                            quoteTopic : Text = quoteTopic.quoteTopic;
+                            quoteTopicId : Text = quoteTopic.quoteTopicId;
+                            quoteTopicCreationTimestamp : Nat64 = quoteTopic.quoteTopicCreationTimestamp;
+                            quoteTopicStatus : Types.QuoteTopicStatus = quoteTopic.quoteTopicStatus;
+                            quoteQuestion : Text = generatedQuote.generatedQuoteText;
+                            quoteQuestionSeed : Nat32 = generatedQuote.generationSeed;
                         };
 
-                        D.print("IConfucius: calling addChallenge of gameStateCanisterActor = " # Principal.toText(Principal.fromActor(gameStateCanisterActor)));
-                        let additionResult : Types.ChallengeAdditionResult = await gameStateCanisterActor.addChallenge(newChallenge);
-                        D.print("IConfucius: generateChallenge generatedChallengeOutput Ok additionResult");
-                        print(debug_show (additionResult));
-                        switch (additionResult) {
-                            case (#Err(error)) {
-                                // TODO: error handling (e.g. put into queue and try again later)
-                            };
-                            case (#Ok(addedChallenge)) {
-                                // TODO: decide if returned challenge entry should be stored as well
-                            };
-                        };
-                        return generatedChallengeOutput;
+                        return generatedQuoteOutput;
                     };
-                };
+                }
+            };
+            case (_) { 
+                D.print("IConfucius: generateQuote - there is no quoteTopicResult." );
+                return #Err(#FailedOperation); 
             };
         };
     };
 
-    private func challengeGenerationDoIt_(challengeTopic : Text) : async Types.GeneratedChallengeResult {
+    private func quoteGenerationDoIt_(quoteTopic : Text) : async Types.GeneratedQuoteResult {
         let maxContinueLoopCount : Nat = 30; // After this many calls to run_update, we stop.
         let num_tokens : Nat64 = 1024;
         let temp : Float = 0.7;
+        let repeat_penalty : Float = 1.1;
+        let cache_type_k = "q8_0";
 
-        let startsWithOptions : [Text] = [
-            "What",
-            "Who",
-            "Where",
-            "When",
-            "Why",
-            "How",
-            "Which",
-            "Can",
-            "Is",
-            "Do",
-        ];
-        var challengePromptStartsWith : Text = startsWithOptions[0];
-        let randomInt : ?Int = await Utils.nextRandomInt(0, startsWithOptions.size()-1);
-        switch (randomInt) {
-            case (?intToUse) {
-                challengePromptStartsWith := startsWithOptions[Int.abs(intToUse)];
-            };
-            case (_) { // continue with default
-            };
-        };
-        D.print("IConfucius: challengeGenerationDoIt_ - challengePromptStartsWith: " # debug_show(challengePromptStartsWith));
-
-        var prompt : Text = "<|im_start|>user\nAsk a question about " #
-        challengeTopic #
-        ", that can be answered with common knowledge. Do NOT give the answer. Start the question with " #
-        challengePromptStartsWith #
-        "\n<|im_end|>\n<|im_start|>assistant\n";
+        let systemPrompt = "You are Confucius, the ancient philosopher. You finish quotes in a profound and compassionate manner.";
+        let userPrompt = "Write a profound and thought proviking quote about " # quoteTopic # ". Provide only the quote, nothing else.";
+        
+        var prompt : Text = "<|im_start|>system\n" # systemPrompt # "<|im_end|>\n" #
+        "<|im_start|>user\n" # userPrompt # "<|im_end|>\n" # 
+        "<|im_start|>assistant\n";
 
         let llmCanister = _getRoundRobinCanister();
 
-        D.print("IConfucius: challengeGenerationDoIt_ - llmCanister = " # Principal.toText(Principal.fromActor(llmCanister)));
+        D.print("IConfucius: quoteGenerationDoIt_ - llmCanister = " # Principal.toText(Principal.fromActor(llmCanister)));
 
         // Check health of llmCanister
         D.print("IConfucius: calling health endpoint of LLM");
@@ -332,7 +343,7 @@ actor class ChallengerCtrlbCanister() {
         
         // Use the generationId to create a highly variable seed or the LLM
         let seed : Nat32 = Utils.getRandomLlmSeed(generationId);
-        D.print("IConfucius: challengeGenerationDoIt_ - seed = " # debug_show(seed));
+        D.print("IConfucius: quoteGenerationDoIt_ - seed = " # debug_show(seed));
 
         var generationOutput : Text = "";
         let generationPrompt : Text = prompt;
@@ -340,7 +351,7 @@ actor class ChallengerCtrlbCanister() {
         // The prompt cache file
         let promptCache : Text = generationId # ".cache";
 
-        // Start the generation for this challenge
+        // Start the generation for this quote
         var num_update_calls : Nat64 = 0;
 
         // data returned from new_chat
@@ -403,10 +414,10 @@ actor class ChallengerCtrlbCanister() {
         // Step 2
         // (A) Ingest the prompt into the prompt-cache, using multiple update calls
         //      (-) Repeat call with full prompt until `prompt_remaining` in the response is empty.
-        //      (-) The first part of the challenge will be generated too.
-        // (B) Generate rest of challenge, using multiple update calls
+        //      (-) The first part of the quote will be generated too.
+        // (B) Generate rest of quote, using multiple update calls
         //      (-) Repeat call with empty prompt until `generated_eog` in the response is `true`.
-        //      (-) The rest of the challenge will be generated.
+        //      (-) The rest of the quote will be generated.
 
         // Avoid endless loop by limiting the number of iterations
         var continueLoopCount : Nat = 0;
@@ -424,6 +435,10 @@ actor class ChallengerCtrlbCanister() {
                     Nat32.toText(seed),
                     "--temp",
                     Float.toText(temp),
+                    "--repeat-penalty",
+                    Float.toText(repeat_penalty),
+                    "--cache-type-k",
+                    cache_type_k,
                     "-p",
                     prompt,
                 ];
@@ -466,7 +481,7 @@ actor class ChallengerCtrlbCanister() {
                             continueLoopCount += 1; // We count the actual generation steps
                         };
                         if (generated_eog) {
-                            break continueLoop; // Exit the loop - the challenge is generated.
+                            break continueLoop; // Exit the loop - the quote is generated.
                         };
                     };
                 };
@@ -509,16 +524,16 @@ actor class ChallengerCtrlbCanister() {
             );
         };
 
-        // Return the generated challenge
-        let challengeOutput : Types.GeneratedChallenge = {
+        // Return the generated quote
+        let quoteOutput : Types.GeneratedQuote = {
             generationId : Text = generationId;
             generationSeed : Nat32 = seed;
             generatedTimestamp : Nat64 = Nat64.fromNat(Int.abs(Time.now()));
             generatedByLlmId : Text = Principal.toText(Principal.fromActor(llmCanister));
             generationPrompt : Text = generationPrompt;
-            generatedChallengeText : Text = generationOutput;
+            generatedQuoteText : Text = generationOutput;
         };
-        return #Ok(challengeOutput);
+        return #Ok(quoteOutput);
     };
 
     public shared query (msg) func getRoundRobinCanister() : async Types.CanisterIDRecordResult {
@@ -553,8 +568,7 @@ actor class ChallengerCtrlbCanister() {
 
     private func triggerRecurringAction() : async () {
         D.print("IConfucius: Recurring action was triggered");
-        //ignore generateChallenge(); TODO
-        let result = await generateChallenge();
+        let result = await generateQuote();
         D.print("IConfucius: Recurring action result");
         D.print(debug_show (result));
         D.print("IConfucius: Recurring action result");
@@ -594,5 +608,15 @@ actor class ChallengerCtrlbCanister() {
                 return #Ok({ auth = "There is no active timer. Nothing to do." });
             };
         };
+    };
+
+    // Upgrade Hooks
+    system func preupgrade() {
+        openQuoteTopicsStorageStable := Iter.toArray(openQuoteTopicsStorage.entries());
+    };
+
+    system func postupgrade() {
+        openQuoteTopicsStorage := HashMap.fromIter(Iter.fromArray(openQuoteTopicsStorageStable), openQuoteTopicsStorageStable.size(), Text.equal, Text.hash);
+        openQuoteTopicsStorageStable := [];
     };
 };

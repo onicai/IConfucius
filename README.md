@@ -4,6 +4,7 @@
 
 <img src="./images/confucius.jpg" alt="Confucius" width="400">
 
+
 Buy [IConfucius at odin.fun](https://odin.fun/token/29m8) !
 
 `IConfucius` is an autonomous OpenChat bot
@@ -101,6 +102,32 @@ sudo sysctl -w vm.max_map_count=2097152
 ```
 to successfully load the models in the LLM canisters.
 
+# Start & Stop the timers
+
+```bash
+# from root folder:
+scripts/start-timers.sh --network [local/ic]
+scripts/stop-timers.sh --network [local/ic]
+```
+
+# Test it works
+
+The quote generation takes a moment. To ensure it works:
+
+```bash
+# from folder: src/IConfucius
+dfx canister call iconfucius_ctrlb_canister getQuotesAdmin --output json [--ic]
+dfx canister call iconfucius_ctrlb_canister getNumQuotesAdmin --output json [--ic]
+
+# You can also trigger a single quote generation manually
+dfx canister call iconfucius_ctrlb_canister generateNewQuote [--ic]
+```
+
+NOTE: when working locally, you easily add cycles to the canisters with:
+```bash
+# From the canister folders: to add 2 trillion cycles
+dfx ledger fabricate-cycles --all --t 2
+```
 
 ## Prompt Design
 

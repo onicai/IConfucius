@@ -77,6 +77,20 @@ else
     echo "iconfucius_ctrlb_canister is healthy."
 fi
 
+if [ "$DEPLOY_MODE" != "upgrade" ]; then
+    echo " "
+    echo "--------------------------------------------------"
+    echo "Setting initial quote topics"
+    output=$(dfx canister call iconfucius_ctrlb_canister setInitialQuoteTopics --network $NETWORK_TYPE)
+
+    if [ "$output" != "(variant { Ok = record { status_code = 200 : nat16 } })" ]; then
+        echo "setInitialQuoteTopics failed. Exiting."
+        exit 1
+    else
+        echo "setInitialQuoteTopics successfull."
+    fi
+fi
+
 echo " "
 echo "--------------------------------------------------"
 echo "Generating bindings for a frontend"
