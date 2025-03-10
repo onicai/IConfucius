@@ -1,6 +1,10 @@
 # Confucius
 
-![Confucius](images/confucius.jpg)
+**Wisdom fueled by Bitcoin**
 
-**Wisdom powered by Cycles**
+<img src="./images/confucius.jpg" alt="Confucius" width="400">
+
+Buy your [Confucius Rune at odin.fun](https://odin.fun/) !
+
+
 
