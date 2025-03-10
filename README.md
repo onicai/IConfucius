@@ -120,7 +120,10 @@ dfx canister call iconfucius_ctrlb_canister getQuotesAdmin --output json [--ic]
 dfx canister call iconfucius_ctrlb_canister getNumQuotesAdmin --output json [--ic]
 
 # You can also trigger a single quote generation manually
+# Option 1: Let IConfucius pick a random topic from a predefined list
 dfx canister call iconfucius_ctrlb_canister generateNewQuote [--ic]
+# Option 2: Specify the topic, for example ask for a quote about chickens
+dfx canister call iconfucius_ctrlb_canister generateNewQuote '(opt "chickens")' [--ic]
 ```
 
 NOTE: when working locally, you easily add cycles to the canisters with:

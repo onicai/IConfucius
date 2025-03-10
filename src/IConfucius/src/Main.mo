@@ -255,18 +255,31 @@ actor class IConfuciusCtrlbCanister() {
     };
 
     // Endpoint to generate a new quote
-    public shared (msg) func generateNewQuote() : async Types.GeneratedQuoteResult {
+    public shared (msg) func generateNewQuote(topic : ?Text) : async Types.GeneratedQuoteResult {
         if (not Principal.isController(msg.caller)) {
             return #Err(#StatusCode(401));
         };
 
-        let generatedQuoteOutput : Types.GeneratedQuoteResult = await generateQuote();
+        let generatedQuoteOutput : Types.GeneratedQuoteResult = await generateQuote(topic);
         return generatedQuoteOutput;
     };
 
-    private func generateQuote() : async Types.GeneratedQuoteResult {
-        D.print("IConfucius: generateQuote - calling getQuoteTopicFromIConfuciusCanister.");
-        let quoteTopicResult : ?Types.QuoteTopic = await getRandomQuoteTopic(#Open);
+    private func generateQuote(topic : ?Text) : async Types.GeneratedQuoteResult {
+        let quoteTopicResult : ?Types.QuoteTopic = switch (topic) {
+            case (?t) {
+                D.print("IConfucius: generateQuote - caller provided topic: " # t);
+                let quoteTopicEntry : Types.QuoteTopic = {
+                    quoteTopic : Text = t;
+                    quoteTopicId : Text = await Utils.newRandomUniqueId();
+                    quoteTopicCreationTimestamp : Nat64 = Nat64.fromNat(Int.abs(Time.now()));
+                    quoteTopicStatus : Types.QuoteTopicStatus = #Open;
+                };
+                ?quoteTopicEntry;
+            };
+            case null {
+                await getRandomQuoteTopic(#Open);
+            };
+        };
         D.print("IConfucius: generateQuote - received quoteResult from getQuoteTopicFromIConfuciusCanister: " # debug_show (quoteTopicResult));
         switch (quoteTopicResult) {
             case (?quoteTopic) {
@@ -569,7 +582,7 @@ actor class IConfuciusCtrlbCanister() {
 
     private func triggerRecurringAction() : async () {
         D.print("IConfucius: Recurring action was triggered");
-        let result = await generateQuote();
+        let result = await generateQuote(null);
         D.print("IConfucius: Recurring action result");
         D.print(debug_show (result));
         D.print("IConfucius: Recurring action result");
