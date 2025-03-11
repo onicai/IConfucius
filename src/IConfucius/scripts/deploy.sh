@@ -47,6 +47,13 @@ done
 
 echo "Using network type: $NETWORK_TYPE"
 
+if [ "$NETWORK_TYPE" = "local" ]; then
+    if [ "$DEPLOY_MODE" == "install" ]; then
+        echo "local & install - cleaning up .dfx"
+        rm -rf .dfx
+    fi
+fi
+
 #######################################################################
 
 echo " "
