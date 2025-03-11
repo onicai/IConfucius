@@ -27,6 +27,7 @@ We have the following roadmap in mind for IConfucius:
 - 🚧 IConfucius as an OpenChat command bot
 - 🚧 IConfucius as an OpenChat autonomous bot
 - 🚧 IConfucius posting his quotes of wisdom directly to odin.fun
+- 🚧 IConfucius posting his quotes of wisdom directly to X
 - 🧠 IConfucius listens to his followers and evolves
 
 # How IConfucius works
