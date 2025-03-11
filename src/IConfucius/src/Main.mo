@@ -255,13 +255,23 @@ actor class IConfuciusCtrlbCanister() {
     };
 
     // Endpoint to generate a new quote
-    public shared (msg) func generateNewQuote(topic : ?Text) : async Types.GeneratedQuoteResult {
-        if (not Principal.isController(msg.caller)) {
-            return #Err(#StatusCode(401));
-        };
+    public shared (msg) func generateNewQuote(topic : ?Text) : async Text {
+        // TODO: restore access control
+        // if (not Principal.isController(msg.caller)) {
+        //     return "You are not authorized to call this function.";
+        // };
 
-        let generatedQuoteOutput : Types.GeneratedQuoteResult = await generateQuote(topic);
-        return generatedQuoteOutput;
+        let generatedQuoteResult : Types.GeneratedQuoteResult = await generateQuote(topic);
+        switch (generatedQuoteResult) {
+            case (#Err(error)) {
+                D.print("IConfucius: generateQuote generatedQuoteOutput error");
+                print(debug_show (error));
+                return "IConfucius failed to generate a new quote.";
+            };
+            case (#Ok(generatedQuote)) {
+                return generatedQuote.generatedQuoteText;
+            };
+        }
     };
 
     private func generateQuote(topic : ?Text) : async Types.GeneratedQuoteResult {
@@ -537,6 +547,9 @@ actor class IConfuciusCtrlbCanister() {
             );
         };
 
+        // trim leading '"' and trailing '"' from generationOutput 
+        let trimmedOutput = Text.trim(generationOutput, #char '\"');
+
         // Return the generated quote
         let quoteOutput : Types.GeneratedQuote = {
             generationId : Text = generationId;
@@ -545,7 +558,7 @@ actor class IConfuciusCtrlbCanister() {
             generatedTimestamp : Nat64 = Nat64.fromNat(Int.abs(Time.now()));
             generatedByLlmId : Text = Principal.toText(Principal.fromActor(llmCanister));
             generationPrompt : Text = generationPrompt;
-            generatedQuoteText : Text = generationOutput;
+            generatedQuoteText : Text = trimmedOutput;
         };
         return #Ok(quoteOutput);
     };
