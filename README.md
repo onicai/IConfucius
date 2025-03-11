@@ -221,7 +221,7 @@ dfx canister call iconfucius_ctrlb_canister getNumQuotesAdmin --output json [--i
 
 # Prompt Design
 
-We designed the prompt using `scripts/prompt-design.ipynb`
+We designed the prompt using [scripts/prompt-design.ipynb](https://github.com/onicai/IConfucius/blob/main/scripts/prompt-design.ipynb).
 
 The python notebook runs llama.cpp directly on your computer, and you can very quickly try out modifications.
 
