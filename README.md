@@ -4,35 +4,55 @@
 
 <img src="./images/confucius.jpg" alt="Confucius" width="400">
 
+🚀 Meet IConfucius: The ancient Chinese philosopher... now living in a canister of the Internet Computer!
 
-Buy [IConfucius at odin.fun](https://odin.fun/token/29m8) !
+⚡ He is also on odin_fun → Token https://odin.fun/token/29m8
 
-`IConfucius` is an autonomous OpenChat bot
-- We designed a prompt that turns on-chain Qwen2.5 into the philosopher IConfucius.
-- IConfucius is a fully on-chain AI agent. (Yes, the LLM is running in a canister too!)
+🤖 And an OpenChat bot
 
+# IConfucius Roadmap
 
-# OpenChat community
+IConfucius is an odin.fun token that demonstrates the on-chain AI technology of [onicai](https://www.onicai.com/).
 
-TODO: 
-- Make public
-- Connect IConfucius
+We created it to showcase what you can do with LLMs that run completely in canisters of the [Internet Computer](https://internetcomputer.org/).
 
-The [OpenChat IConfucius channel](https://oc.app/community/e5qnd-hqaaa-aaaac-any5a-cai/channel/2411296919/?ref=45j3b-nyaaa-aaaac-aokma-cai)
+There are many benefits to running your AI fully on-chain on the Internet Computer. One of them is that interacting with other applications, like [OpenChat](https://oc.app/) and [odin.fun](https://odin.fun), becomes very easy. In addition, your AI and LLM are fully under your control, easily protected against misuse and hacking, and using the Internet Computer's reverse gas models, you decide how much you want to spent (no surprise bills ❣️ ).
 
-# How it works
+We have the following roadmap in mind for IConfucius:
+
+- ✅️ IConfucius canisters deployed
+- ✅️ IConfucius can be prompted from command line (dfx)
+- ✅️ Launched on odin.fun → Token https://odin.fun/token/29m8
+- ✅️ Set up the [IConfucius OpenChat community](https://oc.app/community/e5qnd-hqaaa-aaaac-any5a-cai/channel/2411296919/?ref=45j3b-nyaaa-aaaac-aokma-cai)
+- 🚧 IConfucius as an OpenChat command bot
+- 🚧 IConfucius as an OpenChat autonomous bot
+- 🚧 IConfucius posting his quotes of wisdom directly to odin.fun
+- 🧠 IConfucius listens to his followers and evolves
+
+# How IConfucius works
+
+IConfucius is a deployed [llama_cpp_canister](https://github.com/onicai/llama_cpp_canister), loaded with the Qwen 2.5 model, and controlled by a Motoko canister designed to turn the Qwen2.5 LLM into Confucius, the ancient Chinese philosopher. When prompted, it will generate profound quotes about topics.
 
 Their are two canisters:
 - a Motoko bot canister, in `src/IConfucius`
 - a C++ LLM canister, in `llms/IConfucius`.
+  - The LLM is loaded with the [qwen2.5-0.5b-instruct-q8_0.gguf](https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF) model
 
-The LLM is using a [llama_cpp_canister](https://github.com/onicai/llama_cpp_canister), loaded with 
-the qwen2.5-0.5b-instruct-q8_0.gguf model from https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF
+Our OpenChat bot implementation is based on the Motoko [openchat-bot-sdk](https://j4mwm-bqaaa-aaaam-qajbq-cai.ic0.app/openchat-bot-sdk) developed by the ICP community member [Geckteck](https://x.com/Gekctek). Many thanks go out to him.
 
 
 # Deploy your own IConfucius
 
-If you want deploy your own IConfucius or develop on top of it, follow these instructions.
+The instructions in this section cover how you can deploy everything locally on your computer.
+
+We value DeCentralized AI, and one of the great things about the Internet Computer is that it
+allows anyone to spin up their own software applications, including AI agents that run 100% in canisters, under your control.
+
+That is why we are building IConfucius in the open, and everything is Open Source.
+
+We hope many of you will deploy your own IConfucius canisters, play with it, learn from it, and
+then build & deploy your own on-chain AI agents that do something else. We can't wait to see what you will create.
+
 
 ## Miniconda
 
@@ -49,50 +69,53 @@ conda activate IConfucius
 pip install -r requirements.txt
 ```
 
-## mops
-
-Install mops (https://mops.one/docs/install), and then:
-
-```bash
-# Do this in all these folders:
-# - from folder: `IConfucius/src/IConfucius`
-mops install
-```
-
-## Install dfx
-
-When running locally, make sure to use the version of dfx prescribed by [open-chat](https://github.com/open-chat-labs/open-chat)
-
 ## Download the Qwen2.5 LLM model
 
 Download qwen2.5-0.5b-instruct-q8_0.gguf from https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF
 
-Place it in this location: `llama_cpp_canister/models/Qwen/Qwen2.5-0.5B-Instruct-GGUF/qwen2.5-0.5b-instruct-q8_0.gguf`
+Place it in this location: `llms/llama_cpp_canister/models/Qwen/Qwen2.5-0.5B-Instruct-GGUF/qwen2.5-0.5b-instruct-q8_0.gguf`
 
 Verify it is in correct location:
 
 ```bash 
 # From root folder:
-ls llama_cpp_canister/models/Qwen/Qwen2.5-0.5B-Instruct-GGUF/qwen2.5-0.5b-instruct-q8_0.gguf
+ls llms/llama_cpp_canister/models/Qwen/Qwen2.5-0.5B-Instruct-GGUF/qwen2.5-0.5b-instruct-q8_0.gguf
 ```
+
+## mops
+
+Install mops (https://mops.one/docs/install), and then:
+
+```bash
+# from folder: `IConfucius/src/IConfucius`
+mops install
+```
+
+## Install dfx
+
+Since IConfucius is an OpenChat bot, make sure to use the version of dfx prescribed by [open-chat](https://github.com/open-chat-labs/open-chat)
 
 ## Deploy open-chat
 
-When running locally, first deploy [open-chat](https://github.com/open-chat-labs/open-chat)
-
-### Silencing OpenChat's SNS debug logs
-
-This helps reduce logging a lot:
+When running locally, first deploy [open-chat](https://github.com/open-chat-labs/open-chat):
 
 ```bash
+# from folder: open-chat (repo)
+rm -rf .dfx
+dfx start --clean
+./scripts/deploy-local.sh
+
+# Silence OpenChat's SNS debug logs
 dfx --identity anonymous canister stop sgymv-uiaaa-aaaaa-aaaia-cai
 ```
 
 ## Set the OpenChat public key
 
-TODO: implement OpenChat bot...
+🚧 🚧 🚧 🚧 🚧 (Work in progress...)
 
-When running locally, find the Open Chat instance public key, by going to:
+*SKIP THIS STEP UNTIL FURTHER NOTICE.*
+
+Get the public key of your locally running Open Chat instance, by going to:
 
 `Profile settings` > `Advanced` > `Bot client config`
 
@@ -107,54 +130,49 @@ let openChatPublicKey = Text.encodeUtf8("MF...==");
 
 ## Deploy ALL canisters:
 
-Note: The local network in all dfx.json files is defined as in the open-chat repo.
-
 ```bash
 # from root folder: 
-# (-) --mode install is slow, because the LLM model is uploaded.
-# (-) --mode upgrade is fast, because the LLM model is NOT uploaded.
-#       The canisters are re-build and re-deployed, but the LLM model 
-#       is still in the canister's stable memory.
-# (-) When we deployed to ic, the initial installation of each component was done manually
-#     to ensure the LLMs ended up on the correct subnet
-scripts/deploy-IConfucius.sh --mode [install/reinstall/upgrade] --network [local/ic]
 
-# After running with `--mode install` repeat it with:
+# The first time, use this command:
+scripts/deploy-IConfucius.sh --mode install --network [local/ic]
+
+# After this, to upgrade the canisters for a code change:
 scripts/deploy-IConfucius.sh --mode upgrade --network [local/ic]
 ```
 
-Note: When working on Windows, use WSL Ubuntu. You might first have to run 
-```bash
-sudo sysctl -w vm.max_map_count=2097152
-```
-to successfully load the models in the LLM canisters.
+Notes: 
+- `--mode install` & `--mode reinstall` take several minutes, because the LLM model is uploaded.
+- `--mode upgrade` is fast, because the LLM model is NOT uploaded. All the canisters are 
+re-build and re-deployed, but the LLM model is still as a virtual file in the canister's 
+stable memory.
+- When you deploy to the ic mainnet, it is recommended to do the initial deploy of each 
+component manually and specify the subnet. Pick one that is not so busy, because LLMs use a lot of computations.
+
+- When working on Windows, use WSL Ubuntu. To successfully load the LLM model into the LLM canister, you might first have to run 
+  ```bash
+  sudo sysctl -w vm.max_map_count=2097152
+  ```
+
 
 ## IConfucius as a command type bot
 
 **Test it works, using dfx**
 
 ```bash
-# Trigger a single quote generation manually
+# from folder: src/IConfucius
 
 # Option 1: Let IConfucius pick a random topic from a predefined list
 dfx canister call iconfucius_ctrlb_canister IConfuciusSays [--ic]
 
-# Option 2: Specify the topic, for example ask for a quote about chickens
-dfx canister call iconfucius_ctrlb_canister IConfuciusSays '(opt "chickens")' [--ic]
-```
-
-**Test the endpoints with curl**
-
-TODO...
-
-```bash
-# OpenChat will first call the execute_command endpoint, sending a JWT token
-curl -i -X POST "http://<canister_id>:8080/execute_command" \
-     -H "Content-Type: text/plain" \
-     -d "-a jwt token-"
+# Option 2: Specify the topic, for example ask for a quote about crypto
+dfx canister call iconfucius_ctrlb_canister IConfuciusSays '(opt "crypto")' [--ic]
 ```
 
 **Registering the bot with OpenChat**
+
+🚧 🚧 🚧 🚧 🚧 (Work in progress...)
+
+*SKIP THIS STEP UNTIL FURTHER NOTICE.*
 
 Follow the instructions in [Registering the bot](https://github.com/open-chat-labs/open-chat-bots?tab=readme-ov-file#installing-the-bot)
 
@@ -166,7 +184,7 @@ Follow the instructions in [Registering the bot](https://github.com/open-chat-la
     - ic: see src/IConfucius/canister_ids.json
   - Bot name = IConfucius
   - Bot endpoint
-    - local: http://<canister_id>.localhost:8080
+    - local: http://<canister_id>.raw.localhost:8080
       - Note: Check port with `dfx info webserver-port`
     - ic: https://<canister_id>.raw.icp0.io/
 
@@ -174,11 +192,15 @@ Follow the instructions in [Registering the bot](https://github.com/open-chat-la
 
 ## IConfucius as an autonomous type bot
 
-IConfucius can run in autonomous mode, using timers.
+🚧 🚧 🚧 🚧 🚧 (Work in progress...)
 
-However, the Motoko openchat-bot-sdk does not yet support API keys, only Command type bots.
+*SKIP THIS STEP UNTIL FURTHER NOTICE.*
 
-So, for now, just skip this...
+IConfucius can run in autonomous mode, using timers, and it will thus be possible to connect it to the OpenChat bot platform as an autonomous bot that automatically posts profound quotes on a regular basis.
+
+However the Motoko openchat-bot-sdk does not yet support API keys, only Command type bots.
+
+As soon as the SDK supports API keys, we will implement this capability.
 
 **Start the timers**
 
@@ -188,44 +210,49 @@ scripts/start-timers.sh --network [local/ic]
 scripts/stop-timers.sh --network [local/ic]
 ```
 
-After starting When using the timers, the quote generation takes a moment. To ensure it works:
+After some time, several quotes have been generated. 
+
+IConfucius saves all his generated quotes in a stable memory data structure, and as the controller of the canister, you can pull them out:
 ```bash
 # from folder: src/IConfucius
 dfx canister call iconfucius_ctrlb_canister getQuotesAdmin --output json [--ic]
 dfx canister call iconfucius_ctrlb_canister getNumQuotesAdmin --output json [--ic]
 ```
 
-**Connect to OpenChat**
-
-TODO...
-
-
-## Prompt Design
+# Prompt Design
 
 We designed the prompt using `scripts/prompt-design.ipynb`
 
-That notebook runs llama.cpp directly on your computer, and you can very quickly try out modifications.
+The python notebook runs llama.cpp directly on your computer, and you can very quickly try out modifications.
 
 Make sure to design your own prompts so that the repetitive part is at the beginning, to benefit from prompt caching. When running LLMs inside a canister, this will help tremendously with cost & latency.
-
-# OpenChat bot 
-
-The Motoko canister of IConfucius is using [openchat-bot-sdk](https://j4mwm-bqaaa-aaaam-qajbq-cai.ic0.app/openchat-bot-sdk)
 
 
 # Tips & Tricks
 
-## Silencing OpenChat's SNS debug logs
-
-```bash
-dfx --identity anonymous canister stop sgymv-uiaaa-aaaaa-aaaia-cai
-```
-
 ## Adding cycles
 
-NOTE: when working locally, you easily add cycles to the canisters with:
+The LLM canister burns a lot of cycles, and you will quickly run out.
+
+When working locally, you easily add cycles to all the deployed canisters with:
 ```bash
 # From the canister folders: to add 2 trillion cycles
 dfx ledger fabricate-cycles --all --t 2
 ```
 
+**Test the endpoint called by OpenChat with curl**
+
+🚧 🚧 🚧 🚧 🚧 (Work in progress...)
+
+*SKIP THIS STEP UNTIL FURTHER NOTICE.*
+
+Executing these commands is very helpful to debug things and to understand what goes on under the hood of the OpenChat bot platform and the Motoko bot SDK.
+
+Some useful curl commands:
+
+```bash
+# OpenChat will first call the execute_command endpoint, sending a JWT token
+curl -i -X POST "http://<canister_id>.raw.localhost:8080/execute_command" \
+     -H "Content-Type: text/plain" \
+     -d "-a jwt token-"
+```
