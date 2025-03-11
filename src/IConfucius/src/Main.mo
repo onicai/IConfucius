@@ -260,6 +260,9 @@ actor class IConfuciusCtrlbCanister() {
         // if (not Principal.isController(msg.caller)) {
         //     return "You are not authorized to call this function.";
         // };
+        if (Principal.isAnonymous(msg.caller)) {
+            return "You are not authorized to call this function with an anonymous principal.";
+        };
 
         let generatedQuoteResult : Types.GeneratedQuoteResult = await generateQuote(topic);
         switch (generatedQuoteResult) {
