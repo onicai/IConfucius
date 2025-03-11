@@ -5,6 +5,61 @@
             "type": "custom",
             "candid": "../llama_cpp_canister/build/llama_cpp.did",
             "wasm": "../llama_cpp_canister/build/llama_cpp.wasm"
+        },
+        "llm_1": {
+            "type": "custom",
+            "candid": "../llama_cpp_canister/build/llama_cpp.did",
+            "wasm": "../llama_cpp_canister/build/llama_cpp.wasm"
+        },
+        "llm_2": {
+            "type": "custom",
+            "candid": "../llama_cpp_canister/build/llama_cpp.did",
+            "wasm": "../llama_cpp_canister/build/llama_cpp.wasm"
+        },
+        "llm_3": {
+            "type": "custom",
+            "candid": "../llama_cpp_canister/build/llama_cpp.did",
+            "wasm": "../llama_cpp_canister/build/llama_cpp.wasm"
+        },
+        "llm_4": {
+            "type": "custom",
+            "candid": "../llama_cpp_canister/build/llama_cpp.did",
+            "wasm": "../llama_cpp_canister/build/llama_cpp.wasm"
+        },
+        "llm_5": {
+            "type": "custom",
+            "candid": "../llama_cpp_canister/build/llama_cpp.did",
+            "wasm": "../llama_cpp_canister/build/llama_cpp.wasm"
+        },
+        "llm_6": {
+            "type": "custom",
+            "candid": "../llama_cpp_canister/build/llama_cpp.did",
+            "wasm": "../llama_cpp_canister/build/llama_cpp.wasm"
+        },
+        "llm_7": {
+            "type": "custom",
+            "candid": "../llama_cpp_canister/build/llama_cpp.did",
+            "wasm": "../llama_cpp_canister/build/llama_cpp.wasm"
+        },
+        "llm_8": {
+            "type": "custom",
+            "candid": "../llama_cpp_canister/build/llama_cpp.did",
+            "wasm": "../llama_cpp_canister/build/llama_cpp.wasm"
+        },
+        "llm_9": {
+            "type": "custom",
+            "candid": "../llama_cpp_canister/build/llama_cpp.did",
+            "wasm": "../llama_cpp_canister/build/llama_cpp.wasm"
+        },
+        "llm_10": {
+            "type": "custom",
+            "candid": "../llama_cpp_canister/build/llama_cpp.did",
+            "wasm": "../llama_cpp_canister/build/llama_cpp.wasm"
+        },
+        "llm_11": {
+            "type": "custom",
+            "candid": "../llama_cpp_canister/build/llama_cpp.did",
+            "wasm": "../llama_cpp_canister/build/llama_cpp.wasm"
         }
     },
     "output_env_file": ".env",
