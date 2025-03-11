@@ -35,6 +35,11 @@ module Types {
         generated_eog : Bool;
     };
 
+    public type CopyPromptCacheInputRecord = {
+        from : Text;
+        to : Text;
+    };
+
     public type LLMCanister = actor {
         health : () -> async StatusCodeRecordResult;
         ready : () -> async StatusCodeRecordResult;
@@ -42,6 +47,7 @@ module Types {
         new_chat : (InputRecord) -> async OutputRecordResult;
         run_update : (InputRecord) -> async OutputRecordResult;
         remove_prompt_cache : (InputRecord) -> async OutputRecordResult;
+        copy_prompt_cache : (CopyPromptCacheInputRecord) -> async StatusCodeRecordResult;
     };
 
     type CanisterAddress = Text;
@@ -64,8 +70,8 @@ module Types {
     public type QuoteTopicResult = Result<QuoteTopic, ApiError>;
 
     public type NewQuoteInput = QuoteTopic and {
-        quoteQuestion : Text;
-        quoteQuestionSeed : Nat32;
+        quoteText : Text;
+        quoteTextSeed : Nat32;
     };
 
     public type Quote = NewQuoteInput and {

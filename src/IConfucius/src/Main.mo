@@ -269,7 +269,7 @@ actor class IConfuciusCtrlbCanister() {
                 return "IConfucius failed to generate a new quote.";
             };
             case (#Ok(generatedQuote)) {
-                return "IConfucius says: " # generatedQuote.generatedQuoteText;
+                return generatedQuote.generatedQuoteText;
             };
         }
     };
@@ -315,8 +315,8 @@ actor class IConfuciusCtrlbCanister() {
                             quoteTopicId : Text = quoteTopic.quoteTopicId;
                             quoteTopicCreationTimestamp : Nat64 = quoteTopic.quoteTopicCreationTimestamp;
                             quoteTopicStatus : Types.QuoteTopicStatus = quoteTopic.quoteTopicStatus;
-                            quoteQuestion : Text = generatedQuote.generatedQuoteText;
-                            quoteQuestionSeed : Nat32 = generatedQuote.generationSeed;
+                            quoteText : Text = generatedQuote.generatedQuoteText;
+                            quoteTextSeed : Nat32 = generatedQuote.generationSeed;
                         };
 
                         return generatedQuoteOutput;
@@ -338,10 +338,13 @@ actor class IConfuciusCtrlbCanister() {
         let cache_type_k = "q8_0";
 
         let systemPrompt = "You are Confucius, the ancient philosopher. You finish quotes in a profound and compassionate manner.";
-        let userPrompt = "Write a profound and thought proviking quote about " # quoteTopic # ". Provide only the quote, nothing else.";
-        
-        var prompt : Text = "<|im_start|>system\n" # systemPrompt # "<|im_end|>\n" #
-        "<|im_start|>user\n" # userPrompt # "<|im_end|>\n" # 
+        let userPromptRepetitive = "Write a profound and thought provoking quote about ";
+        let userPromptVarying = quoteTopic # ". Provide only the quote, nothing else.";
+      
+        var promptRepetitive : Text = "<|im_start|>system\n" # systemPrompt # "<|im_end|>\n" #
+        "<|im_start|>user\n" # userPromptRepetitive;
+        var prompt : Text = promptRepetitive # userPromptVarying # 
+        "<|im_end|>\n" # 
         "<|im_start|>assistant\n";
 
         let llmCanister = _getRoundRobinCanister();
@@ -384,6 +387,41 @@ actor class IConfuciusCtrlbCanister() {
         var error : Text = "";
         var prompt_remaining : Text = "";
         var generated_eog : Bool = false;
+
+        // ----------------------------------------------------------------------
+        // Step 0
+        // Restore a previously saved prompt cache file
+        let promptSaveCache : Text = Nat32.toText(Text.hash(promptRepetitive)) # ".cache";
+        var foundPromptSaveCache : Bool = false;
+
+        try {
+            let copyPromptCacheInputRecord : Types.CopyPromptCacheInputRecord = { 
+                from = promptSaveCache; 
+                to =  promptCache
+            };
+            D.print("IConfucius:  calling copy_prompt_cache to restore a previously saved promptCache if it exists. promptSaveCache: " # promptSaveCache);
+            num_update_calls += 1;
+            let statusCodeRecordResult : Types.StatusCodeRecordResult = await llmCanister.copy_prompt_cache(copyPromptCacheInputRecord);
+            D.print("IConfucius:  returned from copy_prompt_cache with statusCodeRecordResult: " # debug_show (statusCodeRecordResult));
+            switch (statusCodeRecordResult) {
+                case (#Err(_)) {
+                    foundPromptSaveCache := false;
+                };
+                case (#Ok(_)) {
+                    foundPromptSaveCache := true;
+                };
+            };
+        } catch (error : Error) {
+            // Handle errors, such as llm canister not responding
+            D.print("IConfucius:  catch error when calling copy_prompt_cache : ");
+            D.print("IConfucius:  error: " # Error.message(error));
+            return #Err(
+                #Other(
+                    "Failed call to copy_prompt_cache of " # Principal.toText(Principal.fromActor(llmCanister)) #
+                    " with error: " # Error.message(error)
+                )
+            );
+        };
 
         // ----------------------------------------------------------------------
         // Step 1
@@ -502,6 +540,32 @@ actor class IConfuciusCtrlbCanister() {
                         if (prompt_remaining == "") {
                             prompt := ""; // Send empty prompt - the prompt ingestion is done.
                             continueLoopCount += 1; // We count the actual generation steps
+
+                            // -----
+                            // Prompt ingestion is finished. If it was not yet there, save the prompt cache for reuse with next submission
+                            if (not foundPromptSaveCache) {
+                                try {
+                                    let copyPromptCacheInputRecord : Types.CopyPromptCacheInputRecord = { 
+                                        from = promptCache; 
+                                        to =  promptSaveCache
+                                    };
+                                    D.print("IConfucius:  calling copy_prompt_cache to save the promptCache to promptSaveCache: " # promptSaveCache);
+                                    num_update_calls += 1;
+                                    let statusCodeRecordResult : Types.StatusCodeRecordResult = await llmCanister.copy_prompt_cache(copyPromptCacheInputRecord);
+                                    D.print("IConfucius:  returned from copy_prompt_cache with statusCodeRecordResult: " # debug_show (statusCodeRecordResult));
+                                    // We do not care what the result is, as it is just a possible optimization operation
+                                } catch (error : Error) {
+                                    // Handle errors, such as llm canister not responding
+                                    D.print("IConfucius:  catch error when calling copy_prompt_cache : ");
+                                    D.print("IConfucius:  error: " # Error.message(error));
+                                    return #Err(
+                                        #Other(
+                                            "Failed call to copy_prompt_cache of " # Principal.toText(Principal.fromActor(llmCanister)) #
+                                            " with error: " # Error.message(error)
+                                        )
+                                    );
+                                };
+                            };
                         };
                         if (generated_eog) {
                             break continueLoop; // Exit the loop - the quote is generated.
