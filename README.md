@@ -119,7 +119,7 @@ Note: The local network in all dfx.json files is defined as in the open-chat rep
 #     to ensure the LLMs ended up on the correct subnet
 scripts/deploy-IConfucius.sh --mode [install/reinstall/upgrade] --network [local/ic]
 
-# Only the first time, run it again with:
+# After running with `--mode install` repeat it with:
 scripts/deploy-IConfucius.sh --mode upgrade --network [local/ic]
 ```
 
@@ -137,10 +137,10 @@ to successfully load the models in the LLM canisters.
 # Trigger a single quote generation manually
 
 # Option 1: Let IConfucius pick a random topic from a predefined list
-dfx canister call iconfucius_ctrlb_canister generateNewQuote [--ic]
+dfx canister call iconfucius_ctrlb_canister IConfuciusSays [--ic]
 
 # Option 2: Specify the topic, for example ask for a quote about chickens
-dfx canister call iconfucius_ctrlb_canister generateNewQuote '(opt "chickens")' [--ic]
+dfx canister call iconfucius_ctrlb_canister IConfuciusSays '(opt "chickens")' [--ic]
 ```
 
 **Test the endpoints with curl**

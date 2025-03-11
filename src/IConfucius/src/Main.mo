@@ -255,7 +255,7 @@ actor class IConfuciusCtrlbCanister() {
     };
 
     // Endpoint to generate a new quote
-    public shared (msg) func generateNewQuote(topic : ?Text) : async Text {
+    public shared (msg) func IConfuciusSays(topic : ?Text) : async Text {
         // TODO: restore access control
         // if (not Principal.isController(msg.caller)) {
         //     return "You are not authorized to call this function.";
@@ -269,7 +269,7 @@ actor class IConfuciusCtrlbCanister() {
                 return "IConfucius failed to generate a new quote.";
             };
             case (#Ok(generatedQuote)) {
-                return generatedQuote.generatedQuoteText;
+                return "IConfucius says: " # generatedQuote.generatedQuoteText;
             };
         }
     };
