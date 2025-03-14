@@ -65,7 +65,7 @@ We have the following Commucation & Educational roadmap in mind for IConfucius:
 
 IConfucius is a deployed [llama_cpp_canister](https://github.com/onicai/llama_cpp_canister), loaded with the Qwen 2.5 model, and controlled by a Motoko canister designed to turn the Qwen2.5 LLM into Confucius, the ancient Chinese philosopher. When prompted, it will generate profound quotes about topics.
 
-Their are two canisters:
+There are two canisters:
 
 - a Motoko bot canister, in `src/IConfucius`
 - a C++ LLM canister, in `llms/IConfucius`.
