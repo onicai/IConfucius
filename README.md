@@ -40,12 +40,10 @@ We have the following technical roadmap in mind for IConfucius:
 
 - ✅️ IConfucius canisters deployed
 - ✅️ IConfucius can be prompted from command line (dfx)
-- ✅️ Launched on odin.fun → Token https://odin.fun/token/29m8
-- 🚧 IConfucius as an OpenChat command bot
-- 🚧 IConfucius as an OpenChat autonomous bot, posting his quotes of wisdom directly OC
-- 🚧 IConfucius posting his quotes of wisdom directly to odin.fun
-- 🚧 IConfucius posting his quotes of wisdom directly to X
+- ✅️ Launched on ODIN•FUN → Token https://odin.fun/token/29m8
 - 🚧 IConfucius 孔夫子创智慧，载道于母语之文，传世于天下。
+- 🚧 IConfucius as an OpenChat command bot
+- 🚧 IConfucius as an OpenChat autonomous bot, posting his quotes of wisdom directly OpenChat, ODIN•FUN and X (Twitter)
 - 🚧 IConfucius integrated into onicai's Proof-of-AI-Work dApp
 - 🧠 IConfucius listens to the community and evolves his abilities
 
