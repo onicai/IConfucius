@@ -79,10 +79,9 @@ This section is for ICP developers who want to learn in detail how IConfucius wo
 
 The instructions in this section cover how you can deploy everything locally on your computer.
 
-We value DeCentralized AI, and one of the great things about the Internet Computer is that it
-allows anyone to spin up their own software applications, including AI agents that run 100% in canisters, under your control.
+We value DeCentralized AI, which is why we are building IConfucius in the open, and everything is Open Source, under the permissive MIT license.
 
-That is why we are building IConfucius in the open, and everything is Open Source, under the permissive MIT license.
+One of the great things about the Internet Computer is you can spin up your own local Internet Computer replica, and deploy & test your code.
 
 We hope many of you will deploy your own IConfucius canisters, play with it, learn from it, and
 then build & deploy your own on-chain AI agents that do something else. We can't wait to see what you will create.
