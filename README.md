@@ -8,11 +8,17 @@
 
 🈺 He is a **Smart Contract** running on the Internet Computer
 
-⚡ He is an **ODIN•FUN** Token→ Token https://odin.fun/token/29m8
+⚡ He is an [ODIN•FUN](https://odin.fun?r=mgb3mzvghe) Token→ Token https://odin.fun/token/29m8
 
 🤖 He is an **OpenChat bot**
 
 ... and he will be so much more 💡
+
+# MIT License
+
+We value DeCentralized AI, which is why we build IConfucius in the open and actively seek community feedback and contributions.
+
+Everything is Open Source, under the permissive MIT license.
 
 # Who is IConfucius?
 
@@ -24,14 +30,14 @@ He will become much more accessible from the [IConfucius OpenChat community](htt
 
 # Why IConfucius?
 
-IConfucius is a standalone **mAIner Agent**, which provides AI work for two top tier ICP dApps, [OpenChat](https://oc.app/community/e5qnd-hqaaa-aaaac-any5a-cai/channel/2411296919/?ref=45j3b-nyaaa-aaaac-aokma-cai) and [odin.fun](https://odin.fun/token/29m8).
+IConfucius is a standalone **mAIner Agent**, which provides AI work for two top tier ICP dApps, [OpenChat](https://oc.app/community/e5qnd-hqaaa-aaaac-any5a-cai/channel/2411296919/?ref=45j3b-nyaaa-aaaac-aokma-cai) and [odin.fun](https://odin.fun?r=mgb3mzvghe).
 
 **mAIner Agents** are one of the core components of onicai’s [Proof-of-AI-Work protocol](https://www.onicai.com/#/poaiw) and IConfucius thus demonstrates how PoAIW components may be implemented.
 
 IConfucius operates entirely on-chain on the Internet Computer, including the LLM itself. This approach offers numerous advantages, among them:
 
 1. You maintain full control over your AI and LLM, ensuring security against misuse and hacking.
-2. With the Internet Computer's reverse gas model, you have complete control over costs—no unexpected bills ❣️
+2. With the Internet Computer's reverse gas model, you control your costs—no unexpected bills ❣️
 3. Seamless & secure integration with other ICP applications.
 
 # IConfucius Technical Roadmap
@@ -40,7 +46,7 @@ We have the following technical roadmap in mind for IConfucius:
 
 - ✅️ IConfucius canisters deployed
 - ✅️ IConfucius can be prompted from command line (dfx)
-- ✅️ Launched on ODIN•FUN → Token https://odin.fun/token/29m8
+- ✅️ Launched on [ODIN•FUN](https://odin.fun?r=mgb3mzvghe) → Token https://odin.fun/token/29m8
 - 🚧 IConfucius 孔夫子创智慧，载道于母语之文，传世于天下。
 - 🚧 IConfucius as an OpenChat command bot
 - 🚧 IConfucius as an OpenChat autonomous bot, posting his quotes of wisdom directly OpenChat, ODIN•FUN and X (Twitter)
@@ -78,8 +84,6 @@ Our OpenChat bot implementation is based on the Motoko [openchat-bot-sdk](https:
 This section is for ICP developers who want to learn in detail how IConfucius works.
 
 The instructions in this section cover how you can deploy everything locally on your computer.
-
-We value DeCentralized AI, which is why we are building IConfucius in the open, and everything is Open Source, under the permissive MIT license.
 
 One of the great things about the Internet Computer is you can spin up your own local Internet Computer replica, and deploy & test your code.
 
