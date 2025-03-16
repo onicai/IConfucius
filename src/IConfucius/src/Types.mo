@@ -3,8 +3,20 @@ import Nat64 "mo:base/Nat64";
 module Types {
     public type NatResult = Result<Nat, ApiError>;
 
+    public type PromptForQuote = {
+        quoteLanguage : Text;
+        systemPrompt : Text;
+        userPromptRepetitive : Text;
+        userPromptVarying : Text;
+        promptRepetitive : Text;
+        prompt : Text;
+    };
+
+    public type PromptForQuoteResult = Result<PromptForQuote, ApiError>;
+
     public type GeneratedQuote = {
         generationId : Text;
+        generationLanguage : Text;
         generationTopic : Text;
         generationSeed : Nat32;
         generatedTimestamp : Nat64;
@@ -59,10 +71,20 @@ module Types {
         #Other : Text;
     };
 
+    public type QuoteLanguage = {
+        #English;
+        #Chinese;
+        // #Dutch;
+        // #German;
+    };
+
+    public type QuoteLanguageInput = {
+        quoteLanguage : Text;
+    };
     public type QuoteTopicInput = {
         quoteTopic : Text;
     };
-    public type QuoteTopic = QuoteTopicInput and {
+    public type QuoteTopic = QuoteLanguageInput and QuoteTopicInput and {
         quoteTopicId : Text;
         quoteTopicCreationTimestamp : Nat64;
         quoteTopicStatus : QuoteTopicStatus;

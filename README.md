@@ -47,7 +47,7 @@ We have the following technical roadmap in mind for IConfucius:
 - ✅️ IConfucius canisters deployed
 - ✅️ IConfucius can be prompted from command line (dfx)
 - ✅️ Launched on [ODIN•FUN](https://odin.fun?r=mgb3mzvghe) → Token https://odin.fun/token/29m8
-- 🚧 IConfucius 孔夫子创智慧，载道于母语之文，传世于天下。
+- ✅️ IConfucius can generate quotes in either English or Chinese.
 - 🚧 IConfucius as an OpenChat command bot
 - 🚧 IConfucius as an OpenChat autonomous bot, posting his quotes of wisdom directly OpenChat, ODIN•FUN and X (Twitter)
 - 🚧 IConfucius integrated into onicai's Proof-of-AI-Work dApp
@@ -198,10 +198,12 @@ Notes:
 # from folder: src/IConfucius
 
 # Option 1: Let IConfucius pick a random topic from a predefined list
-dfx canister call iconfucius_ctrlb_canister IConfuciusSays [--ic]
+dfx canister call iconfucius_ctrlb_canister IConfuciusSays '(variant {English}, null)' [--ic]
+dfx canister call iconfucius_ctrlb_canister IConfuciusSays '(variant {Chinese}, null)' [--ic]
 
 # Option 2: Specify the topic, for example ask for a quote about crypto
-dfx canister call iconfucius_ctrlb_canister IConfuciusSays '(opt "crypto")' [--ic]
+dfx canister call iconfucius_ctrlb_canister IConfuciusSays '(variant {English}, opt "crypto")' [--ic]
+dfx canister call iconfucius_ctrlb_canister IConfuciusSays '(variant {Chinese}, opt "加密货币")' [--ic]
 ```
 
 **Registering the bot with OpenChat**
