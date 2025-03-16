@@ -80,6 +80,7 @@ actor class IConfuciusCtrlbCanister() {
             let quoteTopicId : Text = await Utils.newRandomUniqueId();
 
             let quoteTopic : Types.QuoteTopic = {
+                quoteLanguage : Text = "en";
                 quoteTopic : Text = initialTopic;
                 quoteTopicId : Text = quoteTopicId;
                 quoteTopicCreationTimestamp : Nat64 = Nat64.fromNat(Int.abs(Time.now()));
@@ -255,7 +256,7 @@ actor class IConfuciusCtrlbCanister() {
     };
 
     // Endpoint to generate a new quote
-    public shared (msg) func IConfuciusSays(topic : ?Text) : async Text {
+    public shared (msg) func IConfuciusSays(quoteLanguage : Types.QuoteLanguage, topic : ?Text) : async Text {
         // TODO: restore access control
         // if (not Principal.isController(msg.caller)) {
         //     return "You are not authorized to call this function.";
@@ -264,7 +265,14 @@ actor class IConfuciusCtrlbCanister() {
             return "You are not authorized to call this function with an anonymous principal.";
         };
 
-        let generatedQuoteResult : Types.GeneratedQuoteResult = await generateQuote(topic);
+        // TODO: pass in quoteLanguage variant instead of Text
+        let language : Text = switch (quoteLanguage) {
+            case (#English) { "en" };
+            case (#Chinese) { "cn" };
+            case (#Dutch) { "nl" };
+            case (#German) { "de" };
+        };
+        let generatedQuoteResult : Types.GeneratedQuoteResult = await generateQuote(language, topic);
         switch (generatedQuoteResult) {
             case (#Err(error)) {
                 D.print("IConfucius: generateQuote generatedQuoteOutput error");
@@ -277,11 +285,12 @@ actor class IConfuciusCtrlbCanister() {
         }
     };
 
-    private func generateQuote(topic : ?Text) : async Types.GeneratedQuoteResult {
+    private func generateQuote(quoteLanguage : Text, topic : ?Text) : async Types.GeneratedQuoteResult {
         let quoteTopicResult : ?Types.QuoteTopic = switch (topic) {
             case (?t) {
                 D.print("IConfucius: generateQuote - caller provided topic: " # t);
                 let quoteTopicEntry : Types.QuoteTopic = {
+                    quoteLanguage : Text = quoteLanguage;
                     quoteTopic : Text = t;
                     quoteTopicId : Text = await Utils.newRandomUniqueId();
                     quoteTopicCreationTimestamp : Nat64 = Nat64.fromNat(Int.abs(Time.now()));
@@ -298,7 +307,7 @@ actor class IConfuciusCtrlbCanister() {
             case (?quoteTopic) {
                 D.print("IConfucius: generateQuote - quoteTopic = " # debug_show(quoteTopic));
 
-                let generatedQuoteOutput : Types.GeneratedQuoteResult = await quoteGenerationDoIt_(quoteTopic.quoteTopic);
+                let generatedQuoteOutput : Types.GeneratedQuoteResult = await quoteGenerationDoIt_(quoteTopic.quoteLanguage, quoteTopic.quoteTopic);
 
                 D.print("IConfucius: generateQuote generatedQuoteOutput");
                 print(debug_show (generatedQuoteOutput));
@@ -314,6 +323,7 @@ actor class IConfuciusCtrlbCanister() {
 
                         // Add quote to Game State canister
                         let newQuote : Types.NewQuoteInput = {
+                            quoteLanguage : Text = quoteTopic.quoteLanguage;
                             quoteTopic : Text = quoteTopic.quoteTopic;
                             quoteTopicId : Text = quoteTopic.quoteTopicId;
                             quoteTopicCreationTimestamp : Nat64 = quoteTopic.quoteTopicCreationTimestamp;
@@ -333,22 +343,87 @@ actor class IConfuciusCtrlbCanister() {
         };
     };
 
-    private func quoteGenerationDoIt_(quoteTopic : Text) : async Types.GeneratedQuoteResult {
+    private func getPromptForQuote(quoteLanguage : Text, quoteTopic : Text) : Types.PromptForQuoteResult {
+        var systemPrompt : Text = "";
+        var userPromptRepetitive : Text = "";
+        var userPromptVarying : Text = "";      
+        var promptRepetitive : Text = "";
+        var prompt : Text = "";
+
+        if (quoteLanguage == "en") {
+            systemPrompt := "You are Confucius, the ancient philosopher. You finish quotes in a profound and compassionate manner.";
+            userPromptRepetitive := "Write a profound and thought provoking quote about ";
+            userPromptVarying := quoteTopic # ". Provide only the quote, nothing else.";
+        
+            promptRepetitive := "<|im_start|>system\n" # systemPrompt # "<|im_end|>\n" #
+            "<|im_start|>user\n" # userPromptRepetitive;
+            prompt := promptRepetitive # userPromptVarying # 
+            "<|im_end|>\n" # 
+            "<|im_start|>assistant\n";
+        } else if (quoteLanguage == "cn") {
+            systemPrompt := "你是孔子，古代哲学家。你以一种深刻而富有同情心的方式结束引用。";
+            userPromptRepetitive := "写一句关于 ";
+            userPromptVarying := quoteTopic # " 只提供名言，其他不作提供。";
+        
+            promptRepetitive := "<|im_start|>system\n" # systemPrompt # "<|im_end|>\n" #
+            "<|im_start|>user\n" # userPromptRepetitive;
+            prompt := promptRepetitive # userPromptVarying # 
+            "<|im_end|>\n" # 
+            "<|im_start|>assistant\n";
+        } else if (quoteLanguage == "nl") {
+            systemPrompt := "Je bent Confucius, de oude filosoof. Je eindigt citaten op een diepgaande en medelevende manier.";
+            userPromptRepetitive := "Schrijf een diepzinnig en inspirerend citaat over ";
+            userPromptVarying := quoteTopic # ". Geef alleen het citaat op, niets anders.";
+        
+            promptRepetitive := "<|im_start|>system\n" # systemPrompt # "<|im_end|>\n" #
+            "<|im_start|>user\n" # userPromptRepetitive;
+            prompt := promptRepetitive # userPromptVarying # 
+            "<|im_end|>\n" # 
+            "<|im_start|>assistant\n";
+        } else if (quoteLanguage == "de") {
+            systemPrompt := "Du bist Konfuzius, der antike Philosoph. Du beendest Zitate auf eine tiefgründige und mitfühlende Weise.";
+            userPromptRepetitive := "Schreibe ein tiefgründiges und nachdenkliches Zitat über ";
+            userPromptVarying := quoteTopic # ". Gib nur das Zitat an, nichts anderes.";
+        
+            promptRepetitive := "<|im_start|>system\n" # systemPrompt # "<|im_end|>\n" #
+            "<|im_start|>user\n" # userPromptRepetitive;
+            prompt := promptRepetitive # userPromptVarying # 
+            "<|im_end|>\n" # 
+            "<|im_start|>assistant\n";
+            return #Err(#Other("Unsupported language: " # quoteLanguage));
+        };
+        
+        return #Ok({
+            quoteLanguage : Text = quoteLanguage;
+            systemPrompt : Text = systemPrompt;
+            userPromptRepetitive : Text = userPromptRepetitive;
+            userPromptVarying : Text = userPromptVarying;
+            promptRepetitive : Text = promptRepetitive;
+            prompt : Text = prompt;
+        });
+
+    };
+
+    private func quoteGenerationDoIt_(quoteLanguage: Text, quoteTopic : Text) : async Types.GeneratedQuoteResult {
         let maxContinueLoopCount : Nat = 30; // After this many calls to run_update, we stop.
         let num_tokens : Nat64 = 1024;
         let temp : Float = 0.7;
         let repeat_penalty : Float = 1.1;
         let cache_type_k = "q8_0";
 
-        let systemPrompt = "You are Confucius, the ancient philosopher. You finish quotes in a profound and compassionate manner.";
-        let userPromptRepetitive = "Write a profound and thought provoking quote about ";
-        let userPromptVarying = quoteTopic # ". Provide only the quote, nothing else.";
-      
-        var promptRepetitive : Text = "<|im_start|>system\n" # systemPrompt # "<|im_end|>\n" #
-        "<|im_start|>user\n" # userPromptRepetitive;
-        var prompt : Text = promptRepetitive # userPromptVarying # 
-        "<|im_end|>\n" # 
-        "<|im_start|>assistant\n";
+        var promptRepetitive : Text = "";
+        var prompt : Text = "";  
+        let promptForQuoteResult : Types.PromptForQuoteResult = getPromptForQuote(quoteLanguage, quoteTopic);
+        switch (promptForQuoteResult) {
+            case (#Err(error)) {
+                return #Err(error);
+            };
+            case (#Ok(promptForQuote)) {
+                promptRepetitive := promptForQuote.promptRepetitive;
+                prompt := promptForQuote.prompt;
+                D.print("IConfucius: prompt (" # quoteLanguage # "): " # prompt);
+            };
+        };
 
         let llmCanister = _getRoundRobinCanister();
 
@@ -620,6 +695,7 @@ actor class IConfuciusCtrlbCanister() {
         // Return the generated quote
         let quoteOutput : Types.GeneratedQuote = {
             generationId : Text = generationId;
+            generationLanguage : Text = quoteLanguage;
             generationTopic : Text = quoteTopic;
             generationSeed : Nat32 = seed;
             generatedTimestamp : Nat64 = Nat64.fromNat(Int.abs(Time.now()));
@@ -660,9 +736,10 @@ actor class IConfuciusCtrlbCanister() {
     // Timer
     let actionRegularityInSeconds = 60;
 
+    // TODO: rotate languages...
     private func triggerRecurringAction() : async () {
-        D.print("IConfucius: Recurring action was triggered");
-        let result = await generateQuote(null);
+        D.print("IConfucius: Recurring action was triggered for 'en' language");
+        let result = await generateQuote("en", null);
         D.print("IConfucius: Recurring action result");
         D.print(debug_show (result));
         D.print("IConfucius: Recurring action result");
