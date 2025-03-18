@@ -49,7 +49,7 @@ We have the following technical roadmap in mind for IConfucius:
 - ✅️ Launched on [ODIN•FUN](https://odin.fun?r=mgb3mzvghe) → Token https://odin.fun/token/29m8
 - ✅️ IConfucius can generate quotes in either English or Chinese.
 - 🚧 Upgrade IConfucius to use either `Qwen2.5-0.5` or `Llama3.2-1B`
-- 🚧 IConfucius can generate quotes in Hindi. (Requires Llama3.2-1B model) 
+- 🚧 IConfucius can generate quotes in Hindi. (Requires Llama3.2-1B model)
 - 🚧 IConfucius as an OpenChat command bot
 - 🚧 IConfucius as an OpenChat autonomous bot, posting his quotes of wisdom directly OpenChat, ODIN•FUN and X (Twitter)
 - 🚧 IConfucius integrated into onicai's Proof-of-AI-Work dApp
@@ -63,8 +63,9 @@ We have the following Commucation & Educational roadmap in mind for IConfucius:
 
 - ✅️ Set up an [IConfucius OpenChat community](https://oc.app/community/e5qnd-hqaaa-aaaac-any5a-cai/channel/2411296919/?ref=45j3b-nyaaa-aaaac-aokma-cai)
 - ✅️ Set up an [IConfucius X (Twitter) account](https://x.com/IConfucius_odin)
-- 🚧 Set up an IConfucius YouTube playlist
-- 🚧 Create “Behind the scenes” videos with demos & educational content
+- ✅️ Set up an "IConfucius - Behind the scenes” YouTube playlist
+- ✅️ Create & release first video for the “IConfucius - Behind the scenes” playlist
+- 🚧 Create additional “Behind the scenes” videos with demos & educational content
 - 🚧 Create an IConfucius webpage at https://www.onicai.com/, with newsletter signup
 - 🚧 IConfucius sending out his own monthly newsletter
 - 🧠 IConfucius listens to the community and evolves his communications
