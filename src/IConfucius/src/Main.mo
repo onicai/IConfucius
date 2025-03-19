@@ -256,23 +256,27 @@ actor class IConfuciusCtrlbCanister() {
     };
 
     // Endpoint to generate a new quote
-    public shared (msg) func IConfuciusSays(quoteLanguage : Types.QuoteLanguage, topic : ?Text) : async Text {
+    // Make topic required, because it must be in the language of the quote
+    public shared (msg) func IConfuciusSays(quoteLanguage : Types.QuoteLanguage, quoteTopic : Text) : async Text {
         // TODO: restore access control
+        // if (Principal.isAnonymous(msg.caller)) {
+        //     return "You are not authorized to call this function with an anonymous principal.";
+        // };
         // if (not Principal.isController(msg.caller)) {
         //     return "You are not authorized to call this function.";
         // };
-        if (Principal.isAnonymous(msg.caller)) {
-            return "You are not authorized to call this function with an anonymous principal.";
-        };
-
-        // TODO: pass in quoteLanguage variant instead of Text
+        
+        // Map the quoteLanguage to the language code
+        // (This decouples public interface from internal implementation)
         let language : Text = switch (quoteLanguage) {
-            case (#English) { "en" };
             case (#Chinese) { "cn" };
-            case (#Dutch) { "nl" };
-            case (#German) { "de" };
+            // case (#Dutch) { "nl" };
+            case (#English) { "en" };
+            case (#Hindi) { "hi" };
+            // case (#German) { "de" };
+            // case (#Japanese) { "ja" };
         };
-        let generatedQuoteResult : Types.GeneratedQuoteResult = await generateQuote(language, topic);
+        let generatedQuoteResult : Types.GeneratedQuoteResult = await generateQuote(language, quoteTopic);
         switch (generatedQuoteResult) {
             case (#Err(error)) {
                 D.print("IConfucius: generateQuote generatedQuoteOutput error");
@@ -285,60 +289,42 @@ actor class IConfuciusCtrlbCanister() {
         }
     };
 
-    private func generateQuote(quoteLanguage : Text, topic : ?Text) : async Types.GeneratedQuoteResult {
-        let quoteTopicResult : ?Types.QuoteTopic = switch (topic) {
-            case (?t) {
-                D.print("IConfucius: generateQuote - caller provided topic: " # t);
-                let quoteTopicEntry : Types.QuoteTopic = {
-                    quoteLanguage : Text = quoteLanguage;
-                    quoteTopic : Text = t;
-                    quoteTopicId : Text = await Utils.newRandomUniqueId();
-                    quoteTopicCreationTimestamp : Nat64 = Nat64.fromNat(Int.abs(Time.now()));
-                    quoteTopicStatus : Types.QuoteTopicStatus = #Open;
-                };
-                ?quoteTopicEntry;
-            };
-            case null {
-                await getRandomQuoteTopic(#Open);
-            };
+    private func generateQuote(quoteLanguage : Text, quoteTopic_ : Text) : async Types.GeneratedQuoteResult {
+        let quoteTopic : Types.QuoteTopic = {
+            quoteLanguage : Text = quoteLanguage;
+            quoteTopic : Text = quoteTopic_;
+            quoteTopicId : Text = await Utils.newRandomUniqueId();
+            quoteTopicCreationTimestamp : Nat64 = Nat64.fromNat(Int.abs(Time.now()));
+            quoteTopicStatus : Types.QuoteTopicStatus = #Open;
         };
-        D.print("IConfucius: generateQuote - received quoteResult from getQuoteTopicFromIConfuciusCanister: " # debug_show (quoteTopicResult));
-        switch (quoteTopicResult) {
-            case (?quoteTopic) {
-                D.print("IConfucius: generateQuote - quoteTopic = " # debug_show(quoteTopic));
+        D.print("IConfucius: generateQuote - quoteTopic = " # debug_show(quoteTopic));
 
-                let generatedQuoteOutput : Types.GeneratedQuoteResult = await quoteGenerationDoIt_(quoteTopic.quoteLanguage, quoteTopic.quoteTopic);
+        let generatedQuoteOutput : Types.GeneratedQuoteResult = await quoteGenerationDoIt_(quoteTopic.quoteLanguage, quoteTopic.quoteTopic);
 
-                D.print("IConfucius: generateQuote generatedQuoteOutput");
-                print(debug_show (generatedQuoteOutput));
-                switch (generatedQuoteOutput) {
-                    case (#Err(error)) {
-                        D.print("IConfucius: generateQuote generatedQuoteOutput error");
-                        print(debug_show (error));
-                        return #Err(error);
-                    };
-                    case (#Ok(generatedQuote)) {
-                        // Store quote
-                        let pushResult = putGeneratedQuote(generatedQuote);
-
-                        // Add quote to Game State canister
-                        let newQuote : Types.NewQuoteInput = {
-                            quoteLanguage : Text = quoteTopic.quoteLanguage;
-                            quoteTopic : Text = quoteTopic.quoteTopic;
-                            quoteTopicId : Text = quoteTopic.quoteTopicId;
-                            quoteTopicCreationTimestamp : Nat64 = quoteTopic.quoteTopicCreationTimestamp;
-                            quoteTopicStatus : Types.QuoteTopicStatus = quoteTopic.quoteTopicStatus;
-                            quoteText : Text = generatedQuote.generatedQuoteText;
-                            quoteTextSeed : Nat32 = generatedQuote.generationSeed;
-                        };
-
-                        return generatedQuoteOutput;
-                    };
-                }
+        D.print("IConfucius: generateQuote generatedQuoteOutput");
+        print(debug_show (generatedQuoteOutput));
+        switch (generatedQuoteOutput) {
+            case (#Err(error)) {
+                D.print("IConfucius: generateQuote generatedQuoteOutput error");
+                print(debug_show (error));
+                return #Err(error);
             };
-            case (_) { 
-                D.print("IConfucius: generateQuote - there is no quoteTopicResult." );
-                return #Err(#FailedOperation); 
+            case (#Ok(generatedQuote)) {
+                // Store quote
+                let pushResult = putGeneratedQuote(generatedQuote);
+
+                // Add quote to Game State canister
+                let newQuote : Types.NewQuoteInput = {
+                    quoteLanguage : Text = quoteTopic.quoteLanguage;
+                    quoteTopic : Text = quoteTopic.quoteTopic;
+                    quoteTopicId : Text = quoteTopic.quoteTopicId;
+                    quoteTopicCreationTimestamp : Nat64 = quoteTopic.quoteTopicCreationTimestamp;
+                    quoteTopicStatus : Types.QuoteTopicStatus = quoteTopic.quoteTopicStatus;
+                    quoteText : Text = generatedQuote.generatedQuoteText;
+                    quoteTextSeed : Nat32 = generatedQuote.generationSeed;
+                };
+
+                return generatedQuoteOutput;
             };
         };
     };
@@ -390,6 +376,17 @@ actor class IConfuciusCtrlbCanister() {
             prompt := promptRepetitive # userPromptVarying # 
             "<|im_end|>\n" # 
             "<|im_start|>assistant\n";
+        } else if (quoteLanguage == "hi") {
+            systemPrompt := "आप कन्फ्यूशियस, प्राचीन दार्शनिक हैं। आप उद्धरणों को गहन और करुणामय तरीके से पूर्ण करते हैं।";
+            userPromptRepetitive := ""; // In Hindi, the topic comes first.
+            userPromptVarying := quoteTopic # "। के बारे में एक गहरे और विचारोत्तेजक उद्धरण लिखें। केवल उद्धरण प्रदान करें, कुछ और नहीं।";
+        
+            promptRepetitive := "<|im_start|>system\n" # systemPrompt # "<|im_end|>\n" #
+            "<|im_start|>user\n" # userPromptRepetitive;
+            prompt := promptRepetitive # userPromptVarying # 
+            "<|im_end|>\n" # 
+            "<|im_start|>assistant\n";
+        } else {
             return #Err(#Other("Unsupported language: " # quoteLanguage));
         };
         
@@ -583,18 +580,19 @@ actor class IConfuciusCtrlbCanister() {
                 ];
                 let inputRecord : Types.InputRecord = { args = args };
                 D.print("IConfucius: calling run_update...");
-                // D.print(debug_show (args));
+                D.print("IConfucius: input = " # debug_show (args));
                 num_update_calls += 1;
                 if (num_update_calls > 30) {
                     D.print("IConfucius:  too many calls run_update - Breaking out of loop...");
                     break continueLoop; // Protective break for endless loop.
                 };
                 let outputRecordResult : Types.OutputRecordResult = await llmCanister.run_update(inputRecord);
-                // D.print("IConfucius: INGESTING PROMPT:returned from run_update with outputRecordResult: ");
-                // D.print(debug_show (outputRecordResult));
+                
 
                 switch (outputRecordResult) {
                     case (#Err(error)) {
+                        D.print("IConfucius: returned from run_update with an error");
+                        D.print("IConfucius: error = " # debug_show (error));
                         return #Err(error);
                     };
                     case (#Ok(outputRecord)) {
@@ -736,13 +734,13 @@ actor class IConfuciusCtrlbCanister() {
     // Timer
     let actionRegularityInSeconds = 60;
 
-    // TODO: rotate languages...
     private func triggerRecurringAction() : async () {
-        D.print("IConfucius: Recurring action was triggered for 'en' language");
-        let result = await generateQuote("en", null);
-        D.print("IConfucius: Recurring action result");
-        D.print(debug_show (result));
-        D.print("IConfucius: Recurring action result");
+        D.print("IConfucius: Recurring action was triggered");
+        // TODO: as recurring action, just post a quote, randomly selected from the openQuoteTopicsStorage
+        // let result = await postQuote();
+        // D.print("IConfucius: Recurring action result");
+        // D.print(debug_show (result));
+        // D.print("IConfucius: Recurring action result");
     };
 
     public shared (msg) func startTimerExecutionAdmin() : async Types.AuthRecordResult {

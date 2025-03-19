@@ -72,10 +72,12 @@ module Types {
     };
 
     public type QuoteLanguage = {
-        #English;
         #Chinese;
         // #Dutch;
+        #English;
+        #Hindi;
         // #German;
+        // #Japanese;
     };
 
     public type QuoteLanguageInput = {
