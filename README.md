@@ -48,10 +48,10 @@ We have the following technical roadmap in mind for IConfucius:
 - ✅️ IConfucius can be prompted from command line (dfx)
 - ✅️ Launched on [ODIN•FUN](https://odin.fun?r=mgb3mzvghe) → Token https://odin.fun/token/29m8
 - ✅️ IConfucius can generate quotes in either English or Chinese.
+- 🚧 IConfucius posts his quotes of wisdom directly OpenChat, ODIN•FUN and X (Twitter)
 - 🚧 Upgrade IConfucius to use either `Qwen2.5-0.5` or `Llama3.2-1B`
 - 🚧 IConfucius can generate quotes in Hindi. (Requires Llama3.2-1B model)
-- 🚧 IConfucius as an OpenChat command bot
-- 🚧 IConfucius as an OpenChat autonomous bot, posting his quotes of wisdom directly OpenChat, ODIN•FUN and X (Twitter)
+- 🚧 IConfucius as an OpenChat bot
 - 🚧 IConfucius integrated into onicai's Proof-of-AI-Work dApp
 - 🧠 IConfucius listens to the community and evolves his abilities
 
