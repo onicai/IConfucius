@@ -4,3 +4,7 @@ jupyter-black
 black==23.12.1
 pylint==2.13.9
 mypy==1.8.0
+requests>=2.32.3
+brotli>=1.1.0
+pyjwt>=2.10.1
+python-dotenv>=1.0.1
