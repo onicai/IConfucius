@@ -2,7 +2,7 @@
 
 **Wisdom fueled by Cycles**
 
-<img src="./images/confucius.jpg" alt="Confucius" width="400">
+<img src="./images/IConfucius/IConfucius.jpg" alt="IConfucius" width="400">
 
 🚀 Meet IConfucius: The ancient Chinese philosopher... now living in a canister of the Internet Computer!
 
@@ -200,13 +200,12 @@ Notes:
 ```bash
 # from folder: src/IConfucius
 
-# Option 1: Let IConfucius pick a random topic from a predefined list
-dfx canister call iconfucius_ctrlb_canister IConfuciusSays '(variant {English}, null)' [--ic]
-dfx canister call iconfucius_ctrlb_canister IConfuciusSays '(variant {Chinese}, null)' [--ic]
+dfx canister call iconfucius_ctrlb_canister IConfuciusSays '(variant {English}, "crypto")' [--ic]
+dfx canister call iconfucius_ctrlb_canister IConfuciusSays '(variant {Chinese}, "加密货币")' [--ic]
 
-# Option 2: Specify the topic, for example ask for a quote about crypto
-dfx canister call iconfucius_ctrlb_canister IConfuciusSays '(variant {English}, opt "crypto")' [--ic]
-dfx canister call iconfucius_ctrlb_canister IConfuciusSays '(variant {Chinese}, opt "加密货币")' [--ic]
+# From anywhere you can also call the production canister on the IC with:
+dfx canister call dpljb-diaaa-aaaaa-qafsq-cai IConfuciusSays '(variant {English}, "crypto")' --ic
+dfx canister call dpljb-diaaa-aaaaa-qafsq-cai IConfuciusSays '(variant {Chinese}, "加密货币")' --ic
 ```
 
 **Registering the bot with OpenChat**
