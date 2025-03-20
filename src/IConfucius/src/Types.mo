@@ -2,6 +2,7 @@ import Nat64 "mo:base/Nat64";
 
 module Types {
     public type NatResult = Result<Nat, ApiError>;
+    public type TextResult = Result<Text, ApiError>;
 
     public type PromptForQuote = {
         quoteLanguage : Text;

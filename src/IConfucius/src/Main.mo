@@ -256,13 +256,13 @@ actor class IConfuciusCtrlbCanister() {
     };
 
     // Endpoint to generate a new quote
-    public shared (msg) func IConfuciusSays(quoteLanguage : Types.QuoteLanguage, topic : Text) : async Text {
+    public shared (msg) func IConfuciusSays(quoteLanguage : Types.QuoteLanguage, topic : Text) : async Types.TextResult {
         // TODO: restore access control
         // if (not Principal.isController(msg.caller)) {
-        //     return "You are not authorized to call this function.";
+        //     return #Err(#Unauthorized);
         // };
         if (Principal.isAnonymous(msg.caller)) {
-            return "You are not authorized to call this function with an anonymous principal.";
+            return #Err(#Unauthorized);
         };
 
         // TODO: pass in quoteLanguage variant instead of Text
@@ -277,10 +277,10 @@ actor class IConfuciusCtrlbCanister() {
             case (#Err(error)) {
                 D.print("IConfucius: generateQuote generatedQuoteOutput error");
                 print(debug_show (error));
-                return "IConfucius failed to generate a new quote.";
+                return #Err(error);
             };
             case (#Ok(generatedQuote)) {
-                return generatedQuote.generatedQuoteText;
+                return #Ok(generatedQuote.generatedQuoteText);
             };
         }
     };
