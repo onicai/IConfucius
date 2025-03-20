@@ -256,7 +256,7 @@ actor class IConfuciusCtrlbCanister() {
     };
 
     // Endpoint to generate a new quote
-    public shared (msg) func IConfuciusSays(quoteLanguage : Types.QuoteLanguage, topic : ?Text) : async Text {
+    public shared (msg) func IConfuciusSays(quoteLanguage : Types.QuoteLanguage, topic : Text) : async Text {
         // TODO: restore access control
         // if (not Principal.isController(msg.caller)) {
         //     return "You are not authorized to call this function.";
@@ -269,10 +269,10 @@ actor class IConfuciusCtrlbCanister() {
         let language : Text = switch (quoteLanguage) {
             case (#English) { "en" };
             case (#Chinese) { "cn" };
-            case (#Dutch) { "nl" };
-            case (#German) { "de" };
+            // case (#Dutch) { "nl" };
+            // case (#German) { "de" };
         };
-        let generatedQuoteResult : Types.GeneratedQuoteResult = await generateQuote(language, topic);
+        let generatedQuoteResult : Types.GeneratedQuoteResult = await generateQuote(language, ?topic);
         switch (generatedQuoteResult) {
             case (#Err(error)) {
                 D.print("IConfucius: generateQuote generatedQuoteOutput error");
