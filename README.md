@@ -137,39 +137,11 @@ mops install
 
 ## Install dfx
 
-Since IConfucius is an OpenChat bot, make sure to use the version of dfx prescribed by [open-chat](https://github.com/open-chat-labs/open-chat)
-
-## Deploy open-chat
-
-When running locally, first deploy [open-chat](https://github.com/open-chat-labs/open-chat):
-
 ```bash
-# from folder: open-chat (repo)
-rm -rf .dfx
-dfx start --clean
-./scripts/deploy-local.sh
+sh -ci "$(curl -fsSL https://internetcomputer.org/install.sh)"
 
-# Silence OpenChat's SNS debug logs
-dfx --identity anonymous canister stop sgymv-uiaaa-aaaaa-aaaia-cai
-```
-
-## Set the OpenChat public key
-
-🚧 🚧 🚧 🚧 🚧 (Work in progress...)
-
-_SKIP THIS STEP UNTIL FURTHER NOTICE._
-
-Get the public key of your locally running Open Chat instance, by going to:
-
-`Profile settings` > `Advanced` > `Bot client config`
-
-Copy the OpenChat public key and update the variable `openChatPublicKey`.
-
-```JS
-// file: src/IConfucius/src/Main.mo
-
-// Update this based on your open chat instance public key
-let openChatPublicKey = Text.encodeUtf8("MF...==");
+# Configure your shell
+source "$HOME/.local/share/dfx/env"
 ```
 
 ## Deploy ALL canisters:
@@ -198,7 +170,7 @@ Notes:
   sudo sysctl -w vm.max_map_count=2097152
   ```
 
-## IConfucius as a command type bot
+## Test IConfucius
 
 **Test it works, using dfx**
 
@@ -212,26 +184,6 @@ dfx canister call iconfucius_ctrlb_canister IConfuciusSays '(variant {Chinese}, 
 dfx canister call dpljb-diaaa-aaaaa-qafsq-cai IConfuciusSays '(variant {English}, "crypto")' --ic
 dfx canister call dpljb-diaaa-aaaaa-qafsq-cai IConfuciusSays '(variant {Chinese}, "加密货币")' --ic
 ```
-
-**Registering the bot with OpenChat**
-
-🚧 🚧 🚧 🚧 🚧 (Work in progress...)
-
-_SKIP THIS STEP UNTIL FURTHER NOTICE._
-
-Follow the instructions in [Registering the bot](https://github.com/open-chat-labs/open-chat-bots?tab=readme-ov-file#installing-the-bot)
-
-- Create two users
-- Login as the first user, and search for the second user
-- In the Direct Chats chat box, type in `/register_bot` and fill out these fields:
-  - Principal = canister_id of IConfucius
-    - local: see src/IConfucius/.env
-    - ic: see src/IConfucius/canister_ids.json
-  - Bot name = IConfucius
-  - Bot endpoint
-    - local: http://<canister_id>.raw.localhost:8080
-      - Note: Check port with `dfx info webserver-port`
-    - ic: https://<canister_id>.raw.icp0.io/
 
 ## IConfucius as an autonomous type bot
 
