@@ -1,6 +1,8 @@
 # Repo specific
 *.log
 OLD/
+TODO.md
+*_wip.py
 
 # Various IDEs and Editors
 .vscode/
