@@ -1,0 +1,85 @@
+type TextResult = 
+ variant {
+   Err: ApiError;
+   Ok: text;
+ };
+type StatusCodeRecordResult = 
+ variant {
+   Err: ApiError;
+   Ok: StatusCodeRecord;
+ };
+type StatusCodeRecord = record {status_code: nat16;};
+type StatusCode = nat16;
+type QuoteLanguage = 
+ variant {
+   Chinese;
+   English;
+ };
+type NatResult = 
+ variant {
+   Err: ApiError;
+   Ok: nat;
+ };
+type List = 
+ opt record {
+       GeneratedQuote;
+       List;
+     };
+type IConfuciusCtrlbCanister = 
+ service {
+   IConfuciusSays: (QuoteLanguage, text) -> (TextResult);
+   add_llm_canister: (CanisterIDRecord) -> (StatusCodeRecordResult);
+   amiController: () -> (StatusCodeRecordResult) query;
+   checkAccessToLLMs: () -> (StatusCodeRecordResult);
+   getNumQuotesAdmin: () -> (NatResult) query;
+   getQuotesAdmin: () -> (GeneratedQuotesResult) query;
+   getQuotesListAdmin: () -> (List) query;
+   getRoundRobinCanister: () -> (CanisterIDRecordResult) query;
+   health: () -> (StatusCodeRecordResult) query;
+   ready: () -> (StatusCodeRecordResult);
+   reset_llm_canisters: () -> (StatusCodeRecordResult);
+   setInitialQuoteTopics: () -> (StatusCodeRecordResult);
+   setRoundRobinLLMs: (nat) -> (StatusCodeRecordResult);
+   startTimerExecutionAdmin: () -> (AuthRecordResult);
+   stopTimerExecutionAdmin: () -> (AuthRecordResult);
+   whoami: () -> (principal) query;
+ };
+type GeneratedQuotesResult = 
+ variant {
+   Err: ApiError;
+   Ok: vec GeneratedQuote;
+ };
+type GeneratedQuote = 
+ record {
+   generatedByLlmId: text;
+   generatedQuoteText: text;
+   generatedTimestamp: nat64;
+   generationId: text;
+   generationLanguage: text;
+   generationPrompt: text;
+   generationSeed: nat32;
+   generationTopic: text;
+ };
+type CanisterIDRecordResult = 
+ variant {
+   Err: ApiError;
+   Ok: CanisterIDRecord;
+ };
+type CanisterIDRecord = record {canister_id: text;};
+type AuthRecordResult = 
+ variant {
+   Err: ApiError;
+   Ok: AuthRecord;
+ };
+type AuthRecord = record {auth: text;};
+type ApiError = 
+ variant {
+   FailedOperation;
+   InsuffientCycles: nat;
+   InvalidId;
+   Other: text;
+   StatusCode: StatusCode;
+   Unauthorized;
+   ZeroAddress;
+ };
+service : () -> IConfuciusCtrlbCanister
