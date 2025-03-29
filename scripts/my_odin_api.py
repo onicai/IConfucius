@@ -17,7 +17,6 @@ from pytz import timezone
 from tabulate import tabulate
 import cbor2
 from ic.candid import Types, encode, decode
-from ic_py_canister import get_canister, get_agent
 
 ROOT_PATH = Path(__file__).parent.parent
 
