@@ -44,10 +44,15 @@ if __name__ == "__main__":
     ODIN_USER_ID = os.getenv("ODIN_ICONFUCIUS_AGENT_USER_ID")
     ODIN_JWT = os.getenv("ODIN_ICONFUCIUS_AGENT_JWT") # Do NOT print this out. It's a secret.
 
+
     LIQUIDITY_TOKEN_NAME = "ICONFUCIUS"
+    LIQUIDITY_TOKEN_NAME = None # If liquidity is already at 10%, set to none
     LIQUIDITY_TOKEN_ID = "29m8"
     LIQUIDITY_TOKEN_URL = f"https://odin.fun/token/{LIQUIDITY_TOKEN_ID}"
-
+    no_trade_tokens = [
+            "ICONFUCIUS",
+        ]
+    
     # Your credentials from the X Developer Portal
     X_API_KEY = os.getenv("X_API_KEY") # Consumer Key
     X_API_SECRET = os.getenv("X_API_SECRET") # Consumer Secret
@@ -77,10 +82,6 @@ if __name__ == "__main__":
     FUND_VALUE_TARGET = 50.0
     FUND_VALUE_LOWER_BOUND = 40.0
     FUND_VALUE_UPPER_BOUND = 60.0
-
-    no_trade_tokens = [
-        "FORSETI",
-    ]
     
     (
         total_fund_before,
