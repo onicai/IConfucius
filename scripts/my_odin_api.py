@@ -383,8 +383,8 @@ def calculate_trades_index_fund_rebalance(
     total_buys = sum(t["amount"] for t in buys)
     profit = total_sells - total_buys - total_fees
 
+    tokens_to_buy_for_liquidity = 0.0
     if liquidity_token_name is not None:
-        tokens_to_buy_for_liquidity = 0.0
         if profit > 0:
             # How many tokens to of the liquidity_token_name
 
