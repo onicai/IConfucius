@@ -70,9 +70,9 @@ We have the following Commucation & Educational roadmap in mind for IConfucius:
 - ✅️ Set up an [IConfucius X (Twitter) account](https://x.com/IConfucius_odin)
 - ✅️ Set up an "IConfucius - Behind the scenes” YouTube playlist
 - ✅️ Create & release first video for the “IConfucius - Behind the scenes” playlist
+- ✅️ Create an IConfucius webpage at https://www.onicai.com/
+- ✅️ Set up a Telegram group for discussions around IConfucius
 - 🚧 Create additional “Behind the scenes” videos with demos & educational content
-- 🚧 Create an IConfucius webpage at https://www.onicai.com/, with newsletter signup
-- 🚧 IConfucius sending out his own monthly newsletter
 - 🧠 IConfucius listens to the community and evolves his communications
 
 # How IConfucius works
@@ -138,10 +138,14 @@ mops install
 ## Install dfx
 
 ```bash
+# Install dfx
 sh -ci "$(curl -fsSL https://internetcomputer.org/install.sh)"
 
-# Configure your shell
-source "$HOME/.local/share/dfx/env"
+# Update your terminal (can also restart your terminal)
+source "$HOME/Library/Application Support/org.dfinity.dfx/env"
+
+# Verify it worked
+dfx --version
 ```
 
 ## Deploy ALL canisters:
