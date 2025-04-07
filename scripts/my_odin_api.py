@@ -14,7 +14,6 @@ import random
 import tweepy
 from datetime import datetime
 from pytz import timezone
-from tabulate import tabulate
 import cbor2
 from ic.candid import Types, encode, decode
 
@@ -33,6 +32,26 @@ USER_AGENT = "IConfucius Python Library"
 
 # Load the environment variables from the .env file
 load_dotenv() 
+
+# Get BTC > USD price from an API
+def get_btc_usd_price():
+    """
+    Fetches the current BTC to USD price from the CoinGecko API.
+
+    Returns:
+        float: The current BTC to USD price.
+    """
+    url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
+    try:
+        response = requests.get(url)
+        response.raise_for_status()  # Raise an exception for bad status codes
+        data = response.json()
+        return data["bitcoin"]["usd"]
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching BTC price: {e}")
+        return None
+
+BTC2USD = get_btc_usd_price()
 
 def odin_get_user_data(odin_user_id) -> dict:
     """
@@ -277,7 +296,8 @@ def odin_get_user_tokens(odin_user_id, odin_jwt):
                 "token_name": token_name,
                 "value_ksats": value_ksats,
                 "price_sats": price_msats*1e-3,
-                "num_tokens": num_tokens
+                "num_tokens": num_tokens,
+                "marketcap": data["token"]["marketcap"],
             }
         )
  
@@ -285,21 +305,87 @@ def odin_get_user_tokens(odin_user_id, odin_jwt):
     return odin_tokens
     
 
-def print_odin_tokens_table(odin_tokens):
-    headers = ["Token Name", "Token ID", "Num Tokens", "Price (sats)", "Value (ksats)"]
-    table = [
-        [
+def print_odin_tokens_table(tokens):
+    headers = ["Token Name", "Token ID", "marketcap", "Num Tokens", "Price (sats)", "Value (ksats)"]
+
+    rows = []
+    marketcap_btc_strs = []
+    marketcap_usd_strs = []
+
+    for token in tokens:
+        mc_btc = f"{token['marketcap'] / 1e11:.2f}"
+        mc_usd = f"{token['marketcap'] * BTC2USD / 1e11:,.0f}"
+        marketcap_btc_strs.append(mc_btc)
+        marketcap_usd_strs.append(mc_usd)
+
+        rows.append([
             token["token_name"],
             token["odin_token_id"],
-            f"{token['num_tokens']:.2f}",
-            f"{token['price_sats']:.3f}",
-            f"{token['value_ksats']:.2f}"
-        ]
-        for token in odin_tokens
-    ]
-    print(tabulate(table, headers=headers, tablefmt="pretty"))
+            mc_btc,
+            mc_usd,
+            f"{token['num_tokens']:,.0f}",
+            f"{token['price_sats']:,.0f} sats",
+            f"{token['value_ksats']:,.0f}K sats",
+        ])
 
-def calculate_trades_index_fund_rebalance(
+    # Fake row to use header labels for width calc
+    header_row = [
+        headers[0],
+        headers[1],
+        "BTC",
+        "$",
+        headers[3],
+        headers[4],
+        headers[5],
+    ]
+
+    # Compute max widths across real + header rows
+    col_widths = [
+        max(len(str(row[0])) for row in rows + [header_row]),
+        max(len(str(row[1])) for row in rows + [header_row]),
+        max(len(str(row[2])) for row in rows + [header_row]),
+        max(len(str(row[3])) for row in rows + [header_row]),
+        max(len(str(row[4])) for row in rows + [header_row]),
+        max(len(str(row[5])) for row in rows + [header_row]),
+        max(len(str(row[6])) for row in rows + [header_row]),
+    ]
+
+    def separator():
+        marketcap_width = col_widths[2] + len(" BTC ($") + col_widths[3] + len(")")
+        return "+-" + "-+-".join(
+            [
+                "-" * col_widths[0],  # Token Name
+                "-" * col_widths[1],  # Token ID
+                "-" * marketcap_width,  # marketcap total width
+                "-" * col_widths[4],  # Num Tokens
+                "-" * col_widths[5],  # Price
+                "-" * col_widths[6],  # Value
+            ]
+        ) + "-+"
+
+    def format_row(row, is_header=False):
+        if is_header:
+            marketcap = f"{'BTC'.rjust(col_widths[2])} BTC (${'USD'.rjust(col_widths[3])})"
+        else:
+            marketcap = f"{row[2].rjust(col_widths[2])} BTC (${row[3].rjust(col_widths[3])})"
+        return "| " + " | ".join([
+            row[0].rjust(col_widths[0]),
+            row[1].rjust(col_widths[1]),
+            marketcap,
+            row[4].rjust(col_widths[4]),
+            row[5].rjust(col_widths[5]),
+            row[6].rjust(col_widths[6]),
+        ]) + " |"
+
+    # Print full table
+    print(separator())
+    print(format_row(header_row, is_header=True))
+    print(separator())
+    for row in rows:
+        print(format_row(row))
+    print(separator())
+
+def calculate_trades_to_rebalance(
     odin_tokens: List[dict],
     no_trade_tokens: List[str],
     trade_fee_rate_percent: float,
@@ -316,15 +402,32 @@ def calculate_trades_index_fund_rebalance(
     print(f"no_trade_tokens = {no_trade_tokens}")
     odin_tokens = [token for token in odin_tokens if token["token_name"] not in no_trade_tokens]
 
+    # Filter out tokens that have a market cap below 200,000 Ksats
+    print("Filtering out tokens that have a market cap below 1.5 BTC (We do no chase tokens to the bottom)")
+    odin_tokens = [token for token in odin_tokens if token['marketcap'] / 1e11 >= 1.5]
+
+    print("\n\n THE TOKENS WE REBALANCE:")
+    print_odin_tokens_table(odin_tokens) 
+    print("\n\n")
+
     total_fund_before = sum(t["value_ksats"] for t in odin_tokens)
     n_tokens = len(odin_tokens)
     max_affordable_target = total_fund_before / n_tokens
 
+    if fund_value_target < max_affordable_target:
+        print(f"🚀 Enough capital to target {max_affordable_target:.2f}")
+
     if fund_value_target > max_affordable_target:
+        print(f"⚠️ Not enough capital to target {fund_value_target}, adjusting to {max_affordable_target:.2f}")
+
+    if fund_value_target > max_affordable_target:
+        print(f"⚠️  Not enough capital to target {fund_value_target}, adjusting to {max_affordable_target:.2f}")
         fund_value_target = max_affordable_target
-        fund_value_lower_bound = fund_value_target * 0.70
-        fund_value_upper_bound = fund_value_target * 1.30
-        print(f"⚠️  Not enough capital to target {fund_value_target}, adjusting to {fund_value_target:.2f}")
+
+    # fund_value_lower_bound = max(30, fund_value_target * 0.70)
+    # fund_value_upper_bound = fund_value_target * 1.30
+    fund_value_lower_bound = max(30, fund_value_target * 0.80)
+    fund_value_upper_bound = fund_value_target * 1.20
 
     print(f"fund_value_target      = {fund_value_target:.2f}")
     print(f"fund_value_lower_bound = {fund_value_lower_bound:.2f}")
@@ -343,31 +446,33 @@ def calculate_trades_index_fund_rebalance(
 
         if fv < fund_value_lower_bound:
             amount_to_buy = (fund_value_target - fv) / (1 - trade_fee_rate)
-            fee = amount_to_buy * trade_fee_rate
-            num_tokens = amount_to_buy / price_per_token
-            trades.append({
-                "odin_token_id": token["odin_token_id"],
-                "token_name": token["token_name"],
-                "action": "BUY",
-                "amount": round(amount_to_buy, 2),
-                "fee": round(fee, 4),
-                "num_tokens": round(num_tokens, 4)
-            })
-            total_fees += fee
+            if amount_to_buy > 1: # 1 ksats is the minimum amount to buy
+                fee = amount_to_buy * trade_fee_rate
+                num_tokens = amount_to_buy / price_per_token
+                trades.append({
+                    "odin_token_id": token["odin_token_id"],
+                    "token_name": token["token_name"],
+                    "action": "BUY",
+                    "amount": round(amount_to_buy, 2),
+                    "fee": round(fee, 4),
+                    "num_tokens": round(num_tokens, 4)
+                })
+                total_fees += fee
 
         elif fv > fund_value_upper_bound:
             amount_to_sell = fv - fund_value_target
-            fee = amount_to_sell * trade_fee_rate
-            num_tokens = amount_to_sell / price_per_token
-            trades.append({
-                "odin_token_id": token["odin_token_id"],
-                "token_name": token["token_name"],
-                "action": "SELL",
-                "amount": round(amount_to_sell, 2),
-                "fee": round(fee, 4),
-                "num_tokens": round(num_tokens, 4)
-            })
-            total_fees += fee
+            if amount_to_sell > 1: # 1 ksats is the minimum amount to buy
+                fee = amount_to_sell * trade_fee_rate
+                num_tokens = amount_to_sell / price_per_token
+                trades.append({
+                    "odin_token_id": token["odin_token_id"],
+                    "token_name": token["token_name"],
+                    "action": "SELL",
+                    "amount": round(amount_to_sell, 2),
+                    "fee": round(fee, 4),
+                    "num_tokens": round(num_tokens, 4)
+                })
+                total_fees += fee
 
     final_fund_value = sum(
         fund_value_target if (t["value_ksats"] < fund_value_lower_bound or t["value_ksats"] > fund_value_upper_bound) else t["value_ksats"]
@@ -425,7 +530,7 @@ def generate_rebalance_message(
     liquidity_token_url=None
 ) -> str:
     def format_trade_line(token_name, num_tokens, amount, fee, sign):
-        return f"• {token_name:<10} {amount:>6.1f} Ksats ({num_tokens:>10,.1f} tokens) ({fee:>6.2f} fee)"
+        return f"• {token_name:<10} {amount:>6.1f}K sats ({amount*0.00001:.5f} BTC) ({num_tokens:>10,.1f} tokens) ({fee:>6.2f} fee)"
 
     lines = []
     if liquidity_token_name is None:
@@ -438,7 +543,7 @@ def generate_rebalance_message(
     total_sell_amount = 0.0
     for t in sells_tokens:
         total_sell_amount += t['amount']
-    lines.append(f"\n💰 SELL: {total_sell_amount:>6.1f} Ksats ")
+    lines.append(f"\n💰 SELL: ")
     total_sell_amount = 0.0
     total_sell_tokens = 0.0
     total_sell_fees = 0.0
@@ -452,7 +557,7 @@ def generate_rebalance_message(
     total_buy_amount = 0.0
     for t in buys_tokens:
         total_buy_amount += t['amount']
-    lines.append(f"\n🛒 BUY: {total_buy_amount:>6.1f} Ksats")
+    lines.append(f"\n🛒 BUY: ")
     total_buy_amount = 0.0
     total_buy_tokens = 0.0
     total_buy_fees = 0.0
@@ -464,7 +569,8 @@ def generate_rebalance_message(
             total_buy_fees += t['fee']
 
     if liquidity_token_name is None:
-        lines.append(f"\n💧 Profit from trades (uninvested): {profit:.4f}K sats")
+        if profit > 0:
+            lines.append(f"\n📈 ckBTC remaining from trades (uninvested for now): {profit:.4f}K sats")
     else:
         lines.append(f"\n💧 Liquidity added to {liquidity_token_name}: {profit:.4f}K sats")
 

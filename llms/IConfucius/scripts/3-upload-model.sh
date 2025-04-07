@@ -13,7 +13,7 @@ NETWORK_TYPE="local"
 NUM_LLMS_DEPLOYED=1
 
 # The gguf model file to upload (Relative to root folder)
-MODEL="models/Qwen/Qwen2.5-0.5B-Instruct-GGUF/qwen2.5-0.5b-instruct-q8_0.gguf"
+MODEL="../models/Qwen/Qwen2.5-0.5B-Instruct-GGUF/qwen2.5-0.5b-instruct-q8_0.gguf"
 
 # Parse command line arguments for network type
 while [ $# -gt 0 ]; do

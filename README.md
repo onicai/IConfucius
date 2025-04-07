@@ -98,13 +98,23 @@ One of the great things about the Internet Computer is you can spin up your own 
 We hope many of you will deploy your own IConfucius canisters, play with it, learn from it, and
 then build & deploy your own on-chain AI agents that do something else. We can't wait to see what you will create.
 
+## Clone or download Github Repo
+
+You can either download the zip file from https://github.com/onicai/IConfucius and unzip it,
+or you can clone the repo with git:
+
+```bash
+git clone https://github.com/onicai/IConfucius.git
+cd IConfucius
+```
+
 ## Miniconda
 
 Create a conda environment with python dependencies installed.
 
-```bash
-# install Miniconda on your system
+First, install Miniconda on your system, and then:
 
+```bash
 # create a conda environment
 conda create --name IConfucius python=3.11
 conda activate IConfucius
@@ -117,22 +127,30 @@ pip install -r requirements.txt
 
 Download qwen2.5-0.5b-instruct-q8_0.gguf from https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF
 
-Place it in this location: `llms/llama_cpp_canister/models/Qwen/Qwen2.5-0.5B-Instruct-GGUF/qwen2.5-0.5b-instruct-q8_0.gguf`
+Place it in this location: `llms/models/Qwen/Qwen2.5-0.5B-Instruct-GGUF/qwen2.5-0.5b-instruct-q8_0.gguf`
 
 Verify it is in correct location:
 
 ```bash
 # From root folder:
-ls llms/llama_cpp_canister/models/Qwen/Qwen2.5-0.5B-Instruct-GGUF/qwen2.5-0.5b-instruct-q8_0.gguf
+ls llms/models/Qwen/Qwen2.5-0.5B-Instruct-GGUF/qwen2.5-0.5b-instruct-q8_0.gguf
 ```
 
 ## mops
 
-Install mops (https://mops.one/docs/install), and then:
+First install the prerequisites:
+
+- Install mops (https://mops.one/docs/install)
+- Install the latest version of nvm
+- Use the latest version of node.js (>= v18.0.0)
 
 ```bash
-# from folder: `IConfucius/src/IConfucius`
+# from folder: `src/IConfucius`
+mops init
 mops install
+
+# Go back to root folder
+cd ../../
 ```
 
 ## Install dfx
@@ -142,7 +160,10 @@ mops install
 sh -ci "$(curl -fsSL https://internetcomputer.org/install.sh)"
 
 # Update your terminal (can also restart your terminal)
+# On Mac
 source "$HOME/Library/Application Support/org.dfinity.dfx/env"
+# On Ubuntu
+source "$HOME/.local/share/dfx/env"
 
 # Verify it worked
 dfx --version
@@ -153,11 +174,14 @@ dfx --version
 ```bash
 # from root folder:
 
-# The first time, use this command:
-scripts/deploy-IConfucius.sh --mode install --network [local/ic]
+# In terminal 1
+dfx start --clean
 
-# After this, to upgrade the canisters for a code change:
-scripts/deploy-IConfucius.sh --mode upgrade --network [local/ic]
+# Then in another terminal:
+# The first time, use this command:
+scripts/deploy-IConfucius.sh --mode install [--network ic]
+# The second time, to upgrade the canisters for a code change:
+scripts/deploy-IConfucius.sh --mode upgrade [--network ic]
 ```
 
 Notes:
@@ -180,43 +204,12 @@ Notes:
 
 ```bash
 # from folder: src/IConfucius
+dfx canister call iconfucius_ctrlb_canister IConfuciusSays '(variant {English}, "crypto")'
+dfx canister call iconfucius_ctrlb_canister IConfuciusSays '(variant {Chinese}, "加密货币")'
 
-dfx canister call iconfucius_ctrlb_canister IConfuciusSays '(variant {English}, "crypto")' [--ic]
-dfx canister call iconfucius_ctrlb_canister IConfuciusSays '(variant {Chinese}, "加密货币")' [--ic]
-
-# From anywhere you can also call the production canister on the IC with:
+# Note that from anywhere you can also call the production canister on the IC with:
 dfx canister call dpljb-diaaa-aaaaa-qafsq-cai IConfuciusSays '(variant {English}, "crypto")' --ic
 dfx canister call dpljb-diaaa-aaaaa-qafsq-cai IConfuciusSays '(variant {Chinese}, "加密货币")' --ic
-```
-
-## IConfucius as an autonomous type bot
-
-🚧 🚧 🚧 🚧 🚧 (Work in progress...)
-
-_SKIP THIS STEP UNTIL FURTHER NOTICE._
-
-IConfucius can run in autonomous mode, using timers, and it will thus be possible to connect it to the OpenChat bot platform as an autonomous bot that automatically posts profound quotes on a regular basis.
-
-However the Motoko openchat-bot-sdk does not yet support API keys, only Command type bots.
-
-As soon as the SDK supports API keys, we will implement this capability.
-
-**Start the timers**
-
-```bash
-# from root folder:
-scripts/start-timers.sh --network [local/ic]
-scripts/stop-timers.sh --network [local/ic]
-```
-
-After some time, several quotes have been generated.
-
-IConfucius saves all his generated quotes in a stable memory data structure, and as the controller of the canister, you can pull them out:
-
-```bash
-# from folder: src/IConfucius
-dfx canister call iconfucius_ctrlb_canister getQuotesAdmin --output json [--ic]
-dfx canister call iconfucius_ctrlb_canister getNumQuotesAdmin --output json [--ic]
 ```
 
 # Prompt Design

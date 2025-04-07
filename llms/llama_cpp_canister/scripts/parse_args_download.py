@@ -1,6 +1,9 @@
 """Import command line arguments for the scripts."""
 
 import argparse
+from pathlib import Path
+
+SCRIPT_PATH = Path(__file__).parent
 
 
 def parse_args() -> argparse.Namespace:
@@ -38,7 +41,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--candid",
         type=str,
-        default="src/llama_cpp.did",
+        default=SCRIPT_PATH / "../build/llama_cpp.did",
         help="canister's candid file",
     )
     parser.add_argument(

@@ -2,7 +2,7 @@
 
 #######################################################################
 # run from parent folder as:
-# scripts/stop-timers.sh --network [local/ic]
+# scripts/stop-timers.sh [--network ic]
 #######################################################################
 
 # Default network type is local

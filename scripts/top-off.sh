@@ -2,7 +2,7 @@
 
 #######################################################################
 # run from parent folder as:
-# scripts/top-off.sh --network [local/ic]
+# scripts/top-off.sh [--network ic]
 #######################################################################
 
 # Default network type is local

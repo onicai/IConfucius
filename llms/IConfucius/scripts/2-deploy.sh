@@ -13,12 +13,8 @@ DEPLOY_MODE="install"
 # When deploying to IC, we deploy to a specific subnet
 # none will not use subnet parameter in deploy to ic
 # SUBNET="none"
-# llm 0,1,2,3
+# llm 0
 SUBNET="snjp4-xlbw4-mnbog-ddwy6-6ckfd-2w5a2-eipqo-7l436-pxqkh-l6fuv-vae"
-# llm 4,5,6,7
-SUBNET="io67a-2jmkw-zup3h-snbwi-g6a5n-rm5dn-b6png-lvdpl-nqnto-yih6l-gqe"
-# llm 8,9,10,11
-SUBNET="csyj4-zmann-ys6ge-3kzi6-onexi-obayx-2fvak-zersm-euci4-6pslt-lae"
 
 # Parse command line arguments for network type
 while [ $# -gt 0 ]; do

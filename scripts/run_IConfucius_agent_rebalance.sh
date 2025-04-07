@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # while true; do
-    python -m IConfucius_agent_rebalance
+    # Use -u (unbuffered) to ensure that output is printed immediately
+    python -u -m IConfucius_agent_rebalance
     # TODO: 
     # (-) Trade via API
     # (-) Run this at a certain time interval

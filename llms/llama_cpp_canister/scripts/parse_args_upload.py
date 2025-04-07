@@ -1,6 +1,9 @@
 """Import command line arguments for the scripts."""
 
 import argparse
+from pathlib import Path
+
+SCRIPT_PATH = Path(__file__).parent
 
 
 def parse_args() -> argparse.Namespace:
@@ -14,8 +17,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--canister-filename",
         type=str,
-        default=None,
-        help="Canister filename. Defaults to local filename",
+        default="models/model.gguf",
+        help="Canister filename. Defaults to 'models/model.gguf'",
     )
     parser.add_argument(
         "--network",
@@ -38,14 +41,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--candid",
         type=str,
-        default="build/llama_cpp.did",
+        default=SCRIPT_PATH / "../build/llama_cpp.did",
         help="canister's candid file",
     )
     parser.add_argument(
         "--chunksize",
         type=int,
         default=2000000,
-        help="Chunk Size used during file download, in bytes",
+        help="Chunk Size used during file upload, in bytes",
+    )
+    parser.add_argument(
+        "--hf-sha256",
+        type=str,
+        default=None,
+        help="Optional - provides the HuggingFace Hash, to check against.",
     )
 
     args = parser.parse_args()
