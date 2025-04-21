@@ -14,16 +14,44 @@ from dotenv import load_dotenv
 import os
 import random
 import tweepy
-from datetime import datetime
-from pytz import timezone
+from datetime import datetime, timezone as dt_timezone, timedelta # Import timezone (aliased) and timedelta
+import pytz  # Import pytz for utc handling
+from pytz import timezone # This imports the pytz timezone function
 from my_odin_api import odin_get_user_tokens, odin_post_a_comment
+from IConfucius_gmail import get_gmail_topics, gmail_reply_to_sender, save_gmail_topics
 
 ROOT_PATH = Path(__file__).parent.parent
+SCRIPT_PATH = Path(__file__).parent
 
 #  0 - none
 #  1 - minimal
 #  2 - a lot
 DEBUG_VERBOSE = 1
+
+# File to store last checked datetime
+LAST_RANDOM_TOPIC_TIMESTAMP_FILE = SCRIPT_PATH / 'secret/db/last_random_topic_timestamp.json'
+
+def load_last_random_topic_timestampe():
+    """Loads the last random topic datetime from the file."""
+    try:
+        with open(LAST_RANDOM_TOPIC_TIMESTAMP_FILE, 'r') as f:
+            data = json.load(f)
+            last_random_str = data.get('last_random')
+            if last_random_str:
+                # Parse as UTC and then convert to local timezone-aware datetime
+                # Use datetime.strptime directly as datetime class is imported
+                last_random_utc = datetime.strptime(last_random_str, '%Y-%m-%d %H:%M:%S %Z')
+                last_random_utc = pytz.utc.localize(last_random_utc)  # Make timezone-aware
+                # Use dt_timezone.utc and datetime.now directly
+                local_tz = datetime.now(dt_timezone.utc).astimezone().tzinfo # Get system local timezone
+                last_random_local = last_random_utc.astimezone(local_tz) # Convert to local tz
+                return last_random_local
+            else:
+                return None
+    except FileNotFoundError:
+        return None
+    except json.JSONDecodeError:
+        return None
 
 def IConfuciusSays(language: str, topic: str) -> str:
     """Calls the IConfuciusSays endpoint of the IConfucius canister."""
@@ -73,6 +101,86 @@ def IConfuciusSays(language: str, topic: str) -> str:
         print(f"An error occurred while calling IConfuciusSays: {e}")
         return None
 
+def handle_topic(prefix, language_code, icon, topic, live_LLM, live_odin, live_X, odin_tokens):
+    """Handles the generation and posting of quotes for a given topic."""
+    if language_code == "cn":
+        quoteLanguage = "Chinese"
+    elif language_code == "en":
+        quoteLanguage = "English"
+    else:
+        print(f"Unsupported language code: {language_code}")
+        return
+
+    quote = None
+    tweet_id = None
+    tweet_url = None
+    
+    if live_LLM:
+        print("-------------------------------------------------------")
+        print(f"Generating a quote in {quoteLanguage} on the topic of {topic}...")
+        quote = IConfuciusSays(quoteLanguage, topic)
+        if not quote:
+            print("Error generating the quote.")
+    else:
+        quote = "Testing the IConfucius agent"
+
+    message = f"({prefix}) {icon} {quote}"
+
+    
+    if live_X and quote is not None:
+        print("-------------------------------------------------------")
+        print(f"Posting a {quoteLanguage} quote to the X API")
+        try:
+            text = (
+                f"{message}\n\n"
+                f"👉odin.fun/token/29m8"
+            )
+            
+            response = X_client.create_tweet(text=text)
+            print("X: Successfully posted to X!")
+            print(f"X Tweet ID: {response.data['id']}")
+            tweet_id = response.data['id']
+            tweet_url = f"https://x.com/iConfucius/status/{tweet_id}"
+            print(f"{tweet_url}")
+        except tweepy.TweepyException as e:
+            print(f"X: Error: {e}")
+
+    if live_odin and quote is not None:
+
+        print("-------------------------------------------------------")
+        print(f"Posting a {quoteLanguage} quote to the Odin.Fun API")
+
+        if tweet_url is not None:
+            message += f"\n\n{tweet_url}"
+
+        # Post to the ICONFUCIUS token and one other token
+        iconfucius_token = next(token for token in odin_tokens if token['token_name'] == 'ICONFUCIUS')
+        tokens_to_post = [iconfucius_token]
+        other_tokens = [token for token in odin_tokens if token['token_name'] != 'ICONFUCIUS']
+        if len(other_tokens) != 0:
+            random_token = random.choice(other_tokens)
+            tokens_to_post.append(random_token)
+
+        for token in tokens_to_post:
+            odin_token_id = token["odin_token_id"]
+            print(f"Posting to token: {token['token_name']} (ID: {odin_token_id})")
+
+            comment_data = {"message": message}
+            try:
+                response = odin_post_a_comment(
+                    ODIN_USER_ID, ODIN_JWT, odin_token_id, comment_data
+                )
+                print(f"Odin Response Status Code: {response.status_code}")
+                if response.status_code == 201:
+                    print(f"Odin Response JSON: {response.json()}")
+            except requests.exceptions.RequestException as e:
+                print(f"Odin: An exception has occurred. Request Failed: {e}")
+            except ValueError as e:
+                print(f"Odin: An exception has occurred: {e}")
+
+
+    return quote, tweet_id, tweet_url
+
 if __name__ == "__main__":
     print("=======================================================")
     est = timezone('America/Detroit')
@@ -96,7 +204,7 @@ if __name__ == "__main__":
     X_API_SECRET = os.getenv("X_API_SECRET") # Consumer Secret
     X_ACCESS_TOKEN = os.getenv("X_ACCESS_TOKEN")
     X_ACCESS_TOKEN_SECRET = os.getenv("X_ACCESS_TOKEN_SECRET")
-
+    
     # Create a Client object for v2 API
     X_client = tweepy.Client(
         consumer_key=X_API_KEY,
@@ -214,84 +322,63 @@ if __name__ == "__main__":
     live_LLM = True # if True, we will generate a new quote
     live_odin = True  # if True, we will post the quotes to the Odin.Fun API
     live_X = True  # if True, we will post the quotes to X (Twitter)
+    live_gmail = True  # if True, we will check for quote topics in Gmail
 
-    print(f"live_LLM  = {live_LLM}")
-    print(f"live_odin = {live_odin}")
-    print(f"live_X    = {live_X}")
+    print(f"live_LLM   = {live_LLM}")
+    print(f"live_odin  = {live_odin}")
+    print(f"live_X     = {live_X}")
+    print(f"live_gmail = {live_gmail}")
 
-    # Randomly select an entry from the list
-    random_index = random.randint(0, len(entries) - 1)
-    entry = entries[random_index]
-    icon = entry["icon"]
-    for language_code in ["cn", "en"]:
-        topic = entry[language_code]
-
-        prefix = f"{language_code} 🤖"
-        
-        if language_code == "cn":
-            quoteLanguage = "Chinese"
-        elif language_code == "en":
-            quoteLanguage = "English"
-        else:
-            print(f"Unsupported language code: {language_code}")
-            continue
-
-        if live_LLM:
-            print("-------------------------------------------------------")
-            print(f"Generating a quote in {quoteLanguage} on the topic of {topic}...")
-            quote = IConfuciusSays(quoteLanguage, topic)
-            if not quote:
-                print("Error generating the quote.")
-                continue
-        else:
-            quote = "Testing the IConfucius agent"
-
-        message = f"({prefix}) {icon} {quote}"
-
-        if live_odin:
-
-            print("-------------------------------------------------------")
-            print(f"Posting a {quoteLanguage} quote to the Odin.Fun API")
+    found_a_gmail_topic = False
+    if live_gmail:
+        gmail_topics = get_gmail_topics()
+        # pprint.pprint(f"gmail_topics = {gmail_topics}")
+        for gmail_topic in gmail_topics:
+            if gmail_topic["quote"] is None:
+                print(f"Generating a quote for gmail_topic: {gmail_topic['topic']}")
+                found_a_gmail_topic = True
+                language_code = gmail_topic["language_code"]
+                prefix = f"📧 🤖"
+                icon = ""
+                topic = gmail_topic["topic"]
+                (quote, tweet_id, tweet_url) = handle_topic(prefix, language_code, icon, topic, live_LLM, live_odin, live_X, odin_tokens)
+                if quote:
+                    # Update the Gmail topic with the generated quote
+                    gmail_topic["quote"] = quote
+                    gmail_topic["tweet_id"] = tweet_id
+                    gmail_topic["tweet_url"] = tweet_url    
+                    gmail_reply_to_sender(gmail_topic)
+                    gmail_topic["replied"]  = True
+                    save_gmail_topics(gmail_topics) # Save updated topics
 
 
-            # Post to the ICONFUCIUS token and one other token
-            iconfucius_token = next(token for token in odin_tokens if token['token_name'] == 'ICONFUCIUS')
-            other_tokens = [token for token in odin_tokens if token['token_name'] != 'ICONFUCIUS']
-            random_token = random.choice(other_tokens)
-            tokens_to_post = [iconfucius_token, random_token]
+    if not found_a_gmail_topic:
+        last_random = load_last_random_topic_timestampe() # Returns timezone-aware local time or None
 
-            for token in tokens_to_post:
-                odin_token_id = token["odin_token_id"]
-                print(f"Posting to token: {token['token_name']} (ID: {odin_token_id})")
-
-                comment_data = {"message": message}
-                try:
-                    response = odin_post_a_comment(
-                        ODIN_USER_ID, ODIN_JWT, odin_token_id, comment_data
-                    )
-                    print(f"Odin Response Status Code: {response.status_code}")
-                    if response.status_code == 201:
-                        print(f"Odin Response JSON: {response.json()}")
-                except requests.exceptions.RequestException as e:
-                    print(f"Odin: An exception has occurred. Request Failed: {e}")
-                except ValueError as e:
-                    print(f"Odin: An exception has occurred: {e}")
-
-        if live_X:
-            print("-------------------------------------------------------")
-            print(f"Posting a {quoteLanguage} quote to the X API")
-            try:
-                text = (
-                    f"{message}\n\n"
-                    f"👉odin.fun/token/29m8"
-                )
-                
-                response = X_client.create_tweet(text=text)
-                print("X: Successfully posted to X!")
-                print(f"X Tweet ID: {response.data['id']}")
-            except tweepy.TweepyException as e:
-                print(f"X: Error: {e}")
-
+        # Get the system's local timezone
+        # Use dt_timezone.utc and datetime.now directly
+        local_tz = datetime.now(dt_timezone.utc).astimezone().tzinfo
+        # Get the local time
+        # Use datetime.now directly
+        now_local = datetime.now(local_tz)
+        # Check if the last checked time is None or older than 24 hours
+        # Use timedelta directly
+        if last_random is None or now_local - last_random >= timedelta(hours=24):
+            # Update the last time
+            with open(LAST_RANDOM_TOPIC_TIMESTAMP_FILE, 'w') as f:
+                data = {"last_random": now_local.strftime('%Y-%m-%d %H:%M:%S %Z')}
+                json.dump(data, f)
+            print(f"Updated last random time to: {now_local.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+            
+            # Randomly select an entry from the list
+            random_index = random.randint(0, len(entries) - 1)
+            entry = entries[random_index]
+            icon = entry["icon"]
+            for language_code in ["cn", "en"]:
+                topic = entry[language_code]
+                prefix = f"{language_code} 🤖"
+                (quote, tweet_id, tweet_url) = handle_topic(prefix, language_code, icon, topic, live_LLM, live_odin, live_X, odin_tokens)
+    
     print("-------------------------------------------------------")
     current_time = datetime.now(est).strftime('%Y-%m-%d %I:%M:%S %p %Z')
     print(f"IConfucius agent as a python script - done at time: {current_time}")

@@ -8,6 +8,7 @@ open-chat-bots/
 motoko_oc_bot_sdk/
 *.cbor
 *.har
+secret/
 
 # Various IDEs and Editors
 .vscode/
