@@ -10,7 +10,7 @@
 
 ⚡ He is an [ODIN•FUN](https://odin.fun?r=mgb3mzvghe) Token→ Token https://odin.fun/token/29m8
 
-🤖 He is an **OpenChat bot**
+📧 He provides Wisdom via email (See [X](https://x.com/IConfucius_odin/status/1914505663926919563) for details.)
 
 ... and he will be so much more 💡
 
@@ -51,7 +51,8 @@ We have the following technical roadmap in mind for IConfucius:
 - ✅️ IConfucius posts his quotes of wisdom directly to ODIN•FUN and X (Twitter)
 - ✅️ `IConfucius (Agent)` granted his own wallet funded with ckBTC on ODIN•FUN
 - ✅️ `IConfucius (Agent)` to purchase 25k sats of top-10 tokens on ODIN•FUN
-- ✅️ `IConfucius (Agent)` to promote project by posting quotes in limited way to top-10 tokens
+- ✅️ `IConfucius (Agent)` to promote project by posting quotes in limited way to top tokens
+- ✅️ `IConfucius (Agent)` provides a Wisdom Quote Service via email
 - 🚧 `IConfucius (Agent)` to receive additional autonomous skills for on-chain decision making
 - 🚧 IConfucius posts his quotes of wisdom directly to OpenChat
 - 🚧 Upgrade IConfucius to use either `Qwen2.5-0.5` or `Llama3.2-1B`
