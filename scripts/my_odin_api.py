@@ -277,7 +277,7 @@ def odin_get_user_tokens(odin_user_id, odin_jwt):
         print("Error fetching user tokens")
         print(result)
         sys.exit(1)
-    pprint.pprint(odin_tokens_from_api[0])
+    # pprint.pprint(odin_tokens_from_api[0])
 
     # extract the data we use:
     odin_tokens = []

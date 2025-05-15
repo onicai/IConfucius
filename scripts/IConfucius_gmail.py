@@ -154,6 +154,7 @@ def get_gmail_topics():
 
     gmail_topics = load_gmail_topics()  # Load existing topics
     last_checked = load_last_checked() # Returns timezone-aware local time or None
+    print(f"Last checked time: {last_checked}")
 
     # Get the system's local timezone
     local_tz = datetime.now(dt_timezone.utc).astimezone().tzinfo
@@ -173,7 +174,10 @@ def get_gmail_topics():
         search_query = 'SUBJECT "wisdom quote:"'
         if last_checked:
             # Determine which date to use: last_checked or lookback_days_ago
-            since_date = max(last_checked, lookback_days_ago)
+            # look back 1 hour beyond last_checked to avoid missing emails that were sent exactly at last_checked
+            last_checked_plus_1hour = last_checked - timedelta(hours=1)
+            print(f"For safety, using last_checked_plus_1hour: {last_checked_plus_1hour}")
+            since_date = max(last_checked_plus_1hour, lookback_days_ago)
 
             # Format date for Gmail IMAP search.  Gmail wants the date in the form "%d-%b-%Y"
             date_str = since_date.strftime("%d-%b-%Y")
@@ -184,6 +188,8 @@ def get_gmail_topics():
             search_query += f' SINCE "{date_str}"'  #Added space before since!
 
         _, selected_emails = mail.search(None, search_query)
+        print(f"Search query: {search_query}")
+        print(f"Selected emails with IMAP: {selected_emails}")
 
 
         for num in selected_emails[0].split():
@@ -195,9 +201,11 @@ def get_gmail_topics():
             # Extract information
             sender = clean_header(email_message['from'])
             subject = clean_header(email_message['subject'])
+            print("---------------------------------------")
+            print(f"Found email from {sender} with subject: {subject}")
             # skip if the subject does not start with "wisdom quote:" - use case insensitive check
             if not subject.lower().startswith("wisdom quote:"):
-                print(f"Skipping email with subject: {subject}")
+                print(f"Skipping email from {sender} with subject: {subject}, because it does not start with 'wisdom quote:'")
                 continue
 
             date = clean_header(email_message['date'])
@@ -205,7 +213,7 @@ def get_gmail_topics():
 
             # Skip if the message ID is already in the list of topics
             if any(topic['message_id'] == message_id for topic in gmail_topics):
-                print(f"Email is already in the list - message ID: {message_id}")
+                print(f"Skipping email from {sender} with subject: {subject}, because it was already processed before - message ID: {message_id}")
                 continue
 
             # Convert email date string to datetime object
@@ -217,7 +225,7 @@ def get_gmail_topics():
 
             # Skip emails older than last_checked
             if last_checked and email_dt <= last_checked:
-                print(f"Skipping email from {email_dt} — before last checked time {last_checked}")
+                print(f"Skipping email from {sender} with subject: {subject}, because email_dt ({email_dt}) is before last checked time {last_checked}")
                 continue
 
 

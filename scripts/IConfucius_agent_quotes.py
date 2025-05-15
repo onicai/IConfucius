@@ -335,7 +335,8 @@ if __name__ == "__main__":
         # pprint.pprint(f"gmail_topics = {gmail_topics}")
         for gmail_topic in gmail_topics:
             if gmail_topic["quote"] is None:
-                print(f"Generating a quote for gmail_topic: {gmail_topic['topic']}")
+                print("-------------------------------------------------------")
+                print(f"Generating a quote for gmail_topic: {gmail_topic['topic']}, for sender: {gmail_topic['sender']}")
                 found_a_gmail_topic = True
                 language_code = gmail_topic["language_code"]
                 prefix = f"📧 🤖"
@@ -343,6 +344,7 @@ if __name__ == "__main__":
                 topic = gmail_topic["topic"]
                 (quote, tweet_id, tweet_url) = handle_topic(prefix, language_code, icon, topic, live_LLM, live_odin, live_X, odin_tokens)
                 if quote:
+                    print(f"Sending the quote '{quote}' for gmail_topic: {gmail_topic['topic']}, to sender: {gmail_topic['sender']}")
                     # Update the Gmail topic with the generated quote
                     gmail_topic["quote"] = quote
                     gmail_topic["tweet_id"] = tweet_id
