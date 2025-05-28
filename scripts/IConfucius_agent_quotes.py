@@ -154,9 +154,13 @@ def handle_topic(prefix, language_code, icon, topic, live_LLM, live_odin, live_X
             message += f"\n\n{tweet_url}"
 
         # Post to the ICONFUCIUS token and one other token
+        # Post to GHOSTNODE if and only if topic is about ghost
         iconfucius_token = next(token for token in odin_tokens if token['token_name'] == 'ICONFUCIUS')
+        ghostnode_token = next(token for token in odin_tokens if token['token_name'] == 'GHOSTNODE')
         tokens_to_post = [iconfucius_token]
-        other_tokens = [token for token in odin_tokens if token['token_name'] != 'ICONFUCIUS']
+        if ghostnode_token and "ghost" in topic.lower():
+            tokens_to_post.append(ghostnode_token)
+        other_tokens = [token for token in odin_tokens if token['token_name'] not in ['GHOSTNODE', 'ICONFUCIUS']]
         if len(other_tokens) != 0:
             random_token = random.choice(other_tokens)
             tokens_to_post.append(random_token)
