@@ -144,6 +144,13 @@ First install the prerequisites:
 - Install mops (https://mops.one/docs/install)
 - Install the latest version of nvm
 - Use the latest version of node.js (>= v18.0.0)
+  ```bash
+    # For example
+    nvm ls
+    nvm alias default 22.14.0
+    nvm use default
+    nvm current
+  ```
 
 ```bash
 # from folder: `src/IConfucius`
@@ -173,6 +180,9 @@ dfx --version
 ## Deploy ALL canisters:
 
 ```bash
+# Be aware of side effects of the environment variable: DFX_NETWORK
+unset DFX_NETWORK
+
 # from root folder:
 
 # In terminal 1
@@ -205,12 +215,31 @@ Notes:
 
 ```bash
 # from folder: src/IConfucius
+# Ensure it is not paused
+dfx canister call iconfucius_ctrlb_canister getPauseIconfuciusFlag
+# Unpause it if needed
+dfx canister call iconfucius_ctrlb_canister togglePauseIconfuciusFlagAdmin
+# Generate some wisdom !
 dfx canister call iconfucius_ctrlb_canister IConfuciusSays '(variant {English}, "crypto")'
 dfx canister call iconfucius_ctrlb_canister IConfuciusSays '(variant {Chinese}, "加密货币")'
 
 # Note that from anywhere you can also call the production canister on the IC with:
+# Ensure it is not paused
+dfx canister call dpljb-diaaa-aaaaa-qafsq-cai getPauseIconfuciusFlag  --ic
+# Unpause it if needed
+dfx canister call dpljb-diaaa-aaaaa-qafsq-cai togglePauseIconfuciusFlagAdmin  --ic
+# Generate some wisdom !
 dfx canister call dpljb-diaaa-aaaaa-qafsq-cai IConfuciusSays '(variant {English}, "crypto")' --ic
 dfx canister call dpljb-diaaa-aaaaa-qafsq-cai IConfuciusSays '(variant {Chinese}, "加密货币")' --ic
+```
+
+## Maintenance on IConfucius
+
+When deployed to main-net, to do maintenance, you can pause IConfucius
+
+```bash
+  dfx canister call dpljb-diaaa-aaaaa-qafsq-cai getPauseIconfuciusFlag
+  dfx canister call dpljb-diaaa-aaaaa-qafsq-cai togglePauseIconfuciusFlagAdmin
 ```
 
 # Prompt Design

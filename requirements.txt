@@ -1,4 +1,4 @@
-icpp-pro==5.0.3
+icpp-pro==5.2.0
 ic-py==1.0.1
 jupyter-black
 black==23.12.1

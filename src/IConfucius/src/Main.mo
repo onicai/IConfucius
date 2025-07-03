@@ -25,6 +25,22 @@ actor class IConfuciusCtrlbCanister() {
     
     // Orthogonal Persisted Data storage
 
+    // Flag to pause IConfucius (eg. for maintenance)
+    stable var PAUSE_ICONFUCIUS : Bool = true;
+
+    public shared (msg) func togglePauseIconfuciusFlagAdmin() : async Types.AuthRecordResult {
+        if (not Principal.isController(msg.caller)) {
+            return #Err(#Unauthorized);
+        };
+        PAUSE_ICONFUCIUS := not PAUSE_ICONFUCIUS;
+        let authRecord = { auth = "You set the flag to " # debug_show(PAUSE_ICONFUCIUS) };
+        return #Ok(authRecord);
+    };
+
+    public query func getPauseIconfuciusFlag() : async Types.FlagResult {
+        return #Ok({ flag = PAUSE_ICONFUCIUS });
+    };
+
     // timer ID, so we can stop it after starting
     stable var recurringTimerId : ?Timer.TimerId = null;
 
@@ -134,7 +150,6 @@ actor class IConfuciusCtrlbCanister() {
         if (not Principal.isController(msg.caller)) {
             return List.nil<Types.GeneratedQuote>();
         };
-
         return generatedQuotes;
     };
 
@@ -263,6 +278,9 @@ actor class IConfuciusCtrlbCanister() {
         // };
         if (Principal.isAnonymous(msg.caller)) {
             return #Err(#Unauthorized);
+        };
+        if (PAUSE_ICONFUCIUS) {
+            return #Err(#Other("IConfucius is currently paused"));
         };
 
         // TODO: pass in quoteLanguage variant instead of Text

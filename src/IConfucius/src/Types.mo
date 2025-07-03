@@ -4,6 +4,11 @@ module Types {
     public type NatResult = Result<Nat, ApiError>;
     public type TextResult = Result<Text, ApiError>;
 
+    public type FlagRecord = {
+        flag : Bool;
+    };
+    public type FlagResult = Result<FlagRecord, ApiError>;
+
     public type PromptForQuote = {
         quoteLanguage : Text;
         systemPrompt : Text;
