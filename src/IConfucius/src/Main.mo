@@ -18,7 +18,7 @@ import { print } = "mo:base/Debug";
 import { setTimer; recurringTimer } = "mo:base/Timer";
 import Timer "mo:base/Timer";
 
-import Types "Types";
+import Types "../../common/Types";
 import Utils "Utils";
 
 actor class IConfuciusCtrlbCanister() {
