@@ -231,11 +231,29 @@ actor class IConfuciusCtrlbCanister() {
         if (not Principal.isController(msg.caller)) {
             return #Err(#StatusCode(401));
         };
-        D.print("IConfucius: _add_llm_canister_id - Adding llm: " # llmCanisterIdRecord.canister_id);
-        let llmCanister = actor (llmCanisterIdRecord.canister_id) : Types.LLMCanister;
-        llmCanisters.add(llmCanister);
-        return #Ok({ status_code = 200 });
+
+        let targetCanisterText = llmCanisterIdRecord.canister_id;
+        let targetCanisterPrincipal = Principal.fromText(targetCanisterText);
+
+        // Remove the LLM canister if found
+        for (i in Iter.range(0, llmCanisters.size())) {
+            let existing = llmCanisters.getOpt(i);
+            switch (existing) {
+                case (?item) {
+                    let principalText = Principal.toText(Principal.fromActor(item));
+                    if (principalText == targetCanisterText) {
+                        ignore llmCanisters.remove(i);
+                        D.print("IConfucius: remove_llm_canister - Removed llm: " # targetCanisterText);
+                        return #Ok({ status_code = 200 });
+                    };
+                };
+                case null {}; // Skip if none
+            };
+        };
+        D.print("IConfucius: remove_llm_canister - Cannot find llm in the list: " # targetCanisterText);
+        return #Err(#StatusCode(404)); // Not found
     };
+
 
     // Admin function to reset roundRobinLLMs
     public shared (msg) func resetRoundRobinLLMs() : async Types.StatusCodeRecordResult {
