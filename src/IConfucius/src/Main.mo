@@ -171,7 +171,7 @@ actor class IConfuciusCtrlbCanister() {
 
     // -------------------------------------------------------------------------------
     // The C++ LLM canisters that can be called
-    stable var llmCanisterIdsStable : [Text] = [];
+    stable var llmCanistersStable : [Text] = [];
     private var llmCanisters : Buffer.Buffer<Types.LLMCanister> = Buffer.fromArray([]);
 
     // Round-robin load balancer for LLM canisters to call
@@ -233,7 +233,6 @@ actor class IConfuciusCtrlbCanister() {
         };
 
         let targetCanisterText = llmCanisterIdRecord.canister_id;
-        let targetCanisterPrincipal = Principal.fromText(targetCanisterText);
 
         // Remove the LLM canister if found
         for (i in Iter.range(0, llmCanisters.size())) {
@@ -902,17 +901,24 @@ actor class IConfuciusCtrlbCanister() {
     // Upgrade Hooks
     system func preupgrade() {
         openQuoteTopicsStorageStable := Iter.toArray(openQuoteTopicsStorage.entries());
-        llmCanisterIdsStable := Buffer.toArray(
-            Buffer.map<Types.LLMCanister, Text>(llmCanisters, func (llm : Types.LLMCanister) : Text {
-                Principal.toText(Principal.fromActor(llm))
-            })
-        );
+        // Convert Buffer<LLMCanister> to [Text] for stable storage
+        let llmCanisterIds = Buffer.Buffer<Text>(llmCanisters.size());
+        for (llmCanister in llmCanisters.vals()) {
+            llmCanisterIds.add(Principal.toText(Principal.fromActor(llmCanister)));
+        };
+        llmCanistersStable := Buffer.toArray(llmCanisterIds);
     };
 
     system func postupgrade() {
         openQuoteTopicsStorage := HashMap.fromIter(Iter.fromArray(openQuoteTopicsStorageStable), openQuoteTopicsStorageStable.size(), Text.equal, Text.hash);
         openQuoteTopicsStorageStable := [];
-        llmCanisters := Buffer.fromArray(Array.map<Text, Types.LLMCanister>(llmCanisterIdsStable, func(p: Text): Types.LLMCanister {actor (p) : Types.LLMCanister}));
-        llmCanisterIdsStable := [];
+
+        // Reconstruct Buffer<LLMCanister> from [Text]
+        llmCanisters := Buffer.Buffer<Types.LLMCanister>(llmCanistersStable.size());
+        for (canisterId in llmCanistersStable.vals()) {
+            let llmCanister = actor (canisterId) : Types.LLMCanister;
+            llmCanisters.add(llmCanister);
+        };
+        llmCanistersStable := [];
     };
 };
