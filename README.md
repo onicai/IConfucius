@@ -217,7 +217,7 @@ Notes:
 # from folder: src/IConfucius
 # Ensure it is not paused
 dfx canister call iconfucius_ctrlb_canister getPauseIconfuciusFlag
-# Unpause it if needed
+# toggle Pause flag if needed
 dfx canister call iconfucius_ctrlb_canister togglePauseIconfuciusFlagAdmin
 # Generate some wisdom !
 dfx canister call iconfucius_ctrlb_canister IConfuciusSays '(variant {English}, "crypto")'
@@ -235,11 +235,26 @@ dfx canister call dpljb-diaaa-aaaaa-qafsq-cai IConfuciusSays '(variant {Chinese}
 
 ## Maintenance on IConfucius
 
+### Pause IConfucius
+
 When deployed to main-net, to do maintenance, you can pause IConfucius
 
 ```bash
-  dfx canister call dpljb-diaaa-aaaaa-qafsq-cai getPauseIconfuciusFlag
-  dfx canister call dpljb-diaaa-aaaaa-qafsq-cai togglePauseIconfuciusFlagAdmin
+  dfx canister call dpljb-diaaa-aaaaa-qafsq-cai getPauseIconfuciusFlag --ic
+  dfx canister call dpljb-diaaa-aaaaa-qafsq-cai togglePauseIconfuciusFlagAdmin --ic
+```
+
+### Manage the deployed LLMs
+
+```bash
+  # Get the LLMs currently in use
+  dfx canister call dpljb-diaaa-aaaaa-qafsq-cai get_llm_canisters --ic
+
+  # Remove an LLM
+  dfx canister call dpljb-diaaa-aaaaa-qafsq-cai remove_llm '(record {canister_id = "<canister-id>"} })'
+
+  # Add an LLM
+  dfx canister call dpljb-diaaa-aaaaa-qafsq-cai add_llm '(record {canister_id = "<canister-id>"} })'
 ```
 
 # Prompt Design

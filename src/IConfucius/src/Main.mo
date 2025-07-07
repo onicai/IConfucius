@@ -18,7 +18,7 @@ import { print } = "mo:base/Debug";
 import { setTimer; recurringTimer } = "mo:base/Timer";
 import Timer "mo:base/Timer";
 
-import Types "Types";
+import Types "../../common/Types";
 import Utils "Utils";
 
 actor class IConfuciusCtrlbCanister() {
@@ -29,6 +29,9 @@ actor class IConfuciusCtrlbCanister() {
     stable var PAUSE_ICONFUCIUS : Bool = true;
 
     public shared (msg) func togglePauseIconfuciusFlagAdmin() : async Types.AuthRecordResult {
+        if (Principal.isAnonymous(msg.caller)) {
+            return #Err(#StatusCode(401));
+        };
         if (not Principal.isController(msg.caller)) {
             return #Err(#Unauthorized);
         };
@@ -83,6 +86,9 @@ actor class IConfuciusCtrlbCanister() {
     };
 
     public shared (msg) func setInitialQuoteTopics() : async Types.StatusCodeRecordResult {
+        if (Principal.isAnonymous(msg.caller)) {
+            return #Err(#StatusCode(401));
+        };
         if (not Principal.isController(msg.caller)) {
             return #Err(#Unauthorized);
         };
@@ -131,6 +137,9 @@ actor class IConfuciusCtrlbCanister() {
     };
 
     public shared query (msg) func getQuotesAdmin() : async Types.GeneratedQuotesResult {
+        if (Principal.isAnonymous(msg.caller)) {
+            return #Err(#StatusCode(401));
+        };
         if (not Principal.isController(msg.caller)) {
             return #Err(#Unauthorized);
         };
@@ -139,6 +148,9 @@ actor class IConfuciusCtrlbCanister() {
     };
 
     public shared query (msg) func getNumQuotesAdmin() : async Types.NatResult {
+        if (Principal.isAnonymous(msg.caller)) {
+            return #Err(#StatusCode(401));
+        };
         if (not Principal.isController(msg.caller)) {
             return #Err(#Unauthorized);
         };
@@ -146,52 +158,132 @@ actor class IConfuciusCtrlbCanister() {
         return #Ok(quotes.size());
     };
 
+    // TODO: change return type to a Result
     public query (msg) func getQuotesListAdmin() : async List.List<Types.GeneratedQuote> {
+        if (Principal.isAnonymous(msg.caller)) {
+            return List.nil<Types.GeneratedQuote>();
+        };
         if (not Principal.isController(msg.caller)) {
             return List.nil<Types.GeneratedQuote>();
         };
         return generatedQuotes;
     };
 
+    // -------------------------------------------------------------------------------
+    // The C++ LLM canisters that can be called
+    stable var llmCanisterIdsStable : [Text] = [];
+    private var llmCanisters : Buffer.Buffer<Types.LLMCanister> = Buffer.fromArray([]);
+
     // Round-robin load balancer for LLM canisters to call
     private var roundRobinIndex : Nat = 0;
     private var roundRobinUseAll : Bool = true;
     private var roundRobinLLMs : Nat = 0; // Only used when roundRobinUseAll is false
 
-    // -------------------------------------------------------------------------------
-    // The C++ LLM canisters that can be called
-
-    private var llmCanisters : Buffer.Buffer<Types.LLMCanister> = Buffer.fromArray([]);
-
-    // Resets llmCanisters
-    public shared (msg) func reset_llm_canisters() : async Types.StatusCodeRecordResult {
+    public shared query (msg) func get_llm_canisters() : async Types.LlmCanistersRecordResult {
+        if (Principal.isAnonymous(msg.caller)) {
+            return #Err(#StatusCode(401));
+        };
         if (not Principal.isController(msg.caller)) {
             return #Err(#StatusCode(401));
         };
+        let llmCanisterIds : [Types.CanisterAddress] = Buffer.toArray(
+            Buffer.map<Types.LLMCanister, Text>(llmCanisters, func (llm : Types.LLMCanister) : Text {
+                Principal.toText(Principal.fromActor(llm))
+            })
+        );
+        return #Ok({ 
+            llmCanisterIds = llmCanisterIds;
+            roundRobinUseAll = roundRobinUseAll;
+            roundRobinLLMs = roundRobinLLMs;
+        });
+    };
+
+    public shared (msg) func reset_llm_canisters() : async Types.StatusCodeRecordResult {
+        if (Principal.isAnonymous(msg.caller)) {
+            return #Err(#StatusCode(401));
+        };
+        if (not Principal.isController(msg.caller)) {
+            return #Err(#StatusCode(401));
+        };
+        D.print("IConfucius: reset_llm_canisters - Resetting all LLM canisters & round-robin state");
         llmCanisters.clear();
+        resetRoundRobinLLMs_();
         return #Ok({ status_code = 200 });
     };
 
-    // Adds an llmCanister
     public shared (msg) func add_llm_canister(llmCanisterIdRecord : Types.CanisterIDRecord) : async Types.StatusCodeRecordResult {
+        if (Principal.isAnonymous(msg.caller)) {
+            return #Err(#StatusCode(401));
+        };
         if (not Principal.isController(msg.caller)) {
             return #Err(#StatusCode(401));
         };
-        _add_llm_canister_id(llmCanisterIdRecord);
-    };
-    private func _add_llm_canister_id(llmCanisterIdRecord : Types.CanisterIDRecord) : Types.StatusCodeRecordResult {
+        D.print("IConfucius: add_llm_canister - Adding llm: " # llmCanisterIdRecord.canister_id);
         let llmCanister = actor (llmCanisterIdRecord.canister_id) : Types.LLMCanister;
-        D.print("IConfucius: Inside function _add_llm_canister_id. Adding llm: " # Principal.toText(Principal.fromActor(llmCanister)));
         llmCanisters.add(llmCanister);
+        return #Ok({ status_code = 200 });
+    };
 
-        // Print content of the llmCanisters Buffer:
-        D.print("IConfucius: Content of llmCanisters after addition: ");
-        Buffer.iterate(
-            llmCanisters,
-            func(canister : Types.LLMCanister) : () {
-                D.print("IConfucius: Canister ID: " # Principal.toText(Principal.fromActor(canister)));
-            },
-        );
+    public shared (msg) func remove_llm_canister(llmCanisterIdRecord : Types.CanisterIDRecord) : async Types.StatusCodeRecordResult {
+        if (Principal.isAnonymous(msg.caller)) {
+            return #Err(#StatusCode(401));
+        };
+        if (not Principal.isController(msg.caller)) {
+            return #Err(#StatusCode(401));
+        };
+
+        let targetCanisterText = llmCanisterIdRecord.canister_id;
+        let targetCanisterPrincipal = Principal.fromText(targetCanisterText);
+
+        // Remove the LLM canister if found
+        for (i in Iter.range(0, llmCanisters.size())) {
+            let existing = llmCanisters.getOpt(i);
+            switch (existing) {
+                case (?item) {
+                    let principalText = Principal.toText(Principal.fromActor(item));
+                    if (principalText == targetCanisterText) {
+                        ignore llmCanisters.remove(i);
+                        D.print("IConfucius: remove_llm_canister - Removed llm: " # targetCanisterText);
+                        return #Ok({ status_code = 200 });
+                    };
+                };
+                case null {}; // Skip if none
+            };
+        };
+        D.print("IConfucius: remove_llm_canister - Cannot find llm in the list: " # targetCanisterText);
+        return #Err(#StatusCode(404)); // Not found
+    };
+
+
+    // Admin function to reset roundRobinLLMs
+    public shared (msg) func resetRoundRobinLLMs() : async Types.StatusCodeRecordResult {
+        if (Principal.isAnonymous(msg.caller)) {
+            return #Err(#StatusCode(401));
+        };
+        if (not Principal.isController(msg.caller)) {
+            return #Err(#StatusCode(401));
+        };
+        resetRoundRobinLLMs_();
+        return #Ok({ status_code = 200 });
+    };
+    private func resetRoundRobinLLMs_() {
+        roundRobinUseAll := true;
+        roundRobinLLMs := 0; // Use all LLMs
+        roundRobinIndex := 0;
+    };
+
+    // Admin function to set roundRobinLLMs
+    public shared (msg) func setRoundRobinLLMs(_roundRobinLLMs : Nat) : async Types.StatusCodeRecordResult {
+        if (Principal.isAnonymous(msg.caller)) {
+            return #Err(#StatusCode(401));
+        };
+        if (not Principal.isController(msg.caller)) {
+            return #Err(#StatusCode(401));
+        };
+        roundRobinUseAll := false;
+        roundRobinLLMs := _roundRobinLLMs;
+        roundRobinIndex := 0;
+
         return #Ok({ status_code = 200 });
     };
 
@@ -206,6 +298,9 @@ actor class IConfuciusCtrlbCanister() {
 
     // Function to verify that canister is ready for inference
     public shared (msg) func ready() : async Types.StatusCodeRecordResult {
+        if (Principal.isAnonymous(msg.caller)) {
+            return #Err(#StatusCode(401));
+        };
         if (not Principal.isController(msg.caller)) {
             return #Err(#StatusCode(401));
         };
@@ -228,6 +323,9 @@ actor class IConfuciusCtrlbCanister() {
 
     // Admin function to verify that caller is a controller of this canister
     public shared query (msg) func amiController() : async Types.StatusCodeRecordResult {
+        if (Principal.isAnonymous(msg.caller)) {
+            return #Err(#StatusCode(401));
+        };
         if (not Principal.isController(msg.caller)) {
             return #Err(#StatusCode(401));
         };
@@ -236,6 +334,9 @@ actor class IConfuciusCtrlbCanister() {
 
     // Admin function to verify that iconfucius_ctrlb_canister is a controller of all the llm canisters
     public shared (msg) func checkAccessToLLMs() : async Types.StatusCodeRecordResult {
+        if (Principal.isAnonymous(msg.caller)) {
+            return #Err(#StatusCode(401));
+        };
         if (not Principal.isController(msg.caller)) {
             return #Err(#StatusCode(401));
         };
@@ -258,17 +359,7 @@ actor class IConfuciusCtrlbCanister() {
         return #Ok({ status_code = 200 });
     };
 
-    // Admin function to set roundRobinLLMs
-    public shared (msg) func setRoundRobinLLMs(_roundRobinLLMs : Nat) : async Types.StatusCodeRecordResult {
-        if (not Principal.isController(msg.caller)) {
-            return #Err(#StatusCode(401));
-        };
-        roundRobinUseAll := false;
-        roundRobinLLMs := _roundRobinLLMs;
-        roundRobinIndex := 0;
-
-        return #Ok({ status_code = 200 });
-    };
+    
 
     // Endpoint to generate a new quote
     public shared (msg) func IConfuciusSays(quoteLanguage : Types.QuoteLanguage, topic : Text) : async Types.TextResult {
@@ -725,6 +816,9 @@ actor class IConfuciusCtrlbCanister() {
     };
 
     public shared query (msg) func getRoundRobinCanister() : async Types.CanisterIDRecordResult {
+        if (Principal.isAnonymous(msg.caller)) {
+            return #Err(#StatusCode(401));
+        };
         if (not Principal.isController(msg.caller)) {
             return #Err(#StatusCode(401));
         };
@@ -764,6 +858,9 @@ actor class IConfuciusCtrlbCanister() {
     };
 
     public shared (msg) func startTimerExecutionAdmin() : async Types.AuthRecordResult {
+        if (Principal.isAnonymous(msg.caller)) {
+            return #Err(#StatusCode(401));
+        };
         if (not Principal.isController(msg.caller)) {
             return #Err(#StatusCode(401));
         };
@@ -780,6 +877,9 @@ actor class IConfuciusCtrlbCanister() {
     };
 
     public shared (msg) func stopTimerExecutionAdmin() : async Types.AuthRecordResult {
+        if (Principal.isAnonymous(msg.caller)) {
+            return #Err(#StatusCode(401));
+        };
         if (not Principal.isController(msg.caller)) {
             return #Err(#StatusCode(401));
         };
@@ -802,10 +902,17 @@ actor class IConfuciusCtrlbCanister() {
     // Upgrade Hooks
     system func preupgrade() {
         openQuoteTopicsStorageStable := Iter.toArray(openQuoteTopicsStorage.entries());
+        llmCanisterIdsStable := Buffer.toArray(
+            Buffer.map<Types.LLMCanister, Text>(llmCanisters, func (llm : Types.LLMCanister) : Text {
+                Principal.toText(Principal.fromActor(llm))
+            })
+        );
     };
 
     system func postupgrade() {
         openQuoteTopicsStorage := HashMap.fromIter(Iter.fromArray(openQuoteTopicsStorageStable), openQuoteTopicsStorageStable.size(), Text.equal, Text.hash);
         openQuoteTopicsStorageStable := [];
+        llmCanisters := Buffer.fromArray(Array.map<Text, Types.LLMCanister>(llmCanisterIdsStable, func(p: Text): Types.LLMCanister {actor (p) : Types.LLMCanister}));
+        llmCanisterIdsStable := [];
     };
 };

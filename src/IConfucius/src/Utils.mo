@@ -14,7 +14,7 @@ import HashMap "mo:base/HashMap";
 import Nat32 "mo:base/Nat32";
 import Nat "mo:base/Nat";
 
-import Types "Types";
+import Types "../../common/Types";
 
 module {
     type Result<Ok, Err> = Result.Result<Ok, Err>;
