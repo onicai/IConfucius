@@ -217,7 +217,7 @@ Notes:
 # from folder: src/IConfucius
 # Ensure it is not paused
 dfx canister call iconfucius_ctrlb_canister getPauseIconfuciusFlag
-# Unpause it if needed
+# toggle Pause flag if needed
 dfx canister call iconfucius_ctrlb_canister togglePauseIconfuciusFlagAdmin
 # Generate some wisdom !
 dfx canister call iconfucius_ctrlb_canister IConfuciusSays '(variant {English}, "crypto")'
