@@ -247,7 +247,7 @@ When deployed to main-net, to do maintenance, you can pause IConfucius
 ### Manage the deployed LLMs
 
 ```bash
-  # Get the LLMs currenty in use
+  # Get the LLMs currently in use
   dfx canister call dpljb-diaaa-aaaaa-qafsq-cai get_llm_canisters --ic
 
   # Remove an LLM
