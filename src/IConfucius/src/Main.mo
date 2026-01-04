@@ -21,12 +21,12 @@ import Timer "mo:base/Timer";
 import Types "../../common/Types";
 import Utils "Utils";
 
-actor class IConfuciusCtrlbCanister() {
+persistent actor class IConfuciusCtrlbCanister() {
     
     // Orthogonal Persisted Data storage
 
     // Flag to pause IConfucius (eg. for maintenance)
-    stable var PAUSE_ICONFUCIUS : Bool = true;
+    var PAUSE_ICONFUCIUS : Bool = false;
 
     public shared (msg) func togglePauseIconfuciusFlagAdmin() : async Types.AuthRecordResult {
         if (Principal.isAnonymous(msg.caller)) {
@@ -45,11 +45,11 @@ actor class IConfuciusCtrlbCanister() {
     };
 
     // timer ID, so we can stop it after starting
-    stable var recurringTimerId : ?Timer.TimerId = null;
+    var recurringTimerId : ?Timer.TimerId = null;
 
     // Open topics for Quotes to be generated
-    stable var openQuoteTopicsStorageStable : [(Text, Types.QuoteTopic)] = [];
-    var openQuoteTopicsStorage : HashMap.HashMap<Text, Types.QuoteTopic> = HashMap.HashMap(0, Text.equal, Text.hash);
+    var openQuoteTopicsStorageStable : [(Text, Types.QuoteTopic)] = [];
+    transient var openQuoteTopicsStorage : HashMap.HashMap<Text, Types.QuoteTopic> = HashMap.HashMap(0, Text.equal, Text.hash);
 
     private func putOpenQuoteTopic(quoteTopicId : Text, quoteTopicEntry : Types.QuoteTopic) : Bool {
         openQuoteTopicsStorage.put(quoteTopicId, quoteTopicEntry);
@@ -116,7 +116,7 @@ actor class IConfuciusCtrlbCanister() {
     };
 
     // Record of all generated quotes
-    stable var generatedQuotes : List.List<Types.GeneratedQuote> = List.nil<Types.GeneratedQuote>();
+    var generatedQuotes : List.List<Types.GeneratedQuote> = List.nil<Types.GeneratedQuote>();
 
     private func putGeneratedQuote(quoteEntry : Types.GeneratedQuote) : Bool {
         generatedQuotes := List.push<Types.GeneratedQuote>(quoteEntry, generatedQuotes);
@@ -171,13 +171,13 @@ actor class IConfuciusCtrlbCanister() {
 
     // -------------------------------------------------------------------------------
     // The C++ LLM canisters that can be called
-    stable var llmCanistersStable : [Text] = [];
-    private var llmCanisters : Buffer.Buffer<Types.LLMCanister> = Buffer.fromArray([]);
+    var llmCanistersStable : [Text] = [];
+    private transient var llmCanisters : Buffer.Buffer<Types.LLMCanister> = Buffer.fromArray([]);
 
     // Round-robin load balancer for LLM canisters to call
-    private var roundRobinIndex : Nat = 0;
-    private var roundRobinUseAll : Bool = true;
-    private var roundRobinLLMs : Nat = 0; // Only used when roundRobinUseAll is false
+    private transient var roundRobinIndex : Nat = 0;
+    private transient var roundRobinUseAll : Bool = true;
+    private transient var roundRobinLLMs : Nat = 0; // Only used when roundRobinUseAll is false
 
     public shared query (msg) func get_llm_canisters() : async Types.LlmCanistersRecordResult {
         if (Principal.isAnonymous(msg.caller)) {

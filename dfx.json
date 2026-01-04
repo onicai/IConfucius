@@ -7,6 +7,12 @@
       "replica": {
         "subnet_type": "system"
       }
+    },
+    "testing": {
+      "providers": [
+        "https://icp0.io"
+      ],
+      "type": "persistent"
     }
   }
 }

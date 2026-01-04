@@ -2,7 +2,7 @@
 
 #######################################################################
 # run from parent folder as:
-# scripts/register-llms.sh --network [local|ic]
+# scripts/register-llms.sh --network [local|testing|ic]
 #######################################################################
 
 # Default network type is local
@@ -20,20 +20,22 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --network)
             shift
-            if [ "$1" = "local" ] || [ "$1" = "ic" ]; then
+            if [ "$1" = "local" ] || [ "$1" = "testing" ] || [ "$1" = "ic" ]; then
                 NETWORK_TYPE=$1
                 if [ "$NETWORK_TYPE" = "ic" ]; then
-                    CANISTER_ID_LLM_0='dikpv-oqaaa-aaaaa-qafsa-cai' 
+                    CANISTER_ID_LLM_0='dikpv-oqaaa-aaaaa-qafsa-cai'
+                elif [ "$NETWORK_TYPE" = "testing" ]; then
+                    CANISTER_ID_LLM_0='rsoxo-riaaa-aaaag-au3na-cai'
                 fi
             else
-                echo "Invalid network type: $1. Use 'local' or 'ic'."
+                echo "Invalid network type: $1. Use 'local', 'testing' or 'ic'."
                 exit 1
             fi
             shift
             ;;
         *)
             echo "Unknown argument: $1"
-            echo "Usage: $0 --network [local|ic]"
+            echo "Usage: $0 --network [local|testing|ic]"
             exit 1
             ;;
     esac

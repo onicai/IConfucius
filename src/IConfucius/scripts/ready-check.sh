@@ -2,7 +2,7 @@
 
 #######################################################################
 # run from parent folder as:
-# scripts/ready-check.sh --network [local|ic]
+# scripts/ready-check.sh --network [local|testing|ic]
 #######################################################################
 
 # Default network type is local
@@ -13,17 +13,17 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --network)
             shift
-            if [ "$1" = "local" ] || [ "$1" = "ic" ]; then
+            if [ "$1" = "local" ] || [ "$1" = "testing" ] || [ "$1" = "ic" ]; then
                 NETWORK_TYPE=$1
             else
-                echo "Invalid network type: $1. Use 'local' or 'ic'."
+                echo "Invalid network type: $1. Use 'local', 'testing' or 'ic'."
                 exit 1
             fi
             shift
             ;;
         *)
             echo "Unknown argument: $1"
-            echo "Usage: $0 --network [local|ic]"
+            echo "Usage: $0 --network [local|testing|ic]"
             exit 1
             ;;
     esac
