@@ -2,7 +2,7 @@
 
 #######################################################################
 # run from parent folder as:
-# scripts/register-ctrlb-canister.sh --network [local|ic]
+# scripts/register-ctrlb-canister.sh --network [local|testing|ic]
 #######################################################################
 
 # Default network type is local
@@ -16,20 +16,22 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --network)
             shift
-            if [ "$1" = "local" ] || [ "$1" = "ic" ]; then
+            if [ "$1" = "local" ] || [ "$1" = "testing" ] || [ "$1" = "ic" ]; then
                 NETWORK_TYPE=$1
                 if [ "$NETWORK_TYPE" = "ic" ]; then
                     CANISTER_ID_ICONFUCIUS_CTRLB_CANISTER="dpljb-diaaa-aaaaa-qafsq-cai"
+                elif [ "$NETWORK_TYPE" = "testing" ]; then
+                    CANISTER_ID_ICONFUCIUS_CTRLB_CANISTER="r3n4s-haaaa-aaaag-au3mq-cai"
                 fi
             else
-                echo "Invalid network type: $1. Use 'local' or 'ic'."
+                echo "Invalid network type: $1. Use 'local', 'testing' or 'ic'."
                 exit 1
             fi
             shift
             ;;
         *)
             echo "Unknown argument: $1"
-            echo "Usage: $0 --network [local|ic]"
+            echo "Usage: $0 --network [local|testing|ic]"
             exit 1
             ;;
     esac

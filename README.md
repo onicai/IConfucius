@@ -22,17 +22,15 @@ Everything is Open Source, under the permissive MIT license.
 
 # Who is IConfucius?
 
-IConfucius is running in canister `dpljb-diaaa-aaaaa-qafsq-cai` and his wisdom is currently available via the Candid UI interface.
+IConfucius is running in canister `dpljb-diaaa-aaaaa-qafsq-cai` and his wisdom is currently available via:
 
-https://a4gq6-oaaaa-aaaab-qaa4q-cai.raw.ic0.app/?id=dpljb-diaaa-aaaaa-qafsq-cai
+- Community built caffeineAI UI: https://aiconfucius-w8i.caffeine.xyz/
+- The Candid UI interface: https://a4gq6-oaaaa-aaaab-qaa4q-cai.raw.ic0.app/?id=dpljb-diaaa-aaaaa-qafsq-cai
 
-He will become much more accessible from the [IConfucius OpenChat community](https://oc.app/community/e5qnd-hqaaa-aaaac-any5a-cai/channel/2411296919/?ref=45j3b-nyaaa-aaaac-aokma-cai) as explained in the roadmap sections below.
 
 # Why IConfucius?
 
-IConfucius is a standalone **mAIner Agent**, which provides AI work for two top tier ICP dApps, [OpenChat](https://oc.app/community/e5qnd-hqaaa-aaaac-any5a-cai/channel/2411296919/?ref=45j3b-nyaaa-aaaac-aokma-cai) and [odin.fun](https://odin.fun?r=mgb3mzvghe).
-
-**mAIner Agents** are one of the core components of onicai’s [Proof-of-AI-Work protocol](https://www.onicai.com/#/poaiw) and IConfucius thus demonstrates how PoAIW components may be implemented.
+IConfucius is a standalone **mAIner Agent**, and a pioneer of the core components of onicai’s [Proof-of-AI-Work protocol](https://www.onicai.com/#/poaiw). IConfucius demonstrates how PoAIW components may be implemented.
 
 IConfucius operates entirely on-chain on the Internet Computer, including the LLM itself. This approach offers numerous advantages, among them:
 
@@ -48,33 +46,10 @@ We have the following technical roadmap in mind for IConfucius:
 - ✅️ IConfucius can be prompted from command line (dfx)
 - ✅️ Launched on [ODIN•FUN](https://odin.fun?r=mgb3mzvghe) → Token https://odin.fun/token/29m8
 - ✅️ IConfucius can generate quotes in either English or Chinese.
-- ✅️ IConfucius posts his quotes of wisdom directly to ODIN•FUN and X (Twitter)
-- ✅️ `IConfucius (Agent)` granted his own wallet funded with ckBTC on ODIN•FUN
-- ✅️ `IConfucius (Agent)` to purchase 25k sats of top-10 tokens on ODIN•FUN
-- ✅️ `IConfucius (Agent)` to promote project by posting quotes in limited way to top tokens
-- ✅️ `IConfucius (Agent)` provides a Wisdom Quote Service via email
-- 🚧 `IConfucius (Agent)` to receive additional autonomous skills for on-chain decision making
+- ✅️ IConfucius posts his quotes of wisdom directly to [IConfucius X (Twitter) account](https://x.com/IConfucius_odin)
 - 🚧 IConfucius posts his quotes of wisdom directly to OpenChat
-- 🚧 Upgrade IConfucius to use either `Qwen2.5-0.5` or `Llama3.2-1B`
-- 🚧 IConfucius can generate quotes in Hindi. (Requires Llama3.2-1B model)
-- 🚧 IConfucius as an OpenChat bot
 - 🚧 IConfucius integrated into onicai's Proof-of-AI-Work dApp
 - 🧠 IConfucius listens to the community and evolves his abilities
-
-# IConfucius Communication & Educational Roadmap
-
-The IConfucius community is growing rapidly and is eager to stay informed and learn more about the underlying AI & Crypto technology.
-
-We have the following Commucation & Educational roadmap in mind for IConfucius:
-
-- ✅️ Set up an [IConfucius OpenChat community](https://oc.app/community/e5qnd-hqaaa-aaaac-any5a-cai/channel/2411296919/?ref=45j3b-nyaaa-aaaac-aokma-cai)
-- ✅️ Set up an [IConfucius X (Twitter) account](https://x.com/IConfucius_odin)
-- ✅️ Set up an "IConfucius - Behind the scenes” YouTube playlist
-- ✅️ Create & release first video for the “IConfucius - Behind the scenes” playlist
-- ✅️ Create an IConfucius webpage at https://www.onicai.com/
-- ✅️ Set up a Telegram group for discussions around IConfucius
-- 🚧 Create additional “Behind the scenes” videos with demos & educational content
-- 🧠 IConfucius listens to the community and evolves his communications
 
 # How IConfucius works
 
@@ -85,8 +60,6 @@ There are two canisters:
 - a Motoko bot canister, in `src/IConfucius`
 - a C++ LLM canister, in `llms/IConfucius`.
   - The LLM is loaded with the [qwen2.5-0.5b-instruct-q8_0.gguf](https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF) model
-
-Our OpenChat bot implementation is based on the Motoko [openchat-bot-sdk](https://j4mwm-bqaaa-aaaam-qajbq-cai.ic0.app/openchat-bot-sdk) developed by the ICP community member [Geckteck](https://x.com/Gekctek). Many thanks go out to him.
 
 # Deploy your own IConfucius
 
@@ -142,19 +115,9 @@ ls llms/models/Qwen/Qwen2.5-0.5B-Instruct-GGUF/qwen2.5-0.5b-instruct-q8_0.gguf
 First install the prerequisites:
 
 - Install mops (https://mops.one/docs/install)
-- Install the latest version of nvm
-- Use the latest version of node.js (>= v18.0.0)
-  ```bash
-    # For example
-    nvm ls
-    nvm alias default 22.14.0
-    nvm use default
-    nvm current
-  ```
 
 ```bash
 # from folder: `src/IConfucius`
-mops init
 mops install
 
 # Go back to root folder
