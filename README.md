@@ -6,11 +6,11 @@
 
 🚀 Meet IConfucius: The ancient Chinese philosopher... now living in a canister of the Internet Computer!
 
+☕ The community built a caffeineAI UI: https://aiconfucius-w8i.caffeine.xyz/
+
 🈺 He is a **Smart Contract** running on the Internet Computer
 
 ⚡ He is an [ODIN•FUN](https://odin.fun?r=mgb3mzvghe) Token→ Token https://odin.fun/token/29m8
-
-📧 He provides Wisdom via email (See [X](https://x.com/IConfucius_odin/status/1914505663926919563) for details.)
 
 ... and he will be so much more 💡
 
@@ -19,13 +19,6 @@
 We value DeCentralized AI, which is why we build IConfucius in the open and actively seek community feedback and contributions.
 
 Everything is Open Source, under the permissive MIT license.
-
-# Who is IConfucius?
-
-IConfucius is running in canister `dpljb-diaaa-aaaaa-qafsq-cai` and his wisdom is currently available via:
-
-- Community built caffeineAI UI: https://aiconfucius-w8i.caffeine.xyz/
-- The Candid UI interface: https://a4gq6-oaaaa-aaaab-qaa4q-cai.raw.ic0.app/?id=dpljb-diaaa-aaaaa-qafsq-cai
 
 
 # Why IConfucius?
