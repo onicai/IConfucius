@@ -595,6 +595,32 @@ dfx canister call llama_cpp get_access
 dfx canister call llama_cpp check_access
 ```
 
+# File Management
+
+A C++ canister on the Internet Computer uses a virtual file system, stored in Stable Memory.
+
+Several endpoints are exposed that allows you to interact & manage the files.
+
+For example, you can explore what is stored in the `.canister_cache` folder:
+
+```bash
+# Query call to list all files & directories in a folder
+dfx canister call llama_cpp recursive_dir_content_query '(record {dir = ".canister_cache"; max_entries = 0 : nat64})' --output json
+# Update call in case you hit the instruction limit
+dfx canister call llama_cpp recursive_dir_content_update '(record {dir = ".canister_cache"; max_entries = 0 : nat64})' --output json
+# Update call to get eg. the first 5000 entries, in case you still hit the instruction limit
+dfx canister call llama_cpp recursive_dir_content_update '(record {dir = ".canister_cache"; max_entries = 5000 : nat64})' --output json
+
+# Get the size of a file in bytes
+dfx canister call llama_cpp filesystem_file_size '(record {filename = "<filename>"})' --output json
+
+# Get the creation timestamp of a file in nanoseconds (also returns age of file in seconds)
+dfx canister call llama_cpp get_creation_timestamp_ns '(record {filename = "<filename>"})' --output json
+
+# remove a file or empty directory
+dfx canister call llama_cpp filesystem_remove '(record {filename = "<filename>"})'
+```
+
 # Appendix A: max_tokens
 
 The size and settings for models impact the number of tokens that can be generated
@@ -622,3 +648,21 @@ NOTEs:
 - We use `"--temp"; "0.6"; "--repeat-penalty"; "1.1";`, as recommended on several model cards
 - For each model, we selected a `--cache-type-k` that gives the highest max_tokens while still providing good results.
 - The python notebook [scripts/promt-design.ipynb](./scripts/prompt-design.ipynb) allows you to try out these models w/o using an IC canister, to decide what model will work best for your on-chain AI agent
+
+# Appendix B: heap-out-of-bounds
+
+If you encounter a `heap out of bounds` error during `load_model`, this is likely a stack overflow in disguise. The WebAssembly runtime cannot distinguish between stack and heap memory violations.
+
+**Cause:** Clang's default stack size for wasm32 is very small (~64KB), which can be exhausted when parsing large GGUF files with many tokenizer entries.
+
+**Solution:** Increase the WASM stack size in `icpp.toml`. This repo uses 8MB:
+
+```toml
+cpp_link_flags = ["-Wl,-z,stack-size=8388608"]  # 8MB stack
+```
+
+For larger models, increase further (e.g., 16MB: `16777216`, 32MB: `33554432`).
+
+Then rebuild with `icpp build-wasm`.
+
+**Reference:** [DFINITY Forum discussion](https://forum.dfinity.org/t/heap-out-of-bounds-error-code-some-ic0502-on-c-code-run/25289)

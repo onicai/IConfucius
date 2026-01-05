@@ -43,7 +43,7 @@ module Types {
         args : [Text]; // the CLI args of llama.cpp/examples/main, as a list of strings
     };
 
-    public type OutputRecordResult = Result<OutputRecord, ApiError>;
+    public type OutputRecordResult = Result<OutputRecord, OutputRecord>;
     public type OutputRecord = {
         status_code : Nat16;
         output : Text;

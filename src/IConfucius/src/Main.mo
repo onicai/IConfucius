@@ -626,8 +626,8 @@ persistent actor class IConfuciusCtrlbCanister() {
             // D.print(debug_show (outputRecordResult));
 
             switch (outputRecordResult) {
-                case (#Err(error)) {
-                    return #Err(error);
+                case (#Err(errorRecord)) {
+                    return #Err(#Other(errorRecord.error));
                 };
                 case (#Ok(outputRecord)) {
                     // the generated tokens
@@ -702,8 +702,8 @@ persistent actor class IConfuciusCtrlbCanister() {
                 // D.print(debug_show (outputRecordResult));
 
                 switch (outputRecordResult) {
-                    case (#Err(error)) {
-                        return #Err(error);
+                    case (#Err(errorRecord)) {
+                        return #Err(#Other(errorRecord.error));
                     };
                     case (#Ok(outputRecord)) {
                         // the generated tokens
