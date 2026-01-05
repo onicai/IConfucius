@@ -2,7 +2,8 @@
   "version": 1,
   "canisters": {
     "iconfucius_ctrlb_canister": {
-      "main": "src/Main.mo"
+      "main": "src/Main.mo",
+      "args": "--enhanced-orthogonal-persistence"
     }
   },
   "defaults": {

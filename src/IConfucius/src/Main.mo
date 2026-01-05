@@ -172,6 +172,7 @@ persistent actor class IConfuciusCtrlbCanister() {
     // -------------------------------------------------------------------------------
     // The C++ LLM canisters that can be called
     var llmCanistersStable : [Text] = [];
+    var llmCanisterIdsStable : [Text] = []; // Keep for backward compatibility
     private transient var llmCanisters : Buffer.Buffer<Types.LLMCanister> = Buffer.fromArray([]);
 
     // Round-robin load balancer for LLM canisters to call
