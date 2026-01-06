@@ -2,7 +2,10 @@
 
 #######################################################################
 # run from parent folder as:
-# scripts/register-ctrlb-canister.sh --network [local|testing|ic]
+# scripts/6-register-ctrlb-canister.sh --network [local|testing|ic]
+#
+# This script assigns AdminUpdate role to iconfucius_ctrlb_canister
+# so it can call the LLM canisters for inference.
 #######################################################################
 
 # Default network type is local
@@ -41,12 +44,7 @@ echo "Using network type: $NETWORK_TYPE"
 echo "NUM_LLMS_DEPLOYED : $NUM_LLMS_DEPLOYED"
 echo " "
 echo "CANISTER_ID_ICONFUCIUS_CTRLB_CANISTER: $CANISTER_ID_ICONFUCIUS_CTRLB_CANISTER"
-echo "Making $CANISTER_ID_ICONFUCIUS_CTRLB_CANISTER a controller of LLMs"
-# read -p "Proceed? (yes/no): " confirm
-# if [[ $confirm != "yes" ]]; then
-#     echo "Aborting script."
-#     exit 1
-# fi
+echo "Assigning AdminUpdate role to $CANISTER_ID_ICONFUCIUS_CTRLB_CANISTER on LLMs"
 
 #######################################################################
 llm_id_start=0
@@ -55,6 +53,6 @@ llm_id_end=$((NUM_LLMS_DEPLOYED - 1))
 for i in $(seq $llm_id_start $llm_id_end)
 do
     echo "==================================================="
-    echo "Making $CANISTER_ID_ICONFUCIUS_CTRLB_CANISTER a controller of llm_$i"
-    dfx canister update-settings llm_$i --add-controller $CANISTER_ID_ICONFUCIUS_CTRLB_CANISTER  --network $NETWORK_TYPE
+    echo "Assigning AdminUpdate role to $CANISTER_ID_ICONFUCIUS_CTRLB_CANISTER on llm_$i"
+    dfx canister call llm_$i assignAdminRole "(record { \"principal\" = \"$CANISTER_ID_ICONFUCIUS_CTRLB_CANISTER\"; role = variant { AdminUpdate }; note = \"IConfucius controller canister\" })" --network $NETWORK_TYPE
 done
