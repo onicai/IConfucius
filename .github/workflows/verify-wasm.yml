@@ -16,7 +16,7 @@ jobs:
       fail-fast: false
       matrix:
         canister: [IConfucius]
-        os: [macos-15-intel, ubuntu-latest]
+        os: [macos-15-intel, ubuntu-22.04]
 
     steps:
       - name: checkout
@@ -51,10 +51,14 @@ jobs:
         run: |
           echo "Runner OS   : $RUNNER_OS"
           echo "Architecture: $(uname -m)"
-          echo "macOS version: $(sw_vers -productVersion 2>/dev/null || echo 'N/A')"
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            echo "OS version  : $(sw_vers -productVersion)"
+          else
+            echo "OS version  : $(lsb_release -d 2>/dev/null | cut -f2 || cat /etc/os-release | grep PRETTY_NAME | cut -d'"' -f2)"
+          fi
           echo "dfx version : $(dfx --version)"
           echo "dfx cache   : $(dfx cache show)"
-          echo "moc version : $($(dfx cache show)/moc --version 2>&1)"
+          echo "moc version : $($(dfx cache show)/moc --version 2>&1 || echo 'moc not yet cached')"
           echo "node version: $(node --version)"
           echo "mops version: $(mops --version)"
 
