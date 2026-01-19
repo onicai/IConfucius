@@ -1,0 +1,60 @@
+name: verify-wasm
+
+on:
+  workflow_dispatch:
+
+env:
+  DFX_VERSION: "0.29.2"
+  DFX_WARNING: "-mainnet_plaintext_identity"
+
+jobs:
+  verify-wasm:
+    name: verify-wasm ${{ matrix.canister }} (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        canister: [IConfucius]
+        os: [macos-latest, ubuntu-latest]
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Node is required for mops install
+      - name: setup node
+        uses: actions/setup-node@v4
+
+      - name: install dfx
+        run: |
+          set -euo pipefail
+          DFXVM_INIT_YES=true sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            source "$HOME/Library/Application Support/org.dfinity.dfx/env"
+            echo "$HOME/Library/Application Support/org.dfinity.dfx/bin" >> $GITHUB_PATH
+          else
+            source "$HOME/.local/share/dfx/env"
+            echo "$HOME/.local/share/dfx/bin" >> $GITHUB_PATH
+          fi
+          dfxvm default $DFX_VERSION
+
+      - name: create default identity
+        run: dfx identity get-principal > /dev/null 2>&1
+
+      - name: install mops
+        run: npm install -g ic-mops
+
+      - name: versions
+        run: |
+          echo "dfx version : $(dfx --version)"
+          echo "node version: $(node --version)"
+          echo "mops version: $(mops --version)"
+
+      - name: verify-wasm for ${{ matrix.canister }} canister on ${{ matrix.os }}
+        working-directory: src/${{ matrix.canister }}
+        run: |
+          set -euo pipefail
+          mops install
+          make verify-wasm
