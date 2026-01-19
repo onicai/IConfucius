@@ -54,6 +54,10 @@ There are two canisters:
 - a C++ LLM canister, in `llms/IConfucius`.
   - The LLM is loaded with the [qwen2.5-0.5b-instruct-q8_0.gguf](https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF) model
 
+# Verify the Deployed Wasm
+
+You can verify that the deployed IConfucius canister matches the source code using Docker-based reproducible builds. See [README-reproducible-build.md](README-reproducible-build.md) for instructions.
+
 # Deploy your own IConfucius
 
 This section is for ICP developers who want to learn in detail how IConfucius works.
