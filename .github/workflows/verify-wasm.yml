@@ -5,6 +5,7 @@ on:
 
 env:
   DFX_VERSION: "0.29.2"
+  MOPS_VERSION: "2.0.0"
   DFX_WARNING: "-mainnet_plaintext_identity"
 
 jobs:
@@ -44,11 +45,14 @@ jobs:
         run: dfx identity get-principal > /dev/null 2>&1
 
       - name: install mops
-        run: npm install -g ic-mops
+        run: npm install -g ic-mops@$MOPS_VERSION
 
       - name: versions
         run: |
+          echo "Runner OS   : $RUNNER_OS"
+          echo "Architecture: $(uname -m)"
           echo "dfx version : $(dfx --version)"
+          echo "moc version : $($(dfx cache show)/moc --version)"
           echo "node version: $(node --version)"
           echo "mops version: $(mops --version)"
 
