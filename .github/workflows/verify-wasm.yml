@@ -51,8 +51,10 @@ jobs:
         run: |
           echo "Runner OS   : $RUNNER_OS"
           echo "Architecture: $(uname -m)"
+          echo "macOS version: $(sw_vers -productVersion 2>/dev/null || echo 'N/A')"
           echo "dfx version : $(dfx --version)"
-          echo "moc version : $($(dfx cache show)/moc --version)"
+          echo "dfx cache   : $(dfx cache show)"
+          echo "moc version : $($(dfx cache show)/moc --version 2>&1)"
           echo "node version: $(node --version)"
           echo "mops version: $(mops --version)"
 
@@ -61,4 +63,8 @@ jobs:
         run: |
           set -euo pipefail
           mops install
+          echo "=== Installed mops packages ==="
+          ls -la .mops/
+          echo "=== mops.toml ==="
+          cat mops.toml
           make verify-wasm
