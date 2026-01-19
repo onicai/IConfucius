@@ -5,6 +5,8 @@
 # scripts/deploy.sh --network [local|testing|ic]
 #######################################################################
 
+set -euo pipefail
+
 # Default network type is local
 NETWORK_TYPE="local"
 DEPLOY_MODE="install"
@@ -59,23 +61,56 @@ fi
 echo " "
 echo "--------------------------------------------------"
 
-if [ "$NETWORK_TYPE" = "ic" ]; then
-    if [ "$SUBNET" = "none" ]; then
-        echo "Deploying the iconfucius_ctrlb_canister to the ic network"
-        dfx deploy iconfucius_ctrlb_canister --mode $DEPLOY_MODE --yes --network $NETWORK_TYPE
+# For ic and testing networks, use Docker-based reproducible builds
+if [ "$NETWORK_TYPE" = "ic" ] || [ "$NETWORK_TYPE" = "testing" ]; then
+    echo "Building wasm with Docker (reproducible build)..."
+    make docker-build-wasm
+
+    WASM_FILE="out/out_Linux_x86_64.wasm"
+    if [ ! -f "$WASM_FILE" ]; then
+        echo "ERROR: Docker build failed - wasm file not found: $WASM_FILE"
+        exit 1
+    fi
+
+    echo "Wasm hash:"
+    shasum -a 256 "$WASM_FILE"
+
+    # Create canister if it doesn't exist (for install mode)
+    if [ "$DEPLOY_MODE" = "install" ]; then
+        echo "Creating canister..."
+        if [ "$SUBNET" = "none" ]; then
+            dfx canister create iconfucius_ctrlb_canister --network "$NETWORK_TYPE" || true
+        else
+            dfx canister create iconfucius_ctrlb_canister --network "$NETWORK_TYPE" --subnet "$SUBNET" || true
+        fi
+    fi
+
+    echo "Installing wasm to iconfucius_ctrlb_canister on $NETWORK_TYPE network..."
+    if [ "$DEPLOY_MODE" = "upgrade" ]; then
+        # Enhanced orthogonal persistence requires wasm_memory_persistence option for upgrades
+        dfx canister install iconfucius_ctrlb_canister \
+            --mode "$DEPLOY_MODE" \
+            --yes \
+            --network "$NETWORK_TYPE" \
+            --wasm "$WASM_FILE" \
+            --wasm-memory-persistence keep
     else
-        echo "Deploying the iconfucius_ctrlb_canister to the ic network on subnet $SUBNET"
-        dfx deploy iconfucius_ctrlb_canister --mode $DEPLOY_MODE --yes --network $NETWORK_TYPE --subnet $SUBNET
+        dfx canister install iconfucius_ctrlb_canister \
+            --mode "$DEPLOY_MODE" \
+            --yes \
+            --network "$NETWORK_TYPE" \
+            --wasm "$WASM_FILE"
     fi
 else
+    # For local network, use dfx deploy (faster iteration)
     echo "Deploying the iconfucius_ctrlb_canister to the local network"
-    dfx deploy iconfucius_ctrlb_canister --mode $DEPLOY_MODE --yes --network $NETWORK_TYPE
+    dfx deploy iconfucius_ctrlb_canister --mode "$DEPLOY_MODE" --yes --network "$NETWORK_TYPE"
 fi
 
 echo " "
 echo "--------------------------------------------------"
 echo "Checking health endpoint"
-output=$(dfx canister call iconfucius_ctrlb_canister health --network $NETWORK_TYPE)
+output=$(dfx canister call iconfucius_ctrlb_canister health --network "$NETWORK_TYPE")
 
 if [ "$output" != "(variant { Ok = record { status_code = 200 : nat16 } })" ]; then
     echo "iconfucius_ctrlb_canister is not healthy. Exiting."
@@ -88,7 +123,7 @@ if [ "$DEPLOY_MODE" != "upgrade" ]; then
     echo " "
     echo "--------------------------------------------------"
     echo "Setting initial quote topics"
-    output=$(dfx canister call iconfucius_ctrlb_canister setInitialQuoteTopics --network $NETWORK_TYPE)
+    output=$(dfx canister call iconfucius_ctrlb_canister setInitialQuoteTopics --network "$NETWORK_TYPE")
 
     if [ "$output" != "(variant { Ok = record { status_code = 200 : nat16 } })" ]; then
         echo "setInitialQuoteTopics failed. Exiting."

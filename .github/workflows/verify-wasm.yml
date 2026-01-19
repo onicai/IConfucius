@@ -5,18 +5,16 @@ on:
 
 env:
   DFX_VERSION: "0.29.2"
-  MOPS_VERSION: "2.0.0"
   DFX_WARNING: "-mainnet_plaintext_identity"
 
 jobs:
   verify-wasm:
-    name: verify-wasm ${{ matrix.canister }} (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    name: verify-wasm ${{ matrix.canister }} (Docker)
+    runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
       matrix:
         canister: [IConfucius]
-        os: [macos-26, macos-15-intel, ubuntu-22.04]
 
     steps:
       - name: checkout
@@ -24,51 +22,44 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Node is required for mops install
-      - name: setup node
-        uses: actions/setup-node@v4
-
       - name: install dfx
         run: |
           set -euo pipefail
           DFXVM_INIT_YES=true sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
-          if [[ "$RUNNER_OS" == "macOS" ]]; then
-            source "$HOME/Library/Application Support/org.dfinity.dfx/env"
-            echo "$HOME/Library/Application Support/org.dfinity.dfx/bin" >> $GITHUB_PATH
-          else
-            source "$HOME/.local/share/dfx/env"
-            echo "$HOME/.local/share/dfx/bin" >> $GITHUB_PATH
-          fi
+          source "$HOME/.local/share/dfx/env"
+          echo "$HOME/.local/share/dfx/bin" >> $GITHUB_PATH
           dfxvm default $DFX_VERSION
 
       - name: create default identity
         run: dfx identity get-principal > /dev/null 2>&1
 
-      - name: install mops
-        run: npm install -g ic-mops@$MOPS_VERSION
-
       - name: versions
         run: |
           echo "Runner OS   : $RUNNER_OS"
           echo "Architecture: $(uname -m)"
-          if [[ "$RUNNER_OS" == "macOS" ]]; then
-            echo "OS version  : $(sw_vers -productVersion)"
-          else
-            echo "OS version  : $(lsb_release -d 2>/dev/null | cut -f2 || cat /etc/os-release | grep PRETTY_NAME | cut -d'"' -f2)"
-          fi
+          echo "OS version  : $(lsb_release -d 2>/dev/null | cut -f2)"
           echo "dfx version : $(dfx --version)"
-          echo "dfx cache   : $(dfx cache show)"
-          echo "moc version : $($(dfx cache show)/moc --version 2>&1 || echo 'moc not yet cached')"
-          echo "node version: $(node --version)"
-          echo "mops version: $(mops --version)"
+          echo "Docker      : $(docker --version)"
 
-      - name: verify-wasm for ${{ matrix.canister }} canister on ${{ matrix.os }}
+      - name: build Docker base image
+        working-directory: src/${{ matrix.canister }}
+        run: make docker-build-base
+
+      - name: build wasm with Docker
+        working-directory: src/${{ matrix.canister }}
+        run: make docker-build-wasm
+
+      - name: verify wasm hash matches deployed canister
         working-directory: src/${{ matrix.canister }}
         run: |
           set -euo pipefail
-          mops install
-          echo "=== Installed mops packages ==="
-          ls -la .mops/
-          echo "=== mops.toml ==="
-          cat mops.toml
-          make verify-wasm
+          LOCAL_HASH=$(shasum -a 256 out/out_Linux_x86_64.wasm | cut -d ' ' -f 1)
+          echo "Docker wasm hash:   $LOCAL_HASH"
+          DEPLOYED_HASH=$(dfx canister info iconfucius_ctrlb_canister --network ic | grep "Module hash:" | sed 's/Module hash: 0x//')
+          echo "Deployed wasm hash: $DEPLOYED_HASH"
+          if [ "$LOCAL_HASH" = "$DEPLOYED_HASH" ]; then
+            echo "✅ MATCH: Docker build matches deployed canister iconfucius_ctrlb_canister"
+          else
+            echo "❌ MISMATCH: Docker build does NOT match deployed canister iconfucius_ctrlb_canister"
+            exit 1
+          fi

@@ -1,0 +1,44 @@
+# Use Ubuntu 22.04 for dfx compatibility
+# Pin to specific digest for reproducibility
+ARG PLATFORM=linux/amd64
+FROM --platform=${PLATFORM} ubuntu:22.04@sha256:c7eb020043d8fc2ae0793fb35a37bff1cf33f156d4d4b12ccc7f3ef8706c38b1
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install minimal dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl=7.81.0-1ubuntu1.21 \
+    ca-certificates=20240203~22.04.1 \
+    git=1:2.34.1-1ubuntu1.15 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Node.js 20.x from NodeSource (pin major version)
+ARG NODE_MAJOR=20
+RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install dfx
+ARG DFX_VERSION
+RUN DFXVM_INIT_YES=true sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)" \
+    && . "$HOME/.local/share/dfx/env" \
+    && dfxvm default ${DFX_VERSION}
+
+# Add dfx to PATH
+ENV PATH="/root/.local/share/dfx/bin:${PATH}"
+
+# Pre-populate dfx cache (downloads moc, etc.)
+RUN dfx cache install
+
+# Install mops (pin version via ARG)
+ARG MOPS_VERSION
+RUN npm install -g ic-mops@${MOPS_VERSION}
+
+# Create default identity to avoid prompts
+RUN dfx identity get-principal > /dev/null 2>&1 || true
+
+# Print versions for verification
+RUN echo "dfx version: $(dfx --version)" \
+    && echo "node version: $(node --version)" \
+    && echo "mops version: $(mops --version)" \
+    && echo "moc version: $($(dfx cache show)/moc --version)"

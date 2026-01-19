@@ -1,0 +1,29 @@
+# Reproducible build configuration for IConfucius canister
+# Tool versions - update these when upgrading
+x-versions:
+  dfx: &dfx 0.29.2
+  mops: &mops 2.0.0
+
+x-base-image:
+  name: &base_name "iconfucius-build:dfx-0.29.2"
+
+services:
+  base:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.base
+      args:
+        DFX_VERSION: *dfx
+        MOPS_VERSION: *mops
+    image: *base_name
+  wasm:
+    build:
+      context: ../..
+      dockerfile: IConfucius/docker/Dockerfile
+      args:
+        IMAGE: *base_name
+    volumes:
+      - ../out:/app/IConfucius/out
+    environment:
+      DFX_WARNING: "-mainnet_plaintext_identity"
+    command: bash scripts/build.sh
