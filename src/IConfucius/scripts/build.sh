@@ -1,19 +1,17 @@
 #!/bin/bash
 set -euo pipefail
 
-# Output file (platform-specific for verification)
-OUT=out/out_$(uname -s)_$(uname -m).wasm
+CANISTER_NAME=iconfucius_ctrlb_canister
+# --network is required by dfx build but does not impact the wasm output.
+# The wasm binary is identical regardless of network.
+NETWORK=ic
+OUT_DIR=out
+DFX_DIR=.dfx/${NETWORK}/canisters/${CANISTER_NAME}
 
-# Create output directory
-mkdir -p out
+mkdir -p ${OUT_DIR}
+echo "Building ${CANISTER_NAME} with dfx..."
+dfx build ${CANISTER_NAME} --network ${NETWORK}
+cp -r ${DFX_DIR}/* ${OUT_DIR}/
 
-# Build using dfx
-echo "Building with dfx..."
-dfx build iconfucius_ctrlb_canister --network ic
-
-# Copy to output location
-cp .dfx/ic/canisters/iconfucius_ctrlb_canister/iconfucius_ctrlb_canister.wasm $OUT
-
-# Output hash
 echo "Wasm hash:"
-sha256sum $OUT
+sha256sum ${OUT_DIR}/${CANISTER_NAME}.wasm

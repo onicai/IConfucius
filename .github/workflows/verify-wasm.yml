@@ -2,6 +2,14 @@ name: verify-wasm
 
 on:
   workflow_dispatch:
+    inputs:
+      network:
+        description: "Network to verify against"
+        type: choice
+        options:
+          - ic
+          - testing
+        default: ic
 
 env:
   DFX_VERSION: "0.29.2"
@@ -9,7 +17,7 @@ env:
 
 jobs:
   verify-wasm:
-    name: verify-wasm ${{ matrix.canister }} (Docker)
+    name: verify-wasm ${{ matrix.canister }} (${{ inputs.network }})
     runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
@@ -51,15 +59,4 @@ jobs:
 
       - name: verify wasm hash matches deployed canister
         working-directory: src/${{ matrix.canister }}
-        run: |
-          set -euo pipefail
-          LOCAL_HASH=$(shasum -a 256 out/out_Linux_x86_64.wasm | cut -d ' ' -f 1)
-          echo "Docker wasm hash:   $LOCAL_HASH"
-          DEPLOYED_HASH=$(dfx canister info iconfucius_ctrlb_canister --network ic | grep "Module hash:" | sed 's/Module hash: 0x//')
-          echo "Deployed wasm hash: $DEPLOYED_HASH"
-          if [ "$LOCAL_HASH" = "$DEPLOYED_HASH" ]; then
-            echo "✅ MATCH: Docker build matches deployed canister iconfucius_ctrlb_canister"
-          else
-            echo "❌ MISMATCH: Docker build does NOT match deployed canister iconfucius_ctrlb_canister"
-            exit 1
-          fi
+        run: make docker-verify-wasm VERIFY_NETWORK=${{ inputs.network }}

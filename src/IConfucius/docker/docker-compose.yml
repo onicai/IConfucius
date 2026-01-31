@@ -5,6 +5,7 @@ x-versions:
   mops: &mops 2.0.0
 
 x-base-image:
+  # Base image naming convention: {repo}-build:dfx-{version} (repo=IConfucius, lowercase for Docker)
   name: &base_name "iconfucius-build:dfx-0.29.2"
 
 services:
@@ -16,7 +17,9 @@ services:
         DFX_VERSION: *dfx
         MOPS_VERSION: *mops
     image: *base_name
+  # Image naming convention: {repo}-{canister_name}-wasm:latest (repo=IConfucius, lowercase for Docker)
   wasm:
+    image: iconfucius-iconfucius-ctrlb-canister-wasm:latest
     build:
       context: ../..
       dockerfile: IConfucius/docker/Dockerfile
