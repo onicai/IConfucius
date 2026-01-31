@@ -31,18 +31,18 @@ IConfucius operates entirely on-chain on the Internet Computer, including the LL
 2. With the Internet Computer's reverse gas model, you control your costs—no unexpected bills ❣️
 3. Seamless & secure integration with other ICP applications.
 
-# IConfucius Technical Roadmap
+# IConfucius Roadmap
 
 We have the following technical roadmap in mind for IConfucius:
 
-- ✅️ IConfucius canisters deployed
-- ✅️ IConfucius can be prompted from command line (dfx)
 - ✅️ Launched on [ODIN•FUN](https://odin.fun?r=mgb3mzvghe) → Token https://odin.fun/token/29m8
-- ✅️ IConfucius can generate quotes in either English or Chinese.
-- ✅️ IConfucius posts his quotes of wisdom directly to [IConfucius X (Twitter) account](https://x.com/IConfucius_odin)
-- 🚧 IConfucius posts his quotes of wisdom directly to OpenChat
-- 🚧 IConfucius integrated into onicai's Proof-of-AI-Work dApp
-- 🧠 IConfucius listens to the community and evolves his abilities
+- ✅️ IConfucius can generate quotes in either English or Chinese → [Try it out](https://aiconfucius-w8i.caffeine.xyz/)
+- ✅️ IConfucius deployed with reproducible builds, in preparation of decentralization
+- 🚧 IConfucius daily quote of wisdom posted to [IConfucius X (Twitter) account](https://x.com/IConfucius_odin)
+- 🚧 IConfucius daily quote of wisdom posted to OpenChat
+- 🚧 IConfucius daily quote of wisdom email subscription service
+- 🚧 IConfucius takes a role in [funnAI](https://funnai.onicai.com/)
+- 🧠 IConfucius evolves his abilities under governance of the [onicai SNS](https://www.onicai.com/files/onicai_SNS_Whitepaper.pdf)
 
 # How IConfucius works
 
