@@ -4,7 +4,7 @@ set -euo pipefail
 CANISTER_NAME=iconfucius_ctrlb_canister
 # --network is required by dfx build but does not impact the wasm output.
 # The wasm binary is identical regardless of network.
-NETWORK=ic
+NETWORK=prd
 OUT_DIR=out
 DFX_DIR=.dfx/${NETWORK}/canisters/${CANISTER_NAME}
 

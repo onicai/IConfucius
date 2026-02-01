@@ -1,4 +1,11 @@
-"""Returns the ic-py Canister instance, for calling the endpoints."""
+"""Returns the ic-py Canister instance, for calling the endpoints.
+
+Network naming convention:
+  - "local"       -> local dfx replica
+  - "testing"     -> IC testing subnet
+  - "development" -> IC development subnet
+  - "prd"         -> IC mainnet (production)
+"""
 
 import sys
 import subprocess

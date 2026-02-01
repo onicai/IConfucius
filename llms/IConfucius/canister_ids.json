@@ -1,6 +1,7 @@
 {
   "llm_0": {
-    "ic": "dikpv-oqaaa-aaaaa-qafsa-cai",
+    "development": "zseth-paaaa-aaaaj-a3xea-cai",
+    "prd": "dikpv-oqaaa-aaaaa-qafsa-cai",
     "testing": "rsoxo-riaaa-aaaag-au3na-cai"
   }
 }

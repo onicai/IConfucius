@@ -12,10 +12,12 @@ As soon as the SDK supports API keys, we will implement this capability.
 
 **Start the timers**
 
+Network options: `local` (default), `testing` (IC testing subnet), `development` (IC development subnet), `prd` (IC mainnet production).
+
 ```bash
 # from root folder:
-scripts/start-timers.sh [--network ic]
-scripts/stop-timers.sh [--network ic]
+scripts/start-timers.sh [--network prd]
+scripts/stop-timers.sh [--network prd]
 ```
 
 After some time, several quotes have been generated.
@@ -24,6 +26,6 @@ IConfucius saves all his generated quotes in a stable memory data structure, and
 
 ```bash
 # from folder: src/IConfucius
-dfx canister call iconfucius_ctrlb_canister getQuotesAdmin --output json [--ic]
-dfx canister call iconfucius_ctrlb_canister getNumQuotesAdmin --output json [--ic]
+dfx canister call iconfucius_ctrlb_canister getQuotesAdmin --output json [--network prd]
+dfx canister call iconfucius_ctrlb_canister getNumQuotesAdmin --output json [--network prd]
 ```
