@@ -5,7 +5,7 @@ export PYTHONPATH="${PYTHONPATH}:$(realpath $LLAMA_CPP_CANISTER_PATH)"
 
 #######################################################################
 # run from parent folder as:
-# scripts/3-upload-model.sh --network [local|testing|ic]
+# scripts/3-upload-model.sh --network [local|testing|development|prd]
 #######################################################################
 
 # Default network type is local
@@ -20,23 +20,26 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --network)
             shift
-            if [ "$1" = "local" ] || [ "$1" = "testing" ] || [ "$1" = "ic" ]; then
+            if [ "$1" = "local" ] || [ "$1" = "testing" ] || [ "$1" = "development" ] || [ "$1" = "prd" ]; then
                 NETWORK_TYPE=$1
             else
-                echo "Invalid network type: $1. Use 'local', 'testing' or 'ic'."
+                echo "Invalid network type: $1. Use 'local', 'testing', 'development' or 'prd'."
                 exit 1
             fi
             shift
             ;;
         *)
             echo "Unknown argument: $1"
-            echo "Usage: $0 --network [local|testing|ic]"
+            echo "Usage: $0 --network [local|testing|development|prd]"
             exit 1
             ;;
     esac
 done
 
 echo "Using network type: $NETWORK_TYPE"
+
+# The upstream llama_cpp_canister scripts pass the network type directly to dfx.
+UPSTREAM_NETWORK_TYPE="$NETWORK_TYPE"
 
 #######################################################################
 echo " "
@@ -63,7 +66,7 @@ do
     echo " "
     echo "--------------------------------------------------"
     echo "Upload the model ($MODEL) to llm_$i"
-    python -m scripts.upload --network $NETWORK_TYPE --canister llm_$i --canister-filename models/model.gguf $MODEL
+    python -m scripts.upload --network $UPSTREAM_NETWORK_TYPE --canister llm_$i --canister-filename models/model.gguf $MODEL
 
     if [ $? -ne 0 ]; then
         echo "scripts.upload for llm_$i exited with an error."

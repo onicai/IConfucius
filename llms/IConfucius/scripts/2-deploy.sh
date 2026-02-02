@@ -2,7 +2,7 @@
 
 #######################################################################
 # run from parent folder as:
-# scripts/2-deploy.sh --network [local|testing|ic]
+# scripts/2-deploy.sh --network [local|testing|development|prd]
 #######################################################################
 
 # Default network type is local
@@ -14,17 +14,17 @@ DEPLOY_MODE="install"
 # none will not use subnet parameter in deploy to ic
 # SUBNET="none"
 # llm 0
-SUBNET="snjp4-xlbw4-mnbog-ddwy6-6ckfd-2w5a2-eipqo-7l436-pxqkh-l6fuv-vae"
+SUBNET="qdvhd-os4o2-zzrdw-xrcv4-gljou-eztdp-bj326-e6jgr-tkhuc-ql6v2-yqe"
 
 # Parse command line arguments for network type
 while [ $# -gt 0 ]; do
     case "$1" in
         --network)
             shift
-            if [ "$1" = "local" ] || [ "$1" = "testing" ] || [ "$1" = "ic" ]; then
+            if [ "$1" = "local" ] || [ "$1" = "testing" ] || [ "$1" = "development" ] || [ "$1" = "prd" ]; then
                 NETWORK_TYPE=$1
             else
-                echo "Invalid network type: $1. Use 'local', 'testing' or 'ic'."
+                echo "Invalid network type: $1. Use 'local', 'testing', 'development' or 'prd'."
                 exit 1
             fi
             shift
@@ -41,7 +41,7 @@ while [ $# -gt 0 ]; do
             ;;
         *)
             echo "Unknown argument: $1"
-            echo "Usage: $0 --network [local|testing|ic]"
+            echo "Usage: $0 --network [local|testing|development|prd]"
             exit 1
             ;;
     esac
@@ -50,8 +50,8 @@ done
 echo "Using network type: $NETWORK_TYPE"
 
 if [ "$NETWORK_TYPE" = "local" ]; then
-    if [ "$DEPLOY_MODE" == "install" ]; then
-        echo "local & install - cleaning up .dfx"
+    if [ "$DEPLOY_MODE" = "install" ] || [ "$DEPLOY_MODE" = "reinstall" ]; then
+        echo "local & $DEPLOY_MODE - cleaning up .dfx"
         rm -rf .dfx
     fi
 fi
@@ -66,22 +66,22 @@ for i in $(seq $llm_id_start $llm_id_end)
 do
     echo "--------------------------------------------------"
     echo "Deploying the wasm to llm_$i"
-    if [ "$NETWORK_TYPE" = "ic" ]; then
+    if [ "$NETWORK_TYPE" = "prd" ] || [ "$NETWORK_TYPE" = "testing" ] || [ "$NETWORK_TYPE" = "development" ]; then
         if [ "$SUBNET" = "none" ]; then
-            echo "Deploying llm_$i llms to ic"
+            echo "Deploying llm_$i to $NETWORK_TYPE network"
             yes | dfx deploy llm_$i --mode $DEPLOY_MODE --yes --network $NETWORK_TYPE
         else
-            echo "Deploying llm_$i to ic on subnet $SUBNET"
+            echo "Deploying llm_$i to $NETWORK_TYPE network on subnet $SUBNET"
             yes | dfx deploy llm_$i --mode $DEPLOY_MODE --yes --network $NETWORK_TYPE --subnet $SUBNET
         fi
-        if [ "$DEPLOY_MODE" = "install" ]; then
-            echo "Initial install to ic: Waiting for 30 seconds before checking health endpoint for llm_$i"
+        if [ "$DEPLOY_MODE" = "install" ] || [ "$DEPLOY_MODE" = "reinstall" ]; then
+            echo "Initial $DEPLOY_MODE: Waiting for 30 seconds before checking health endpoint for llm_$i"
             sleep 30
         fi
     else
-        echo "Deploying llm_$i llms to local network"
+        echo "Deploying llm_$i to local network"
         yes | dfx deploy llm_$i --mode $DEPLOY_MODE --yes --network $NETWORK_TYPE
-    fi 
+    fi
     
     echo " "
     echo "--------------------------------------------------"

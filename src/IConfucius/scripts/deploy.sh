@@ -2,7 +2,7 @@
 
 #######################################################################
 # run from parent folder as:
-# scripts/deploy.sh --network [local|testing|ic]
+# scripts/deploy.sh --network [local|testing|development|prd]
 #######################################################################
 
 set -euo pipefail
@@ -14,17 +14,17 @@ DEPLOY_MODE="install"
 # When deploying to IC, we deploy to a specific subnet
 # none will not use subnet parameter in deploy to ic
 # SUBNET="none"
-SUBNET="snjp4-xlbw4-mnbog-ddwy6-6ckfd-2w5a2-eipqo-7l436-pxqkh-l6fuv-vae"
+SUBNET="qdvhd-os4o2-zzrdw-xrcv4-gljou-eztdp-bj326-e6jgr-tkhuc-ql6v2-yqe"
 
 # Parse command line arguments for network type
 while [ $# -gt 0 ]; do
     case "$1" in
         --network)
             shift
-            if [ "$1" = "local" ] || [ "$1" = "testing" ] || [ "$1" = "ic" ]; then
+            if [ "$1" = "local" ] || [ "$1" = "testing" ] || [ "$1" = "development" ] || [ "$1" = "prd" ]; then
                 NETWORK_TYPE=$1
             else
-                echo "Invalid network type: $1. Use 'local', 'testing' or 'ic'."
+                echo "Invalid network type: $1. Use 'local', 'testing', 'development' or 'prd'."
                 exit 1
             fi
             shift
@@ -41,7 +41,7 @@ while [ $# -gt 0 ]; do
             ;;
         *)
             echo "Unknown argument: $1"
-            echo "Usage: $0 --network [local|testing|ic]"
+            echo "Usage: $0 --network [local|testing|development|prd]"
             exit 1
             ;;
     esac
@@ -50,8 +50,8 @@ done
 echo "Using network type: $NETWORK_TYPE"
 
 if [ "$NETWORK_TYPE" = "local" ]; then
-    if [ "$DEPLOY_MODE" == "install" ]; then
-        echo "local & install - cleaning up .dfx"
+    if [ "$DEPLOY_MODE" = "install" ] || [ "$DEPLOY_MODE" = "reinstall" ]; then
+        echo "local & $DEPLOY_MODE - cleaning up .dfx"
         rm -rf .dfx
     fi
 fi
@@ -61,8 +61,8 @@ fi
 echo " "
 echo "--------------------------------------------------"
 
-# For ic and testing networks, use Docker-based reproducible builds
-if [ "$NETWORK_TYPE" = "ic" ] || [ "$NETWORK_TYPE" = "testing" ]; then
+# For remote networks, use Docker-based reproducible builds
+if [ "$NETWORK_TYPE" = "prd" ] || [ "$NETWORK_TYPE" = "testing" ] || [ "$NETWORK_TYPE" = "development" ]; then
     echo "Building wasm with Docker (reproducible build)..."
     make docker-build-wasm
 
@@ -75,8 +75,8 @@ if [ "$NETWORK_TYPE" = "ic" ] || [ "$NETWORK_TYPE" = "testing" ]; then
     echo "Wasm hash:"
     shasum -a 256 "$WASM_FILE"
 
-    # Create canister if it doesn't exist (for install mode)
-    if [ "$DEPLOY_MODE" = "install" ]; then
+    # Create canister if it doesn't exist (for install/reinstall mode)
+    if [ "$DEPLOY_MODE" = "install" ] || [ "$DEPLOY_MODE" = "reinstall" ]; then
         echo "Creating canister..."
         if [ "$SUBNET" = "none" ]; then
             dfx canister create iconfucius_ctrlb_canister --network "$NETWORK_TYPE" || true

@@ -2,7 +2,7 @@
 
 #######################################################################
 # run from parent folder as:
-# scripts/top-off.sh --network [local|testing|ic]
+# scripts/top-off.sh --network [local|testing|development|prd]
 #######################################################################
 
 # Default network type is local
@@ -14,17 +14,17 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --network)
             shift
-            if [ "$1" = "local" ] || [ "$1" = "testing" ] || [ "$1" = "ic" ]; then
+            if [ "$1" = "local" ] || [ "$1" = "testing" ] || [ "$1" = "development" ] || [ "$1" = "prd" ]; then
                 NETWORK_TYPE=$1
             else
-                echo "Invalid network type: $1. Use 'local', 'testing' or 'ic'."
+                echo "Invalid network type: $1. Use 'local', 'testing', 'development' or 'prd'."
                 exit 1
             fi
             shift
             ;;
         *)
             echo "Unknown argument: $1"
-            echo "Usage: $0 --network [local|testing|ic]"
+            echo "Usage: $0 --network [local|testing|development|prd]"
             exit 1
             ;;
     esac

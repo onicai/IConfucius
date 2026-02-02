@@ -92,7 +92,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Monitor DFINITY canister logs.")
     parser.add_argument(
         "--network",
-        choices=["local", "ic"],
+        choices=["local", "testing", "development", "prd"],
         default="local",
         help="Specify the network to use (default: local)",
     )

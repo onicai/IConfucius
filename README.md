@@ -84,6 +84,10 @@ One of the great things about the Internet Computer is you can spin up your own 
 We hope many of you will deploy your own IConfucius canisters, play with it, learn from it, and
 then build & deploy your own on-chain AI agents that do something else. We can't wait to see what you will create.
 
+## Docker
+
+Docker is required for reproducible builds of the Motoko canister. Install Docker Desktop from https://www.docker.com/products/docker-desktop/
+
 ## Clone or download Github Repo
 
 You can either download the zip file from https://github.com/onicai/IConfucius and unzip it,
@@ -164,10 +168,21 @@ unset DFX_NETWORK
 dfx start --clean
 
 # Then in another terminal:
-# The first time, use this command:
-scripts/deploy-IConfucius.sh --mode install [--network ic]
-# The second time, to upgrade the canisters for a code change:
-scripts/deploy-IConfucius.sh --mode upgrade [--network ic]
+scripts/deploy-IConfucius.sh --mode install   # first install
+scripts/deploy-IConfucius.sh --mode upgrade   # to upgrade
+scripts/deploy-IConfucius.sh --mode reinstall # CAREFUL !!! : wipes everything and uploads new LLM model
+# In case you need to re-upload the LLM model (gguf), run this script
+# from folder: llms/IConfucius
+scripts/3-upload-model.sh 
+
+# To deploy to mainnet:
+NETWORK=testing # There are 3 mainnet networks: testing, development, prd
+scripts/deploy-IConfucius.sh --mode install   --network $NETWORK  # first install
+scripts/deploy-IConfucius.sh --mode upgrade   --network $NETWORK  # to upgrade
+scripts/deploy-IConfucius.sh --mode reinstall --network $NETWORK  # CAREFUL !!! : wipes everything and uploads new LLM model
+# In case you need to re-upload the LLM model (gguf), run this script
+# from folder: llms/IConfucius
+scripts/3-upload-model.sh --network $NETWORK
 ```
 
 Notes:
@@ -176,7 +191,7 @@ Notes:
 - `--mode upgrade` is fast, because the LLM model is NOT uploaded. All the canisters are
   re-build and re-deployed, but the LLM model is still as a virtual file in the canister's
   stable memory.
-- When you deploy to the ic mainnet, it is recommended to do the initial deploy of each
+- When you deploy to the mainnet, it is recommended to do the initial deploy of each
   component manually and specify the subnet. Pick one that is not so busy, because LLMs use a lot of computations.
 
 - When working on Windows, use WSL Ubuntu. To successfully load the LLM model into the LLM canister, you might first have to run
@@ -197,15 +212,6 @@ dfx canister call iconfucius_ctrlb_canister togglePauseIconfuciusFlagAdmin
 # Generate some wisdom !
 dfx canister call iconfucius_ctrlb_canister IConfuciusSays '(variant {English}, "crypto")'
 dfx canister call iconfucius_ctrlb_canister IConfuciusSays '(variant {Chinese}, "加密货币")'
-
-# Note that from anywhere you can also call the production canister on the IC with:
-# Ensure it is not paused
-dfx canister call dpljb-diaaa-aaaaa-qafsq-cai getPauseIconfuciusFlag  --ic
-# Unpause it if needed
-dfx canister call dpljb-diaaa-aaaaa-qafsq-cai togglePauseIconfuciusFlagAdmin  --ic
-# Generate some wisdom !
-dfx canister call dpljb-diaaa-aaaaa-qafsq-cai IConfuciusSays '(variant {English}, "crypto")' --ic
-dfx canister call dpljb-diaaa-aaaaa-qafsq-cai IConfuciusSays '(variant {Chinese}, "加密货币")' --ic
 ```
 
 ## Maintenance on IConfucius
@@ -215,15 +221,15 @@ dfx canister call dpljb-diaaa-aaaaa-qafsq-cai IConfuciusSays '(variant {Chinese}
 When deployed to main-net, to do maintenance, you can pause IConfucius
 
 ```bash
-  dfx canister call dpljb-diaaa-aaaaa-qafsq-cai getPauseIconfuciusFlag --ic
-  dfx canister call dpljb-diaaa-aaaaa-qafsq-cai togglePauseIconfuciusFlagAdmin --ic
+  dfx canister call dpljb-diaaa-aaaaa-qafsq-cai getPauseIconfuciusFlag --network prd
+  dfx canister call dpljb-diaaa-aaaaa-qafsq-cai togglePauseIconfuciusFlagAdmin --network prd
 ```
 
 ### Manage the deployed LLMs
 
 ```bash
   # Get the LLMs currently in use
-  dfx canister call dpljb-diaaa-aaaaa-qafsq-cai get_llm_canisters --ic
+  dfx canister call dpljb-diaaa-aaaaa-qafsq-cai get_llm_canisters --network prd
 
   # Remove an LLM
   dfx canister call dpljb-diaaa-aaaaa-qafsq-cai remove_llm '(record {canister_id = "<canister-id>"} })'

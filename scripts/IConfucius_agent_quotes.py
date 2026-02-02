@@ -56,9 +56,9 @@ def load_last_random_topic_timestampe():
 def IConfuciusSays(language: str, topic: str) -> str:
     """Calls the IConfuciusSays endpoint of the IConfucius canister."""
 
-    network = "ic"
+    network = "prd"
     canister_name = "iconfucius_ctrlb_canister"
-    canister_id = "dpljb-diaaa-aaaaa-qafsq-cai" # ic mainnet
+    canister_id = "dpljb-diaaa-aaaaa-qafsq-cai" # prd mainnet
     candid_path = ROOT_PATH / "scripts/iconfucius_ctrlb_canister.did" # Keep this up to date
 
     print(

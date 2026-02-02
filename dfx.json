@@ -102,6 +102,18 @@
         "https://icp0.io"
       ],
       "type": "persistent"
+    },
+    "development": {
+      "providers": [
+        "https://icp0.io"
+      ],
+      "type": "persistent"
+    },
+    "prd": {
+      "providers": [
+        "https://icp0.io"
+      ],
+      "type": "persistent"
     }
   },
   "version": 1

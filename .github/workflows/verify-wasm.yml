@@ -7,9 +7,10 @@ on:
         description: "Network to verify against"
         type: choice
         options:
-          - ic
+          - prd
           - testing
-        default: ic
+          - development
+        default: prd
 
 env:
   DFX_VERSION: "0.29.2"
