@@ -1,4 +1,5 @@
 import Nat64 "mo:base/Nat64";
+import Principal "mo:base/Principal";
 
 module Types {
     public type NatResult = Result<Nat, ApiError>;
@@ -144,4 +145,75 @@ module Types {
     };
 
     public type AuthRecordResult = Result<AuthRecord, ApiError>;
+
+    //-------------------------------------------------------------------------
+    // Admin RBAC Types
+    public type AdminRole = {
+        #AdminUpdate; // Access to Admin endpoints requiring #AdminUpdate or #AdminQuery roles
+        #AdminQuery;  // Access to Admin endpoints requiring #AdminQuery role only
+    };
+
+    public type AdminRoleAssignment = {
+        principal  : Text;
+        role       : AdminRole;
+        assignedBy : Text;
+        assignedAt : Nat64;
+        note       : Text;
+    };
+
+    public type AssignAdminRoleInputRecord = {
+        principal : Text;
+        role      : AdminRole;
+        note      : Text;
+    };
+
+    public type AdminRoleAssignmentResult = Result<AdminRoleAssignment, ApiError>;
+    public type AdminRoleAssignmentsResult = Result<[AdminRoleAssignment], ApiError>;
+
+    //-------------------------------------------------------------------------
+    // IC Management Canister — Schnorr subset
+    public type schnorr_algorithm = { #ed25519; #bip340secp256k1 };
+    public type schnorr_aux = { #bip341 : { merkle_root_hash : Blob } };
+
+    public type schnorr_public_key_args = {
+        key_id          : { algorithm : schnorr_algorithm; name : Text };
+        canister_id     : ?Principal;
+        derivation_path : [Blob];
+    };
+
+    public type schnorr_public_key_result = {
+        public_key : Blob;
+        chain_code : Blob;
+    };
+
+    public type sign_with_schnorr_args = {
+        key_id          : { algorithm : schnorr_algorithm; name : Text };
+        derivation_path : [Blob];
+        message         : Blob;
+        aux             : ?schnorr_aux;
+    };
+
+    public type sign_with_schnorr_result = { signature : Blob };
+
+    public type IC_Management = actor {
+        schnorr_public_key : shared schnorr_public_key_args -> async schnorr_public_key_result;
+        sign_with_schnorr  : shared sign_with_schnorr_args -> async sign_with_schnorr_result;
+    };
+
+    //-------------------------------------------------------------------------
+    // OdinBot Schnorr Signing Types
+    public type OdinBotPublicKeyRecord = {
+        publicKeyHex   : Text;
+        publicKeyBytes : Blob;
+        derivationPath : Text;
+    };
+
+    public type OdinBotPublicKeyResult = Result<OdinBotPublicKeyRecord, ApiError>;
+
+    public type OdinBotSignatureRecord = {
+        signature    : Blob;
+        signatureHex : Text;
+    };
+
+    public type OdinBotSignatureResult = Result<OdinBotSignatureRecord, ApiError>;
 };

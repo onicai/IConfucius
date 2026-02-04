@@ -1,10 +1,13 @@
 import Array "mo:base/Array";
+import Blob "mo:base/Blob";
 import Buffer "mo:base/Buffer";
 import D "mo:base/Debug";
 import Error "mo:base/Error";
+import ExperimentalCycles "mo:base/ExperimentalCycles";
 import Principal "mo:base/Principal";
 import Text "mo:base/Text";
 import Nat "mo:base/Nat";
+import Nat8 "mo:base/Nat8";
 import Nat32 "mo:base/Nat32";
 import Nat64 "mo:base/Nat64";
 import Bool "mo:base/Bool";
@@ -21,7 +24,7 @@ import Timer "mo:base/Timer";
 import Types "../../common/Types";
 import Utils "Utils";
 
-persistent actor class IConfuciusCtrlbCanister() {
+persistent actor class IConfuciusCtrlbCanister(initSchnorrKeyName : Text) {
     
     // Orthogonal Persisted Data storage
 
@@ -30,7 +33,7 @@ persistent actor class IConfuciusCtrlbCanister() {
 
     public shared (msg) func togglePauseIconfuciusFlagAdmin() : async Types.AuthRecordResult {
         if (Principal.isAnonymous(msg.caller)) {
-            return #Err(#StatusCode(401));
+            return #Err(#Unauthorized);
         };
         if (not Principal.isController(msg.caller)) {
             return #Err(#Unauthorized);
@@ -43,6 +46,82 @@ persistent actor class IConfuciusCtrlbCanister() {
     public query func getPauseIconfuciusFlag() : async Types.FlagResult {
         return #Ok({ flag = PAUSE_ICONFUCIUS });
     };
+
+    // ---------------------------------------------------------------
+    // Admin RBAC
+    // ---------------------------------------------------------------
+    var adminRoleAssignmentsStable : [(Text, Types.AdminRoleAssignment)] = [];
+    transient var adminRoleAssignmentsStorage : HashMap.HashMap<Text, Types.AdminRoleAssignment> = HashMap.HashMap(0, Text.equal, Text.hash);
+
+    private func putAdminRole(principal : Text, assignment : Types.AdminRoleAssignment) : Bool {
+        adminRoleAssignmentsStorage.put(principal, assignment);
+        return true;
+    };
+
+    private func getAdminRole(principal : Text) : ?Types.AdminRoleAssignment {
+        switch (adminRoleAssignmentsStorage.get(principal)) {
+            case (null) { return null };
+            case (?assignment) { return ?assignment };
+        };
+    };
+
+    private func removeAdminRole(principal : Text) : Bool {
+        switch (adminRoleAssignmentsStorage.get(principal)) {
+            case (null) { return false };
+            case (?_assignment) {
+                ignore adminRoleAssignmentsStorage.remove(principal);
+                return true;
+            };
+        };
+    };
+
+    private func getAllAdminRoles() : [Types.AdminRoleAssignment] {
+        return Iter.toArray(adminRoleAssignmentsStorage.vals());
+    };
+
+    private func hasAdminRole(principal : Principal, requiredRole : Types.AdminRole) : Bool {
+        // Controllers automatically have all permissions
+        if (Principal.isController(principal)) {
+            return true;
+        };
+
+        let principalText = Principal.toText(principal);
+        switch (getAdminRole(principalText)) {
+            case (null) { return false };
+            case (?assignment) {
+                switch (assignment.role, requiredRole) {
+                    // AdminUpdate includes AdminQuery
+                    case (#AdminUpdate, #AdminQuery) { true };
+                    case (#AdminUpdate, #AdminUpdate) { true };
+                    // AdminQuery only has query permissions
+                    case (#AdminQuery, #AdminQuery) { true };
+                    case _ { false };
+                };
+            };
+        };
+    };
+
+    // ---------------------------------------------------------------
+    // OdinBot — Schnorr signing via IC management canister
+    // ---------------------------------------------------------------
+
+    // Schnorr key name — set via init argument per environment:
+    //   "dfx_test_key" = local replica
+    //   "test_key_1"   = IC mainnet testing/development (cheaper, 13-node subnet)
+    //   "key_1"        = IC mainnet production (34-node fiduciary subnet)
+    var schnorrKeyName : Text = initSchnorrKeyName;
+
+    // Cycles to attach for IC management canister Schnorr calls
+    let SCHNORR_CYCLES : Nat = 100_000_000_000;
+
+    // Fixed derivation path for IConfucius' single OdinBot
+    let ODIN_BOT_DERIVATION_PATH : Text = "odin-bot";
+
+    // IC management canister
+    let ic : Types.IC_Management = actor ("aaaaa-aa");
+
+    // Cached OdinBot public key (populated by configureOdinBot)
+    var odinBotPublicKey : ?Types.OdinBotPublicKeyRecord = null;
 
     // timer ID, so we can stop it after starting
     var recurringTimerId : ?Timer.TimerId = null;
@@ -87,7 +166,7 @@ persistent actor class IConfuciusCtrlbCanister() {
 
     public shared (msg) func setInitialQuoteTopics() : async Types.StatusCodeRecordResult {
         if (Principal.isAnonymous(msg.caller)) {
-            return #Err(#StatusCode(401));
+            return #Err(#Unauthorized);
         };
         if (not Principal.isController(msg.caller)) {
             return #Err(#Unauthorized);
@@ -138,7 +217,7 @@ persistent actor class IConfuciusCtrlbCanister() {
 
     public shared query (msg) func getQuotesAdmin() : async Types.GeneratedQuotesResult {
         if (Principal.isAnonymous(msg.caller)) {
-            return #Err(#StatusCode(401));
+            return #Err(#Unauthorized);
         };
         if (not Principal.isController(msg.caller)) {
             return #Err(#Unauthorized);
@@ -149,7 +228,7 @@ persistent actor class IConfuciusCtrlbCanister() {
 
     public shared query (msg) func getNumQuotesAdmin() : async Types.NatResult {
         if (Principal.isAnonymous(msg.caller)) {
-            return #Err(#StatusCode(401));
+            return #Err(#Unauthorized);
         };
         if (not Principal.isController(msg.caller)) {
             return #Err(#Unauthorized);
@@ -182,7 +261,7 @@ persistent actor class IConfuciusCtrlbCanister() {
 
     public shared query (msg) func get_llm_canisters() : async Types.LlmCanistersRecordResult {
         if (Principal.isAnonymous(msg.caller)) {
-            return #Err(#StatusCode(401));
+            return #Err(#Unauthorized);
         };
         if (not Principal.isController(msg.caller)) {
             return #Err(#StatusCode(401));
@@ -201,7 +280,7 @@ persistent actor class IConfuciusCtrlbCanister() {
 
     public shared (msg) func reset_llm_canisters() : async Types.StatusCodeRecordResult {
         if (Principal.isAnonymous(msg.caller)) {
-            return #Err(#StatusCode(401));
+            return #Err(#Unauthorized);
         };
         if (not Principal.isController(msg.caller)) {
             return #Err(#StatusCode(401));
@@ -214,7 +293,7 @@ persistent actor class IConfuciusCtrlbCanister() {
 
     public shared (msg) func add_llm_canister(llmCanisterIdRecord : Types.CanisterIDRecord) : async Types.StatusCodeRecordResult {
         if (Principal.isAnonymous(msg.caller)) {
-            return #Err(#StatusCode(401));
+            return #Err(#Unauthorized);
         };
         if (not Principal.isController(msg.caller)) {
             return #Err(#StatusCode(401));
@@ -227,7 +306,7 @@ persistent actor class IConfuciusCtrlbCanister() {
 
     public shared (msg) func remove_llm_canister(llmCanisterIdRecord : Types.CanisterIDRecord) : async Types.StatusCodeRecordResult {
         if (Principal.isAnonymous(msg.caller)) {
-            return #Err(#StatusCode(401));
+            return #Err(#Unauthorized);
         };
         if (not Principal.isController(msg.caller)) {
             return #Err(#StatusCode(401));
@@ -258,7 +337,7 @@ persistent actor class IConfuciusCtrlbCanister() {
     // Admin function to reset roundRobinLLMs
     public shared (msg) func resetRoundRobinLLMs() : async Types.StatusCodeRecordResult {
         if (Principal.isAnonymous(msg.caller)) {
-            return #Err(#StatusCode(401));
+            return #Err(#Unauthorized);
         };
         if (not Principal.isController(msg.caller)) {
             return #Err(#StatusCode(401));
@@ -275,7 +354,7 @@ persistent actor class IConfuciusCtrlbCanister() {
     // Admin function to set roundRobinLLMs
     public shared (msg) func setRoundRobinLLMs(_roundRobinLLMs : Nat) : async Types.StatusCodeRecordResult {
         if (Principal.isAnonymous(msg.caller)) {
-            return #Err(#StatusCode(401));
+            return #Err(#Unauthorized);
         };
         if (not Principal.isController(msg.caller)) {
             return #Err(#StatusCode(401));
@@ -299,7 +378,7 @@ persistent actor class IConfuciusCtrlbCanister() {
     // Function to verify that canister is ready for inference
     public shared (msg) func ready() : async Types.StatusCodeRecordResult {
         if (Principal.isAnonymous(msg.caller)) {
-            return #Err(#StatusCode(401));
+            return #Err(#Unauthorized);
         };
         if (not Principal.isController(msg.caller)) {
             return #Err(#StatusCode(401));
@@ -324,7 +403,7 @@ persistent actor class IConfuciusCtrlbCanister() {
     // Admin function to verify that caller is a controller of this canister
     public shared query (msg) func amiController() : async Types.StatusCodeRecordResult {
         if (Principal.isAnonymous(msg.caller)) {
-            return #Err(#StatusCode(401));
+            return #Err(#Unauthorized);
         };
         if (not Principal.isController(msg.caller)) {
             return #Err(#StatusCode(401));
@@ -335,7 +414,7 @@ persistent actor class IConfuciusCtrlbCanister() {
     // Admin function to verify that iconfucius_ctrlb_canister is a controller of all the llm canisters
     public shared (msg) func checkAccessToLLMs() : async Types.StatusCodeRecordResult {
         if (Principal.isAnonymous(msg.caller)) {
-            return #Err(#StatusCode(401));
+            return #Err(#Unauthorized);
         };
         if (not Principal.isController(msg.caller)) {
             return #Err(#StatusCode(401));
@@ -817,7 +896,7 @@ persistent actor class IConfuciusCtrlbCanister() {
 
     public shared query (msg) func getRoundRobinCanister() : async Types.CanisterIDRecordResult {
         if (Principal.isAnonymous(msg.caller)) {
-            return #Err(#StatusCode(401));
+            return #Err(#Unauthorized);
         };
         if (not Principal.isController(msg.caller)) {
             return #Err(#StatusCode(401));
@@ -859,7 +938,7 @@ persistent actor class IConfuciusCtrlbCanister() {
 
     public shared (msg) func startTimerExecutionAdmin() : async Types.AuthRecordResult {
         if (Principal.isAnonymous(msg.caller)) {
-            return #Err(#StatusCode(401));
+            return #Err(#Unauthorized);
         };
         if (not Principal.isController(msg.caller)) {
             return #Err(#StatusCode(401));
@@ -878,7 +957,7 @@ persistent actor class IConfuciusCtrlbCanister() {
 
     public shared (msg) func stopTimerExecutionAdmin() : async Types.AuthRecordResult {
         if (Principal.isAnonymous(msg.caller)) {
-            return #Err(#StatusCode(401));
+            return #Err(#Unauthorized);
         };
         if (not Principal.isController(msg.caller)) {
             return #Err(#StatusCode(401));
@@ -899,6 +978,184 @@ persistent actor class IConfuciusCtrlbCanister() {
         };
     };
 
+    // ---------------------------------------------------------------
+    // Admin RBAC Endpoints (controller only)
+    // ---------------------------------------------------------------
+
+    public shared (msg) func assignAdminRole(input : Types.AssignAdminRoleInputRecord) : async Types.AdminRoleAssignmentResult {
+        if (not Principal.isController(msg.caller)) {
+            return #Err(#Unauthorized);
+        };
+
+        let assignment : Types.AdminRoleAssignment = {
+            principal = input.principal;
+            role = input.role;
+            assignedBy = Principal.toText(msg.caller);
+            assignedAt = Nat64.fromNat(Int.abs(Time.now()));
+            note = input.note;
+        };
+
+        let _ = putAdminRole(input.principal, assignment);
+        D.print("IConfucius: assignAdminRole - assigned " # debug_show(input.role) # " to " # input.principal);
+        #Ok(assignment);
+    };
+
+    public shared (msg) func revokeAdminRole(principal : Text) : async Types.TextResult {
+        if (not Principal.isController(msg.caller)) {
+            return #Err(#Unauthorized);
+        };
+
+        let removed = removeAdminRole(principal);
+        if (removed) {
+            D.print("IConfucius: revokeAdminRole - revoked role for " # principal);
+            #Ok("Admin role revoked for principal: " # principal);
+        } else {
+            #Err(#Other("No admin role found for principal: " # principal));
+        };
+    };
+
+    public shared query (msg) func getAdminRoles() : async Types.AdminRoleAssignmentsResult {
+        if (not Principal.isController(msg.caller)) {
+            return #Err(#Unauthorized);
+        };
+        #Ok(getAllAdminRoles());
+    };
+
+    // ---------------------------------------------------------------
+    // OdinBot Schnorr Signing Endpoints
+    // ---------------------------------------------------------------
+
+    private func bytesToHex(bytes : [Nat8]) : Text {
+        let hexChars = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "a", "b", "c", "d", "e", "f"];
+        var result = "";
+        for (byte in bytes.vals()) {
+            let hi = Nat8.toNat(byte / 16);
+            let lo = Nat8.toNat(byte % 16);
+            result := result # hexChars[hi] # hexChars[lo];
+        };
+        result;
+    };
+
+    // Extract x-only public key (bytes 1..33 from SEC1 compressed 33-byte key)
+    private func extractXOnly(compressedKey : Blob) : Blob {
+        let bytes = Blob.toArray(compressedKey);
+        let xOnly = Array.tabulate<Nat8>(32, func(i : Nat) : Nat8 {
+            bytes[i + 1];
+        });
+        Blob.fromArray(xOnly);
+    };
+
+    // Create (or recreate) the OdinBot: derive Schnorr public key and cache it (controller only)
+    public shared (msg) func configureOdinBot() : async Types.OdinBotPublicKeyResult {
+        D.print("IConfucius: configureOdinBot - caller=" # Principal.toText(msg.caller));
+        if (Principal.isAnonymous(msg.caller)) {
+            return #Err(#Unauthorized);
+        };
+        if (not Principal.isController(msg.caller)) {
+            return #Err(#Unauthorized);
+        };
+
+        try {
+            D.print("IConfucius: configureOdinBot - calling schnorr_public_key with " # Nat.toText(SCHNORR_CYCLES) # " cycles");
+            ExperimentalCycles.add<system>(SCHNORR_CYCLES);
+            let result = await ic.schnorr_public_key({
+                key_id = {
+                    algorithm = #bip340secp256k1;
+                    name = schnorrKeyName;
+                };
+                canister_id = null;
+                derivation_path = [Text.encodeUtf8(ODIN_BOT_DERIVATION_PATH)];
+            });
+
+            let xOnlyKey = extractXOnly(result.public_key);
+            let xOnlyBytes = Blob.toArray(xOnlyKey);
+            D.print("IConfucius: configureOdinBot - x-only key: " # bytesToHex(xOnlyBytes));
+
+            let record : Types.OdinBotPublicKeyRecord = {
+                publicKeyHex = bytesToHex(xOnlyBytes);
+                publicKeyBytes = xOnlyKey;
+                derivationPath = ODIN_BOT_DERIVATION_PATH;
+            };
+            odinBotPublicKey := ?record;
+
+            #Ok(record);
+        } catch (e : Error) {
+            D.print("IConfucius: configureOdinBot - schnorr_public_key FAILED: " # Error.message(e));
+            #Err(#Other("schnorr_public_key failed: " # Error.message(e)));
+        };
+    };
+
+    // Get cached OdinBot public key (AdminQuery, no inter-canister call)
+    public shared query (msg) func getPublicKeyOdinBot() : async Types.OdinBotPublicKeyResult {
+        D.print("IConfucius: getPublicKeyOdinBot - caller=" # Principal.toText(msg.caller));
+        if (Principal.isAnonymous(msg.caller)) {
+            return #Err(#Unauthorized);
+        };
+        if (not hasAdminRole(msg.caller, #AdminQuery)) {
+            return #Err(#Unauthorized);
+        };
+
+        switch (odinBotPublicKey) {
+            case (?record) {
+                D.print("IConfucius: getPublicKeyOdinBot - returning cached key");
+                #Ok(record);
+            };
+            case null {
+                #Err(#Other("OdinBot not created yet. Call configureOdinBot first."));
+            };
+        };
+    };
+
+    // Sign a 32-byte sighash with OdinBot's Schnorr key (AdminUpdate)
+    public shared (msg) func signForOdinBot(message : Blob) : async Types.OdinBotSignatureResult {
+        D.print("IConfucius: signForOdinBot - caller=" # Principal.toText(msg.caller));
+        if (Principal.isAnonymous(msg.caller)) {
+            return #Err(#Unauthorized);
+        };
+        if (not hasAdminRole(msg.caller, #AdminUpdate)) {
+            return #Err(#Unauthorized);
+        };
+
+        switch (odinBotPublicKey) {
+            case null {
+                return #Err(#Other("OdinBot not created yet. Call configureOdinBot first."));
+            };
+            case (?_) {};
+        };
+
+        // Validate message is 32 bytes (sighash)
+        let messageBytes = Blob.toArray(message);
+        if (messageBytes.size() != 32) {
+            return #Err(#Other("message must be exactly 32 bytes (sighash)"));
+        };
+
+        try {
+            D.print("IConfucius: signForOdinBot - calling sign_with_schnorr with " # Nat.toText(SCHNORR_CYCLES) # " cycles");
+            ExperimentalCycles.add<system>(SCHNORR_CYCLES);
+            let result = await ic.sign_with_schnorr({
+                key_id = {
+                    algorithm = #bip340secp256k1;
+                    name = schnorrKeyName;
+                };
+                derivation_path = [Text.encodeUtf8(ODIN_BOT_DERIVATION_PATH)];
+                message = message;
+                // BIP341 key-path spend: empty merkle root hash
+                aux = ?#bip341({ merkle_root_hash = "" });
+            });
+
+            let sigBytes = Blob.toArray(result.signature);
+            D.print("IConfucius: signForOdinBot - signature: " # bytesToHex(sigBytes));
+
+            #Ok({
+                signature = result.signature;
+                signatureHex = bytesToHex(sigBytes);
+            });
+        } catch (e : Error) {
+            D.print("IConfucius: signForOdinBot - sign_with_schnorr FAILED: " # Error.message(e));
+            #Err(#Other("sign_with_schnorr failed: " # Error.message(e)));
+        };
+    };
+
     // Upgrade Hooks
     system func preupgrade() {
         openQuoteTopicsStorageStable := Iter.toArray(openQuoteTopicsStorage.entries());
@@ -908,6 +1165,7 @@ persistent actor class IConfuciusCtrlbCanister() {
             llmCanisterIds.add(Principal.toText(Principal.fromActor(llmCanister)));
         };
         llmCanistersStable := Buffer.toArray(llmCanisterIds);
+        adminRoleAssignmentsStable := Iter.toArray(adminRoleAssignmentsStorage.entries());
     };
 
     system func postupgrade() {
@@ -921,5 +1179,8 @@ persistent actor class IConfuciusCtrlbCanister() {
             llmCanisters.add(llmCanister);
         };
         llmCanistersStable := [];
+
+        adminRoleAssignmentsStorage := HashMap.fromIter(Iter.fromArray(adminRoleAssignmentsStable), adminRoleAssignmentsStable.size(), Text.equal, Text.hash);
+        adminRoleAssignmentsStable := [];
     };
 };

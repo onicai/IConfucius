@@ -1,0 +1,61 @@
+name: smoketest
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/IConfucius/**'
+      - 'src/common/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/IConfucius/**'
+      - 'src/common/**'
+
+env:
+  DFX_VERSION: "0.29.2"
+  DFX_WARNING: "-mainnet_plaintext_identity"
+
+jobs:
+  smoketest:
+    name: smoketest iconfucius_ctrlb_canister
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: install dfx
+        run: |
+          set -euo pipefail
+          DFXVM_INIT_YES=true sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
+          source "$HOME/.local/share/dfx/env"
+          echo "$HOME/.local/share/dfx/bin" >> $GITHUB_PATH
+          dfxvm default $DFX_VERSION
+
+      - name: create default identity
+        run: dfx identity get-principal > /dev/null 2>&1
+
+      - name: install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: install Python dependencies
+        run: pip install pytest icpp-pro
+
+      - name: versions
+        run: |
+          echo "Runner OS   : $RUNNER_OS"
+          echo "Architecture: $(uname -m)"
+          echo "OS version  : $(lsb_release -d 2>/dev/null | cut -f2)"
+          echo "dfx version : $(dfx --version)"
+          echo "Docker      : $(docker --version)"
+          echo "Python      : $(python --version)"
+          echo "pytest      : $(pytest --version)"
+
+      - name: smoketest
+        working-directory: src/IConfucius
+        run: make smoketest
