@@ -51,7 +51,7 @@ docker-build-base:
 
 .PHONY: docker-build-wasm
 docker-build-wasm:
-	cd docker && docker compose build --no-cache wasm && docker compose run --rm wasm
+	cd docker && docker compose build base && docker compose build --no-cache wasm && docker compose run --rm wasm
 	@echo "Wasm hash (Docker build):"
 	@shasum -a 256 out/$(CANISTER_NAME).wasm | cut -d ' ' -f 1
 	@for net in $(NETWORKS); do \
@@ -63,7 +63,7 @@ docker-build-wasm:
 .PHONY: docker-verify-wasm
 docker-verify-wasm:
 	@echo "Building wasm with Docker..."
-	@cd docker && docker compose build --no-cache wasm && docker compose run --rm wasm
+	@cd docker && docker compose build base && docker compose build --no-cache wasm && docker compose run --rm wasm
 	@LOCAL_HASH=$$(shasum -a 256 out/$(CANISTER_NAME).wasm | cut -d ' ' -f 1); \
 	echo "Docker wasm hash:   $$LOCAL_HASH"; \
 	DEPLOYED_HASH=$$(dfx canister info $(CANISTER_NAME) --network $(VERIFY_NETWORK) | grep "Module hash:" | sed 's/Module hash: 0x//'); \
