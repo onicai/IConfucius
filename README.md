@@ -38,9 +38,9 @@ We have the following technical roadmap in mind for IConfucius:
 - ✅️ Launched on [ODIN•FUN](https://odin.fun?r=mgb3mzvghe) → Token https://odin.fun/token/29m8
 - ✅️ IConfucius can generate quotes in either English or Chinese → [Try it out](https://aiconfucius-w8i.caffeine.xyz/)
 - ✅️ IConfucius deployed with reproducible builds, in preparation of decentralization
-- 🚧 IConfucius daily quote of wisdom posted to [IConfucius X (Twitter) account](https://x.com/IConfucius_odin)
-- 🚧 IConfucius daily quote of wisdom posted to OpenChat
-- 🚧 IConfucius daily quote of wisdom email subscription service
+- ✅️ IConfucius daily quote of wisdom posted to [IConfucius X (Twitter) account](https://x.com/IConfucius_odin)
+- ✅️ IConfucius daily quote of wisdom posted to OpenChat
+- 🚧 IConfucius adds trading on odin.fun via Chain Fusion AI
 - 🚧 IConfucius takes a role in [funnAI](https://funnai.onicai.com/)
 - 🧠 IConfucius evolves his abilities under governance of the [onicai SNS](https://www.onicai.com/files/onicai_SNS_Whitepaper.pdf)
 
@@ -72,6 +72,53 @@ make docker-verify-wasm
 ```
 
 See [README-reproducible-build.md](README-reproducible-build.md) for more details.
+
+# Threshold Schnorr Signing (OdinBot)
+
+IConfucius uses the IC management canister's threshold Schnorr API (`sign_with_schnorr` with `#bip340secp256k1`) for signing Bitcoin transactions on Odin.Fun. The canister takes a **Schnorr key name** as an init argument, which must match the deployment environment.
+
+## Schnorr Key Names
+
+| Key Name       | Environment                 | Signing Cost    | Subnet                         |
+|----------------|-----------------------------|-----------------|--------------------------------|
+| `dfx_test_key` | Local replica (`dfx start`) | Free            | Local test subnet              |
+| `test_key_1`   | IC mainnet (testing/dev)    | ~10B cycles     | 13-node application subnet     |
+| `key_1`        | IC mainnet (production)     | ~26B cycles     | 34-node fiduciary subnet       |
+
+The deploy script (`scripts/deploy.sh`) automatically selects the correct key name based on the `--network` argument:
+
+- `--network local` uses `dfx_test_key`
+- `--network testing` or `--network development` uses `test_key_1`
+- `--network prd` uses `key_1`
+
+## Key Differences Between `test_key_1` and `key_1`
+
+Both are **real threshold keys** on the IC mainnet with secret shares distributed across subnet nodes. Both produce valid BIP340 Schnorr signatures. The differences are:
+
+- **Security**: `key_1` resides on a 34-node high-replication fiduciary subnet with stronger Byzantine fault tolerance. `test_key_1` resides on a 13-node application subnet.
+- **Cost**: `key_1` costs ~26B cycles per signing call (~2.6x more than `test_key_1`). The canister attaches 100B cycles per call; unused cycles are refunded.
+- **Longevity**: `test_key_1` may be deleted by DFINITY in the future and should not be used for anything of value.
+- **Derived keys**: Different master keys produce completely different public keys and Bitcoin addresses.
+
+## Cycle Cost for Signing
+
+The canister attaches 100B cycles per `sign_with_schnorr` call. The actual cost depends on the key's subnet size:
+
+| Operation            | `test_key_1` (13-node) | `key_1` (34-node) |
+|----------------------|------------------------|--------------------|
+| `schnorr_public_key` | Standard call fee      | Standard call fee  |
+| `sign_with_schnorr`  | ~10B cycles            | ~26B cycles        |
+
+Unused cycles are refunded automatically. The 100B overshoot ensures calls succeed even if the signing subnet grows in the future.
+
+## Smoketests
+
+Run the smoketests locally (uses `dfx_test_key` — all Schnorr tests run on local replica):
+
+```bash
+cd src/IConfucius
+make smoketest
+```
 
 # Deploy your own IConfucius
 
