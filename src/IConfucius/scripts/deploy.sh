@@ -49,6 +49,28 @@ done
 
 echo "Using network type: $NETWORK_TYPE"
 
+# Schnorr key name per environment (init argument for actor class)
+if [ "$NETWORK_TYPE" = "prd" ]; then
+    SCHNORR_KEY_NAME="key_1"
+elif [ "$NETWORK_TYPE" = "testing" ] || [ "$NETWORK_TYPE" = "development" ]; then
+    SCHNORR_KEY_NAME="test_key_1"
+else
+    SCHNORR_KEY_NAME="dfx_test_key"
+fi
+CANISTER_ARGUMENT="(\"$SCHNORR_KEY_NAME\")"
+echo "Using Schnorr key name: $SCHNORR_KEY_NAME"
+
+# install mode is only allowed on local — the IConfucius canister on prd/testing
+# must never be recreated because existing principals and bitcoin addresses depend on it.
+if [ "$DEPLOY_MODE" = "install" ]; then
+    if [ "$NETWORK_TYPE" != "local" ]; then
+        echo "ERROR: 'install' mode is only allowed for --network local."
+        echo "The IConfucius canister on $NETWORK_TYPE must never be recreated — existing"
+        echo "principals and bitcoin addresses depend on it. Use --mode upgrade instead."
+        exit 1
+    fi
+fi
+
 if [ "$NETWORK_TYPE" = "local" ]; then
     if [ "$DEPLOY_MODE" = "install" ] || [ "$DEPLOY_MODE" = "reinstall" ]; then
         echo "local & $DEPLOY_MODE - cleaning up .dfx"
@@ -66,7 +88,7 @@ if [ "$NETWORK_TYPE" = "prd" ] || [ "$NETWORK_TYPE" = "testing" ] || [ "$NETWORK
     echo "Building wasm with Docker (reproducible build)..."
     make docker-build-wasm
 
-    WASM_FILE="out/out_Linux_x86_64.wasm"
+    WASM_FILE="out/iconfucius_ctrlb_canister.wasm"
     if [ ! -f "$WASM_FILE" ]; then
         echo "ERROR: Docker build failed - wasm file not found: $WASM_FILE"
         exit 1
@@ -93,18 +115,21 @@ if [ "$NETWORK_TYPE" = "prd" ] || [ "$NETWORK_TYPE" = "testing" ] || [ "$NETWORK
             --yes \
             --network "$NETWORK_TYPE" \
             --wasm "$WASM_FILE" \
-            --wasm-memory-persistence keep
+            --wasm-memory-persistence keep \
+            --argument "$CANISTER_ARGUMENT"
     else
         dfx canister install iconfucius_ctrlb_canister \
             --mode "$DEPLOY_MODE" \
             --yes \
             --network "$NETWORK_TYPE" \
-            --wasm "$WASM_FILE"
+            --wasm "$WASM_FILE" \
+            --argument "$CANISTER_ARGUMENT"
     fi
 else
     # For local network, use dfx deploy (faster iteration)
     echo "Deploying the iconfucius_ctrlb_canister to the local network"
-    dfx deploy iconfucius_ctrlb_canister --mode "$DEPLOY_MODE" --yes --network "$NETWORK_TYPE"
+    dfx deploy iconfucius_ctrlb_canister --mode "$DEPLOY_MODE" --yes --network "$NETWORK_TYPE" \
+        --argument "$CANISTER_ARGUMENT"
 fi
 
 echo " "
@@ -131,6 +156,39 @@ if [ "$DEPLOY_MODE" != "upgrade" ]; then
     else
         echo "setInitialQuoteTopics successfull."
     fi
+fi
+
+echo " "
+echo "--------------------------------------------------"
+echo "Configuring OdinBot (deriving Schnorr public key)"
+output=$(dfx canister call iconfucius_ctrlb_canister configureOdinBot --network "$NETWORK_TYPE")
+
+if echo "$output" | grep -q "Ok"; then
+    echo "configureOdinBot successfull."
+    echo "$output"
+else
+    echo "configureOdinBot failed:"
+    echo "$output"
+    exit 1
+fi
+
+# Assign AdminUpdate role to funnai-django-aws (idempotent — overwrites if exists)
+FUNNAI_DJANGO_PRINCIPAL="bzqba-mwz5i-rq3oz-iie6i-gf7bi-kqr2x-tjuq4-nblmh-ephou-n27tl-xqe"
+
+echo " "
+echo "--------------------------------------------------"
+echo "Assigning AdminUpdate role to funnai-django-aws ($FUNNAI_DJANGO_PRINCIPAL)"
+output=$(dfx canister call iconfucius_ctrlb_canister assignAdminRole \
+    "(record { \"principal\" = \"$FUNNAI_DJANGO_PRINCIPAL\"; role = variant { AdminUpdate }; note = \"funnai-django-aws\" })" \
+    --network "$NETWORK_TYPE")
+
+if echo "$output" | grep -q "Ok"; then
+    echo "assignAdminRole successfull."
+    echo "$output"
+else
+    echo "assignAdminRole failed:"
+    echo "$output"
+    exit 1
 fi
 
 echo " "
