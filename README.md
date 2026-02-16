@@ -40,7 +40,7 @@ We have the following technical roadmap in mind for IConfucius:
 - ✅️ IConfucius deployed with reproducible builds, in preparation of decentralization
 - ✅️ IConfucius daily quote of wisdom posted to [IConfucius X (Twitter) account](https://x.com/IConfucius_odin)
 - ✅️ IConfucius daily quote of wisdom posted to OpenChat
-- 🚧 IConfucius adds trading on odin.fun via Chain Fusion AI
+- 🚧 IConfucius odin bot trades runes on odin.fun via Chain Fusion AI
 - 🚧 IConfucius takes a role in [funnAI](https://funnai.onicai.com/)
 - 🧠 IConfucius evolves his abilities under governance of the [onicai SNS](https://www.onicai.com/files/onicai_SNS_Whitepaper.pdf)
 

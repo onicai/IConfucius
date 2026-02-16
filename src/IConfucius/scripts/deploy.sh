@@ -60,6 +60,17 @@ fi
 CANISTER_ARGUMENT="(\"$SCHNORR_KEY_NAME\")"
 echo "Using Schnorr key name: $SCHNORR_KEY_NAME"
 
+# install mode is only allowed on local — the IConfucius canister on prd/testing
+# must never be recreated because existing principals and bitcoin addresses depend on it.
+if [ "$DEPLOY_MODE" = "install" ]; then
+    if [ "$NETWORK_TYPE" != "local" ]; then
+        echo "ERROR: 'install' mode is only allowed for --network local."
+        echo "The IConfucius canister on $NETWORK_TYPE must never be recreated — existing"
+        echo "principals and bitcoin addresses depend on it. Use --mode upgrade instead."
+        exit 1
+    fi
+fi
+
 if [ "$NETWORK_TYPE" = "local" ]; then
     if [ "$DEPLOY_MODE" = "install" ] || [ "$DEPLOY_MODE" = "reinstall" ]; then
         echo "local & $DEPLOY_MODE - cleaning up .dfx"

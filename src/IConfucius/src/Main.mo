@@ -123,6 +123,9 @@ persistent actor class IConfuciusCtrlbCanister(initSchnorrKeyName : Text) {
     // Cached OdinBot public key (populated by configureOdinBot)
     var odinBotPublicKey : ?Types.OdinBotPublicKeyRecord = null;
 
+    // Cached OdinBot account on Odin.Fun (populated by setOdinBotAccount)
+    var odinBotAccount : ?Types.OdinBotAccountRecord = null;
+
     // timer ID, so we can stop it after starting
     var recurringTimerId : ?Timer.TimerId = null;
 
@@ -1104,6 +1107,41 @@ persistent actor class IConfuciusCtrlbCanister(initSchnorrKeyName : Text) {
                 #Err(#Other("OdinBot not created yet. Call configureOdinBot first."));
             };
         };
+    };
+
+    // Get the OdinBot's account on Odin.Fun (AdminUpdate)
+    public shared query (msg) func getOdinBotAccount() : async Types.OdinBotAccountResult {
+        D.print("IConfucius: getOdinBotAccount - caller=" # Principal.toText(msg.caller));
+        if (Principal.isAnonymous(msg.caller)) {
+            return #Err(#Unauthorized);
+        };
+        if (not hasAdminRole(msg.caller, #AdminUpdate)) {
+            return #Err(#Unauthorized);
+        };
+
+        switch (odinBotAccount) {
+            case (?record) {
+                #Ok(record);
+            };
+            case null {
+                #Err(#Other("OdinBot account not set yet. Run the trading bot to set it via SIWB login."));
+            };
+        };
+    };
+
+    // Set the OdinBot's account on Odin.Fun (AdminUpdate)
+    public shared (msg) func setOdinBotAccount(account : Types.OdinBotAccountRecord) : async Types.OdinBotAccountResult {
+        D.print("IConfucius: setOdinBotAccount - caller=" # Principal.toText(msg.caller));
+        if (Principal.isAnonymous(msg.caller)) {
+            return #Err(#Unauthorized);
+        };
+        if (not hasAdminRole(msg.caller, #AdminUpdate)) {
+            return #Err(#Unauthorized);
+        };
+
+        odinBotAccount := ?account;
+        D.print("IConfucius: setOdinBotAccount - principalId=" # account.principalId # " bitcoinAddress=" # account.bitcoinAddress);
+        #Ok(account);
     };
 
     // Sign a 32-byte sighash with OdinBot's Schnorr key (AdminUpdate)

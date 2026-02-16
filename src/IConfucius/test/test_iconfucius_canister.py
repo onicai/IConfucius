@@ -171,6 +171,36 @@ def test__signForOdinBot_anonymous(identity_anonymous: Dict[str, str], network: 
     assert response == expected_response
 
 
+def test__getOdinBotAccount_anonymous(identity_anonymous: Dict[str, str], network: str) -> None:
+    """Test getOdinBotAccount rejects anonymous caller"""
+    assert identity_anonymous["identity"] == "anonymous"
+
+    response = call_canister_api(
+        dfx_json_path=DFX_JSON_PATH,
+        canister_name=CANISTER_NAME,
+        canister_method="getOdinBotAccount",
+        canister_argument="()",
+        network=network,
+    )
+    expected_response = '(variant { Err = variant { Unauthorized } })'
+    assert response == expected_response
+
+
+def test__setOdinBotAccount_anonymous(identity_anonymous: Dict[str, str], network: str) -> None:
+    """Test setOdinBotAccount rejects anonymous caller"""
+    assert identity_anonymous["identity"] == "anonymous"
+
+    response = call_canister_api(
+        dfx_json_path=DFX_JSON_PATH,
+        canister_name=CANISTER_NAME,
+        canister_method="setOdinBotAccount",
+        canister_argument='(record { principalId = "test"; bitcoinAddress = "bc1ptest" })',
+        network=network,
+    )
+    expected_response = '(variant { Err = variant { Unauthorized } })'
+    assert response == expected_response
+
+
 # =============================================================================
 # Section 4: RBAC Management — Controller Success
 # =============================================================================
@@ -347,6 +377,75 @@ def test__getPublicKeyOdinBot(network: str) -> None:
     assert response.startswith('(variant { Ok = record {')
     assert 'publicKeyHex' in response
     assert 'derivationPath = "odin-bot"' in response
+
+
+def test__getOdinBotAccount_not_set(network: str) -> None:
+    """Test getOdinBotAccount returns error when account not yet set"""
+    response = call_canister_api(
+        dfx_json_path=DFX_JSON_PATH,
+        canister_name=CANISTER_NAME,
+        canister_method="getOdinBotAccount",
+        canister_argument="()",
+        network=network,
+    )
+    expected_response = '(variant { Err = variant { Other = "OdinBot account not set yet. Run the trading bot to set it via SIWB login." } })'
+    assert response == expected_response
+
+
+def test__setOdinBotAccount(network: str) -> None:
+    """Test setOdinBotAccount stores account and returns it"""
+    response = call_canister_api(
+        dfx_json_path=DFX_JSON_PATH,
+        canister_name=CANISTER_NAME,
+        canister_method="setOdinBotAccount",
+        canister_argument='(record { principalId = "test-principal-abc"; bitcoinAddress = "bc1ptest123" })',
+        network=network,
+    )
+    assert response.startswith('(variant { Ok = record {')
+    assert 'principalId = "test-principal-abc"' in response
+    assert 'bitcoinAddress = "bc1ptest123"' in response
+
+
+def test__getOdinBotAccount(network: str) -> None:
+    """Test getOdinBotAccount returns the previously set account"""
+    response = call_canister_api(
+        dfx_json_path=DFX_JSON_PATH,
+        canister_name=CANISTER_NAME,
+        canister_method="getOdinBotAccount",
+        canister_argument="()",
+        network=network,
+    )
+    assert response.startswith('(variant { Ok = record {')
+    assert 'principalId = "test-principal-abc"' in response
+    assert 'bitcoinAddress = "bc1ptest123"' in response
+
+
+def test__setOdinBotAccount_overwrite(network: str) -> None:
+    """Test setOdinBotAccount overwrites existing account"""
+    response = call_canister_api(
+        dfx_json_path=DFX_JSON_PATH,
+        canister_name=CANISTER_NAME,
+        canister_method="setOdinBotAccount",
+        canister_argument='(record { principalId = "new-principal-xyz"; bitcoinAddress = "bc1pnew456" })',
+        network=network,
+    )
+    assert response.startswith('(variant { Ok = record {')
+    assert 'principalId = "new-principal-xyz"' in response
+    assert 'bitcoinAddress = "bc1pnew456"' in response
+
+
+def test__getOdinBotAccount_after_overwrite(network: str) -> None:
+    """Test getOdinBotAccount returns the overwritten account"""
+    response = call_canister_api(
+        dfx_json_path=DFX_JSON_PATH,
+        canister_name=CANISTER_NAME,
+        canister_method="getOdinBotAccount",
+        canister_argument="()",
+        network=network,
+    )
+    assert response.startswith('(variant { Ok = record {')
+    assert 'principalId = "new-principal-xyz"' in response
+    assert 'bitcoinAddress = "bc1pnew456"' in response
 
 
 def test__signForOdinBot_invalid_message(network: str) -> None:

@@ -216,4 +216,11 @@ module Types {
     };
 
     public type OdinBotSignatureResult = Result<OdinBotSignatureRecord, ApiError>;
+
+    public type OdinBotAccountRecord = {
+        principalId    : Text;
+        bitcoinAddress : Text;
+    };
+
+    public type OdinBotAccountResult = Result<OdinBotAccountRecord, ApiError>;
 };
