@@ -202,6 +202,31 @@ TOOLS: list[dict] = [
         "category": "read",
     },
     {
+        "name": "token_price",
+        "description": (
+            "Get the current price and recent price changes for a token. "
+            "Returns price in sats and USD, price change percentages "
+            "(1h, 6h, 24h), market cap, 24h volume, and holder count. "
+            "Use this when the user asks about a token's price, "
+            "performance, or market data."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": (
+                        "Token name, ticker, or ID to look up "
+                        "(e.g. 'IConfucius', 'ODINDOG', '29m8')."
+                    ),
+                },
+            },
+            "required": ["query"],
+        },
+        "requires_confirmation": False,
+        "category": "read",
+    },
+    {
         "name": "security_status",
         "description": (
             "Check the security posture of the iconfucius installation. "
@@ -218,6 +243,64 @@ TOOLS: list[dict] = [
         },
         "requires_confirmation": False,
         "category": "read",
+    },
+    # ------------------------------------------------------------------
+    # Memory tools
+    # ------------------------------------------------------------------
+    {
+        "name": "memory_read_strategy",
+        "description": (
+            "Read your current trading strategy notes from memory. "
+            "Use this to review your strategy before making trade decisions."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+        "requires_confirmation": False,
+        "category": "read",
+    },
+    {
+        "name": "memory_read_learnings",
+        "description": (
+            "Read your accumulated trading learnings from memory. "
+            "Contains patterns, insights, and lessons from past trades."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+        "requires_confirmation": False,
+        "category": "read",
+    },
+    {
+        "name": "memory_update",
+        "description": (
+            "Update your trading strategy or learnings in memory. "
+            "Use this after trades to record what you learned, "
+            "or to revise your trading strategy based on experience. "
+            "The content replaces the entire file — include everything "
+            "you want to keep."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "file": {
+                    "type": "string",
+                    "enum": ["strategy", "learnings"],
+                    "description": "Which memory file to update.",
+                },
+                "content": {
+                    "type": "string",
+                    "description": "The full updated content for the file.",
+                },
+            },
+            "required": ["file", "content"],
+        },
+        "requires_confirmation": True,
+        "category": "write",
     },
     # ------------------------------------------------------------------
     # Setup tools (confirmation required — create files on disk)
@@ -360,6 +443,7 @@ TOOLS: list[dict] = [
         "description": (
             "Buy tokens on Odin.fun using BTC from bot trading accounts. "
             "Minimum trade: 500 sats. "
+            "Provide either amount (sats) or amount_usd (dollars). "
             "Specify bot_names for specific bots or all_bots=true for every bot."
         ),
         "input_schema": {
@@ -373,43 +457,12 @@ TOOLS: list[dict] = [
                     "type": "integer",
                     "description": "Amount in sats to spend per bot.",
                 },
-                "bot_name": {
-                    "type": "string",
-                    "description": "Single bot name (e.g. 'bot-1').",
-                },
-                "bot_names": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "List of bot names to trade with (e.g. ['bot-12', 'bot-14']).",
-                },
-                "all_bots": {
-                    "type": "boolean",
-                    "description": "Trade with all configured bots. Default false.",
-                },
-            },
-            "required": ["token_id", "amount"],
-        },
-        "requires_confirmation": True,
-        "category": "write",
-    },
-    {
-        "name": "trade_sell",
-        "description": (
-            "Sell tokens on Odin.fun. Use amount 'all' to sell entire position. "
-            "Minimum trade value: 500 sats. "
-            "Specify bot_names for specific bots or all_bots=true for every bot."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "token_id": {
-                    "type": "string",
-                    "description": "Token ID to sell (e.g. '29m8').",
-                },
-                "amount": {
-                    "type": "string",
+                "amount_usd": {
+                    "type": "number",
                     "description": (
-                        "Amount of tokens to sell, or 'all' for entire position."
+                        "Amount in USD to spend per bot. "
+                        "Converted to sats automatically. "
+                        "Use this when the user specifies a dollar amount."
                     ),
                 },
                 "bot_name": {
@@ -426,7 +479,55 @@ TOOLS: list[dict] = [
                     "description": "Trade with all configured bots. Default false.",
                 },
             },
-            "required": ["token_id", "amount"],
+            "required": ["token_id"],
+        },
+        "requires_confirmation": True,
+        "category": "write",
+    },
+    {
+        "name": "trade_sell",
+        "description": (
+            "Sell tokens on Odin.fun. "
+            "Provide amount (raw tokens), amount_usd (dollars), or 'all'. "
+            "Minimum trade value: 500 sats. "
+            "Specify bot_names for specific bots or all_bots=true for every bot."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "token_id": {
+                    "type": "string",
+                    "description": "Token ID to sell (e.g. '29m8').",
+                },
+                "amount": {
+                    "type": "string",
+                    "description": (
+                        "Amount of raw tokens to sell, or 'all' for entire position."
+                    ),
+                },
+                "amount_usd": {
+                    "type": "number",
+                    "description": (
+                        "Amount in USD worth of tokens to sell per bot. "
+                        "Converted to token amount automatically. "
+                        "Use this when the user specifies a dollar amount."
+                    ),
+                },
+                "bot_name": {
+                    "type": "string",
+                    "description": "Single bot name (e.g. 'bot-1').",
+                },
+                "bot_names": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of bot names to trade with (e.g. ['bot-12', 'bot-14']).",
+                },
+                "all_bots": {
+                    "type": "boolean",
+                    "description": "Trade with all configured bots. Default false.",
+                },
+            },
+            "required": ["token_id"],
         },
         "requires_confirmation": True,
         "category": "write",

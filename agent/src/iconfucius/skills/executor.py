@@ -18,8 +18,13 @@ def _capture(fn, *args, **kwargs) -> str:
     return buf.getvalue()
 
 
-def execute_tool(name: str, args: dict) -> dict:
+def execute_tool(name: str, args: dict, *, persona_name: str = "") -> dict:
     """Execute a tool by name with the given arguments.
+
+    Args:
+        name: Tool name.
+        args: Tool arguments.
+        persona_name: Persona name for memory operations (trade recording, etc.).
 
     Returns:
         {"status": "ok", ...} on success,
@@ -29,7 +34,17 @@ def execute_tool(name: str, args: dict) -> dict:
     if handler is None:
         return {"status": "error", "error": f"Unknown tool: {name}"}
     try:
-        return handler(args)
+        # Memory tools need persona_name
+        if name in ("memory_read_strategy", "memory_read_learnings", "memory_update"):
+            result = handler(args, persona_name=persona_name)
+        else:
+            result = handler(args)
+
+        # Record successful trades
+        if name in ("trade_buy", "trade_sell") and result.get("status") == "ok" and persona_name:
+            _record_trade(name, args, result, persona_name)
+
+        return result
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
@@ -249,6 +264,16 @@ def _handle_bot_list(args: dict) -> dict:
     }
 
 
+def _build_balance_summary(output: str, bot_count: int) -> str:
+    """Extract a compact summary from the full balance output.
+
+    Includes the full table so the AI can answer per-bot questions,
+    plus a note that it was also printed to the terminal.
+    """
+    lines = [output.strip(), "", f"({bot_count} bots — full table also printed to terminal)"]
+    return "\n".join(lines)
+
+
 def _handle_wallet_balance(args: dict) -> dict:
     from iconfucius.config import get_bot_names, require_wallet
 
@@ -269,7 +294,17 @@ def _handle_wallet_balance(args: dict) -> dict:
     bot_names = get_bot_names()
     output = _capture(run_all_balances, bot_names,
                       ckbtc_minter=ckbtc_minter)
-    return {"status": "ok", "display": output.strip()}
+
+    if len(bot_names) <= 100:
+        return {"status": "ok", "display": output.strip()}
+
+    # Large bot count: print full table to terminal, return summary to AI
+    summary = _build_balance_summary(output, len(bot_names))
+    return {
+        "status": "ok",
+        "display": summary,
+        "_terminal_output": output.strip(),
+    }
 
 
 def _handle_wallet_receive(args: dict) -> dict:
@@ -745,6 +780,79 @@ def _handle_token_lookup(args: dict) -> dict:
     }
 
 
+def _handle_token_price(args: dict) -> dict:
+    from iconfucius.config import fmt_sats, get_btc_to_usd_rate
+    from iconfucius.tokens import fetch_token_data, lookup_token_with_fallback
+
+    query = args.get("query", "")
+    if not query:
+        return {"status": "error", "error": "Query is required."}
+
+    token = lookup_token_with_fallback(query)
+    if not token:
+        return {"status": "error", "error": f"Token not found: {query}"}
+
+    token_id = token["id"]
+    token_name = token.get("name", token_id)
+    token_ticker = token.get("ticker", "")
+
+    data = fetch_token_data(token_id)
+    if not data:
+        return {
+            "status": "error",
+            "error": f"Could not fetch price data for {token_name} ({token_id}).",
+        }
+
+    price = data.get("price", 0)
+    price_1h = data.get("price_1h", 0)
+    price_6h = data.get("price_6h", 0)
+    price_1d = data.get("price_1d", 0)
+    marketcap = data.get("marketcap", 0)
+    volume_24 = data.get("volume_24", 0)
+    holder_count = data.get("holder_count", 0)
+    btc_liquidity = data.get("btc_liquidity", 0)
+
+    def _pct_change(current: int, previous: int) -> str:
+        if not previous or not current:
+            return "n/a"
+        pct = ((current - previous) / previous) * 100
+        sign = "+" if pct >= 0 else ""
+        return f"{sign}{pct:.1f}%"
+
+    try:
+        btc_usd = get_btc_to_usd_rate()
+    except Exception:
+        btc_usd = None
+
+    lines = [
+        f"{token_name} ({token_ticker}) — {token_id}",
+        f"Price:        {fmt_sats(price, btc_usd)} per token",
+        f"Change 1h:    {_pct_change(price, price_1h)}",
+        f"Change 6h:    {_pct_change(price, price_6h)}",
+        f"Change 24h:   {_pct_change(price, price_1d)}",
+        f"Market cap:   {fmt_sats(marketcap, btc_usd)}",
+        f"24h volume:   {fmt_sats(volume_24, btc_usd)}",
+        f"Liquidity:    {fmt_sats(btc_liquidity, btc_usd)}",
+        f"Holders:      {holder_count:,}",
+    ]
+
+    return {
+        "status": "ok",
+        "display": "\n".join(lines),
+        "token_id": token_id,
+        "token_name": token_name,
+        "ticker": token_ticker,
+        "price_sats": price,
+        "price_usd": (price / 100_000_000) * btc_usd if btc_usd else None,
+        "change_1h": _pct_change(price, price_1h),
+        "change_6h": _pct_change(price, price_6h),
+        "change_24h": _pct_change(price, price_1d),
+        "marketcap_sats": marketcap,
+        "volume_24h_sats": volume_24,
+        "holder_count": holder_count,
+    }
+
+
 # ---------------------------------------------------------------------------
 # State-changing handlers
 # ---------------------------------------------------------------------------
@@ -779,6 +887,33 @@ def _handle_fund(args: dict) -> dict:
     return {"status": "ok", "display": output.strip()}
 
 
+def _usd_to_sats(amount_usd: float) -> int:
+    """Convert a USD amount to satoshis using the live BTC/USD rate."""
+    from iconfucius.config import get_btc_to_usd_rate
+
+    btc_usd = get_btc_to_usd_rate()
+    return int((amount_usd / btc_usd) * 100_000_000)
+
+
+def _usd_to_tokens(amount_usd: float, token_id: str) -> int:
+    """Convert a USD amount to raw token sub-units using live price data.
+
+    Returns the raw token amount (not display tokens).
+    Formula: raw_tokens = sats * 10^6 * 10^div / price
+    """
+    from iconfucius.tokens import fetch_token_data
+
+    data = fetch_token_data(token_id)
+    if not data or not data.get("price"):
+        raise ValueError(f"Could not fetch price for token {token_id}")
+
+    sats = _usd_to_sats(amount_usd)
+    price = data["price"]
+    divisibility = data.get("divisibility", 8)
+    raw_tokens = int(sats * 1_000_000 * (10 ** divisibility) / price)
+    return raw_tokens
+
+
 def _handle_trade_buy(args: dict) -> dict:
     from iconfucius.config import require_wallet
 
@@ -787,9 +922,19 @@ def _handle_trade_buy(args: dict) -> dict:
 
     token_id = args.get("token_id")
     amount = args.get("amount")
+    amount_usd = args.get("amount_usd")
     bot_names = _resolve_bot_names(args)
+
+    # Convert USD to sats if needed
+    if amount_usd is not None and amount is None:
+        try:
+            amount = _usd_to_sats(amount_usd)
+            args["amount"] = amount  # write back for _record_trade
+        except Exception as e:
+            return {"status": "error", "error": f"USD conversion failed: {e}"}
+
     if not all([token_id, amount, bot_names]):
-        return {"status": "error", "error": "'token_id', 'amount', and at least one bot are required."}
+        return {"status": "error", "error": "'token_id', 'amount' (or 'amount_usd'), and at least one bot are required."}
 
     from iconfucius.cli.concurrent import run_per_bot
     from iconfucius.cli.trade import run_trade
@@ -815,9 +960,19 @@ def _handle_trade_sell(args: dict) -> dict:
 
     token_id = args.get("token_id")
     amount = args.get("amount")
+    amount_usd = args.get("amount_usd")
     bot_names = _resolve_bot_names(args)
+
+    # Convert USD to raw token amount if needed
+    if amount_usd is not None and amount is None:
+        try:
+            amount = _usd_to_tokens(amount_usd, token_id)
+            args["amount"] = amount  # write back for _record_trade
+        except Exception as e:
+            return {"status": "error", "error": f"USD conversion failed: {e}"}
+
     if not all([token_id, amount, bot_names]):
-        return {"status": "error", "error": "'token_id', 'amount', and at least one bot are required."}
+        return {"status": "error", "error": "'token_id', 'amount' (or 'amount_usd'), and at least one bot are required."}
 
     from iconfucius.cli.concurrent import run_per_bot
     from iconfucius.cli.trade import run_trade
@@ -892,6 +1047,128 @@ def _handle_wallet_send(args: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Trade recording
+# ---------------------------------------------------------------------------
+
+def _record_trade(tool_name: str, args: dict, result: dict,
+                  persona_name: str) -> None:
+    """Record a completed trade to memory. Best-effort — never raises."""
+    from datetime import datetime, timezone
+
+    from iconfucius.memory import append_trade
+
+    action = "BUY" if tool_name == "trade_buy" else "SELL"
+    token_id = args.get("token_id", "?")
+    amount = args.get("amount", "?")
+    bots = _resolve_bot_names(args)
+    bot_str = ", ".join(bots) if bots else "?"
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+    # Fetch live price and BTC/USD rate for enriched logging
+    price = 0
+    ticker = token_id
+    divisibility = 8
+    btc_usd = None
+    try:
+        from iconfucius.tokens import fetch_token_data
+
+        data = fetch_token_data(token_id)
+        if data:
+            price = data.get("price", 0)
+            ticker = data.get("ticker", token_id)
+            divisibility = data.get("divisibility", 8)
+    except Exception:
+        pass
+    try:
+        from iconfucius.config import get_btc_to_usd_rate
+
+        btc_usd = get_btc_to_usd_rate()
+    except Exception:
+        pass
+
+    def _fmt_usd(sats: float) -> str:
+        if btc_usd:
+            return f"${(sats / 100_000_000) * btc_usd:.2f}"
+        return "?"
+
+    lines = [f"## {action} — {ts}"]
+    lines.append(f"- Token: {token_id} ({ticker})")
+
+    amount_int = int(amount) if str(amount).isdigit() else 0
+    if action == "BUY":
+        # amount is sats spent; estimate display tokens received
+        lines.append(f"- Spent: {amount_int:,} sats ({_fmt_usd(amount_int)})")
+        if price:
+            # display_tokens = sats * 10^6 / price (divisibility cancels out)
+            display_tokens = amount_int * 1_000_000 / price
+            lines.append(f"- Est. tokens: ~{display_tokens:,.2f}")
+    else:
+        # amount is raw token sub-units; show display tokens and estimate sats
+        display_tokens = amount_int / (10 ** divisibility)
+        lines.append(f"- Sold: {display_tokens:,.2f} tokens ({amount_int:,} sub-units)")
+        if price:
+            est_sats = (amount_int * price) / (10 ** divisibility) / 1_000_000
+            lines.append(f"- Est. received: ~{est_sats:,.0f} sats ({_fmt_usd(est_sats)})")
+
+    if price:
+        lines.append(f"- Price: {price:,} sats/token ({_fmt_usd(price)})")
+    lines.append(f"- Bots: {bot_str}")
+
+    entry = "\n".join(lines)
+    try:
+        append_trade(persona_name, entry)
+    except Exception:
+        pass  # best-effort
+
+
+# ---------------------------------------------------------------------------
+# Memory handlers
+# ---------------------------------------------------------------------------
+
+def _handle_memory_read_strategy(args: dict, *, persona_name: str = "") -> dict:
+    from iconfucius.memory import read_strategy
+
+    if not persona_name:
+        return {"status": "error", "error": "No persona context available."}
+    content = read_strategy(persona_name)
+    if not content:
+        return {"status": "ok", "display": "No strategy notes yet."}
+    return {"status": "ok", "display": content}
+
+
+def _handle_memory_read_learnings(args: dict, *, persona_name: str = "") -> dict:
+    from iconfucius.memory import read_learnings
+
+    if not persona_name:
+        return {"status": "error", "error": "No persona context available."}
+    content = read_learnings(persona_name)
+    if not content:
+        return {"status": "ok", "display": "No learnings recorded yet."}
+    return {"status": "ok", "display": content}
+
+
+def _handle_memory_update(args: dict, *, persona_name: str = "") -> dict:
+    from iconfucius.memory import write_learnings, write_strategy
+
+    if not persona_name:
+        return {"status": "error", "error": "No persona context available."}
+
+    file = args.get("file")
+    content = args.get("content")
+    if not file or not content:
+        return {"status": "error", "error": "'file' and 'content' are required."}
+
+    if file == "strategy":
+        write_strategy(persona_name, content)
+        return {"status": "ok", "display": "Strategy updated."}
+    elif file == "learnings":
+        write_learnings(persona_name, content)
+        return {"status": "ok", "display": "Learnings updated."}
+    else:
+        return {"status": "error", "error": f"Unknown file: {file}. Use 'strategy' or 'learnings'."}
+
+
+# ---------------------------------------------------------------------------
 # Handler registry
 # ---------------------------------------------------------------------------
 
@@ -911,9 +1188,13 @@ _HANDLERS: dict[str, callable] = {
     "persona_list": _handle_persona_list,
     "persona_show": _handle_persona_show,
     "token_lookup": _handle_token_lookup,
+    "token_price": _handle_token_price,
     "fund": _handle_fund,
     "trade_buy": _handle_trade_buy,
     "trade_sell": _handle_trade_sell,
     "withdraw": _handle_withdraw,
     "wallet_send": _handle_wallet_send,
+    "memory_read_strategy": _handle_memory_read_strategy,
+    "memory_read_learnings": _handle_memory_read_learnings,
+    "memory_update": _handle_memory_update,
 }

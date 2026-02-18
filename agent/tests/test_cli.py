@@ -8,7 +8,7 @@ from unittest.mock import patch, MagicMock, call
 import pytest
 from typer.testing import CliRunner
 
-from iconfucius.cli import app, state, _resolve_bot_names, _print_banner
+from iconfucius.cli import app, state, _resolve_bot_names
 from iconfucius.cli.balance import BotBalances
 from iconfucius.config import get_network, set_network
 
@@ -46,7 +46,7 @@ class TestHelpOutput:
         result = runner.invoke(app, ["--version"])
         assert result.exit_code == 0
         assert "iconfucius" in result.output
-        assert "0.2.0" in result.output
+        assert "0.3.0" in result.output
 
     def test_version_short_flag(self):
         result = runner.invoke(app, ["-V"])
@@ -76,38 +76,6 @@ class TestHelpOutput:
 # ---------------------------------------------------------------------------
 # Banner
 # ---------------------------------------------------------------------------
-
-class TestPrintBanner:
-    def teardown_method(self):
-        set_network("prd")
-
-    def test_banner_output(self, capsys, monkeypatch):
-        monkeypatch.setattr("sys.argv", ["iconfucius", "config"])
-        _print_banner()
-        output = capsys.readouterr().out
-        assert "$" in output
-        assert "iconfucius config" in output
-
-    def test_banner_hides_prd_network(self, capsys, monkeypatch):
-        set_network("prd")
-        monkeypatch.setattr("sys.argv", ["iconfucius", "config"])
-        _print_banner()
-        output = capsys.readouterr().out
-        assert "[network:" not in output
-
-    def test_banner_shows_testing_network(self, capsys, monkeypatch):
-        set_network("testing")
-        monkeypatch.setattr("sys.argv", ["iconfucius", "config"])
-        _print_banner()
-        output = capsys.readouterr().out
-        assert "[network: testing]" in output
-
-    def test_banner_shows_development_network(self, capsys, monkeypatch):
-        set_network("development")
-        monkeypatch.setattr("sys.argv", ["iconfucius", "config"])
-        _print_banner()
-        output = capsys.readouterr().out
-        assert "[network: development]" in output
 
 
 # ---------------------------------------------------------------------------

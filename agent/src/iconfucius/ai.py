@@ -66,7 +66,7 @@ class ClaudeBackend(AIBackend):
     def chat(self, messages: list[dict], system: str) -> str:
         response = self.client.messages.create(
             model=self.model,
-            max_tokens=1024,
+            max_tokens=4096,
             system=system,
             messages=messages,
         )
@@ -76,7 +76,7 @@ class ClaudeBackend(AIBackend):
                         tools: list[dict]):
         return self.client.messages.create(
             model=self.model,
-            max_tokens=1024,
+            max_tokens=4096,
             system=system,
             messages=messages,
             tools=tools,

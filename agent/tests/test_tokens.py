@@ -8,6 +8,7 @@ from unittest.mock import patch
 from iconfucius.tokens import (
     _CACHE_TTL_SECONDS,
     _safety_note,
+    fetch_token_data,
     format_known_tokens_for_prompt,
     load_known_tokens,
     lookup_known_token,
@@ -186,3 +187,27 @@ class TestSafetyNote:
             is_known=False,
         )
         assert "1,500 holders" in note
+
+
+class TestFetchTokenData:
+    """Tests for fetch_token_data — Odin.fun /token/{id} endpoint."""
+
+    def test_returns_api_response(self):
+        fake = {"id": "29m8", "price": 1477, "ticker": "ICONFUCIUS"}
+        with patch("curl_cffi.requests.get") as mock_get:
+            mock_get.return_value.raise_for_status = lambda: None
+            mock_get.return_value.json.return_value = fake
+            result = fetch_token_data("29m8")
+        assert result is not None
+        assert result["price"] == 1477
+
+    def test_returns_none_on_network_failure(self):
+        with patch("curl_cffi.requests.get", side_effect=Exception("timeout")):
+            result = fetch_token_data("29m8")
+        assert result is None
+
+    def test_returns_none_on_http_error(self):
+        with patch("curl_cffi.requests.get") as mock_get:
+            mock_get.return_value.raise_for_status.side_effect = Exception("404")
+            result = fetch_token_data("nonexistent")
+        assert result is None

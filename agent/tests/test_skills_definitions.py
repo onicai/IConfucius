@@ -84,3 +84,57 @@ class TestGetToolMetadata:
         assert meta is not None
         assert meta["requires_confirmation"] is True
         assert meta["category"] == "write"
+
+
+class TestMemoryToolDefinitions:
+    def test_memory_read_strategy_exists(self):
+        meta = get_tool_metadata("memory_read_strategy")
+        assert meta is not None
+        assert meta["requires_confirmation"] is False
+        assert meta["category"] == "read"
+
+    def test_memory_read_learnings_exists(self):
+        meta = get_tool_metadata("memory_read_learnings")
+        assert meta is not None
+        assert meta["requires_confirmation"] is False
+        assert meta["category"] == "read"
+
+    def test_memory_update_exists(self):
+        meta = get_tool_metadata("memory_update")
+        assert meta is not None
+        assert meta["requires_confirmation"] is True
+        assert meta["category"] == "write"
+
+    def test_memory_update_schema_has_file_enum(self):
+        meta = get_tool_metadata("memory_update")
+        props = meta["input_schema"]["properties"]
+        assert "file" in props
+        assert props["file"]["enum"] == ["strategy", "learnings"]
+
+    def test_memory_tools_in_anthropic_format(self):
+        tools = get_tools_for_anthropic()
+        names = [t["name"] for t in tools]
+        assert "memory_read_strategy" in names
+        assert "memory_read_learnings" in names
+        assert "memory_update" in names
+
+
+class TestTokenPriceDefinition:
+    """Tests for the token_price tool definition."""
+
+    def test_token_price_exists(self):
+        meta = get_tool_metadata("token_price")
+        assert meta is not None
+        assert meta["requires_confirmation"] is False
+        assert meta["category"] == "read"
+
+    def test_token_price_schema_has_query(self):
+        meta = get_tool_metadata("token_price")
+        props = meta["input_schema"]["properties"]
+        assert "query" in props
+        assert meta["input_schema"]["required"] == ["query"]
+
+    def test_token_price_in_anthropic_format(self):
+        tools = get_tools_for_anthropic()
+        names = [t["name"] for t in tools]
+        assert "token_price" in names

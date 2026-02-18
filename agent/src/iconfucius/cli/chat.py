@@ -9,7 +9,7 @@ import threading
 import time
 
 from iconfucius.ai import APIKeyMissingError, create_backend
-from iconfucius.memory import read_strategy, read_trades
+from iconfucius.memory import read_learnings, read_strategy, read_trades
 from iconfucius.persona import Persona, PersonaNotFoundError, load_persona
 from iconfucius.skills.definitions import get_tool_metadata, get_tools_for_anthropic
 from iconfucius.skills.executor import execute_tool
@@ -147,7 +147,10 @@ class _Spinner:
 
 def _get_language_code() -> str:
     """Detect system language. Returns 'cn' for Chinese, 'en' otherwise."""
-    lang = locale.getdefaultlocale()[0] or ""
+    try:
+        lang = locale.getlocale()[0] or ""
+    except ValueError:
+        lang = ""
     return "cn" if lang.startswith("zh") else "en"
 
 
@@ -238,13 +241,23 @@ def _describe_tool_call(name: str, tool_input: dict) -> str:
     if name == "fund":
         return f"Fund {_bot_target(tool_input)} with {_fmt_sats(tool_input.get('amount'))} sats each"
     if name == "trade_buy":
+        if tool_input.get("amount_usd") is not None:
+            amt = f"${tool_input['amount_usd']:.2f}"
+        else:
+            amt = f"{_fmt_sats(tool_input.get('amount'))} sats"
         return (
-            f"Buy {_fmt_sats(tool_input.get('amount'))} sats of token "
+            f"Buy {amt} of token "
             f"{tool_input.get('token_id')} via {_bot_target(tool_input)}"
         )
     if name == "trade_sell":
+        if tool_input.get("amount_usd") is not None:
+            amt = f"${tool_input['amount_usd']:.2f} worth"
+        elif str(tool_input.get("amount", "")).lower() == "all":
+            amt = "all"
+        else:
+            amt = f"{_fmt_sats(tool_input.get('amount'))} tokens"
         return (
-            f"Sell {tool_input.get('amount')} of token "
+            f"Sell {amt} of token "
             f"{tool_input.get('token_id')} via {_bot_target(tool_input)}"
         )
     if name == "withdraw":
@@ -270,13 +283,17 @@ def _describe_tool_call(name: str, tool_input: dict) -> str:
 
 
 def _run_tool_loop(backend, messages: list[dict], system: str,
-                   tools: list[dict], persona_name: str) -> None:
+                   tools: list[dict], persona_name: str,
+                   *, persona_key: str = "") -> None:
     """Run the tool use loop until a text-only response is produced.
 
     Modifies messages in-place (appends assistant + tool_result messages).
     The persona prefix is only printed once — on the final text-only response.
     Pre-tool reasoning text (e.g. "Let me look that up") is suppressed to
     avoid a double persona prefix.
+
+    Args:
+        persona_key: Persona identifier for memory operations (e.g. "iconfucius").
     """
     for _ in range(_MAX_TOOL_ITERATIONS):
         response = backend.chat_with_tools(messages, system, tools)
@@ -293,7 +310,7 @@ def _run_tool_loop(backend, messages: list[dict], system: str,
                 if block.type == "text"
             )
             messages.append({"role": "assistant", "content": text})
-            print(f"\n{persona_name} says:\n\n{text}\n")
+            print(f"\n{text}\n")
             return
 
         # Has tool calls — process them
@@ -356,7 +373,13 @@ def _run_tool_loop(backend, messages: list[dict], system: str,
                 continue
 
             with _Spinner(f"Running {block.name}..."):
-                result = execute_tool(block.name, block.input)
+                result = execute_tool(block.name, block.input,
+                                      persona_name=persona_key)
+
+            # Print large output directly to terminal, strip from AI result
+            terminal_output = result.pop("_terminal_output", None)
+            if terminal_output:
+                print(f"\n{terminal_output}\n")
 
             tool_results.append({
                 "type": "tool_result",
@@ -419,10 +442,13 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False) -> None:
         system += "\nGuide the user through any missing setup steps before trading."
 
     strategy = read_strategy(persona_name)
+    learnings = read_learnings(persona_name)
     recent_trades = read_trades(persona_name, last_n=5)
 
     if strategy:
         system += f"\n\n## Current Strategy\n{strategy}"
+    if learnings:
+        system += f"\n\n## Learnings\n{learnings}"
     if recent_trades:
         system += f"\n\n## Recent Trades\n{recent_trades}"
 
@@ -457,7 +483,7 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False) -> None:
         print(f"\n{_format_api_error(e)}")
         return
 
-    print(f"\n{persona.name}:\n{greeting}\n")
+    print(f"\n{greeting}\n")
     print("\033[2mexit to quit · Ctrl+C to interrupt\033[0m\n")
 
     tools = get_tools_for_anthropic()
@@ -466,13 +492,13 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False) -> None:
     while True:
         try:
             print("\033[2m" + "─" * 60 + "\033[0m")
-            user_input = input("You: ").strip()
+            user_input = input("> ").strip()
         except (KeyboardInterrupt, EOFError):
-            print(f"\n\n{persona.name}:\n{goodbye}")
+            print(f"\n\n{goodbye}")
             break
 
         if user_input.lower() in ("exit", "quit", "/exit", "/quit"):
-            print(f"\n{persona.name}:\n{goodbye}")
+            print(f"\n{goodbye}")
             break
 
         if not user_input:
@@ -481,7 +507,8 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False) -> None:
         messages.append({"role": "user", "content": user_input})
 
         try:
-            _run_tool_loop(backend, messages, system, tools, persona.name)
+            _run_tool_loop(backend, messages, system, tools, persona.name,
+                          persona_key=persona_name)
         except Exception as e:
             print(f"\n{_format_api_error(e)}\n")
             messages.pop()  # Remove the failed user message

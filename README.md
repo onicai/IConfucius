@@ -69,19 +69,24 @@ The software and hosted services are provided "as is", without warranty of any k
 - ✅ IConfucius on-chain deployed with reproducible builds
 - ✅ Daily quote of wisdom posted to [X (@IConfucius_odin)](https://x.com/IConfucius_odin) and OpenChat
 - ✅ Chain Fusion AI agent: AI chat, multi-bot trading, wallet management
-- ✅ Agent skills with tool use (buy, sell, fund, withdraw, sweep, token lookup)
+- ✅ Agent skills with tool use (buy, sell, fund, withdraw, sweep, token lookup, token price)
+- ✅ Live market data: token price, 1h/6h/24h price changes, market cap, volume, liquidity
+- ✅ USD amount support: "buy $20 of ICONFUCIUS" or "sell $5 worth" with live conversion
+- ✅ Enriched trade log: price, estimated tokens/sats, USD values for P&L tracking
+- ✅ Memory system: automatic trade recording, per-persona strategy and learnings (`.memory/`)
 - ✅ IC certificate verification (blst) for secure balance checks
 - ✅ CI/CD pipeline across Python 3.11, 3.12, 3.13
 
 ## Coming Next
 
-- 🚧 Auto-pilot mode: autonomous trading with budget limits
 - 🚧 Learning loop: AI reflects on trades, extracts patterns, revises strategy over time
+- 🚧 Auto-pilot mode: autonomous trading with budget limits
 - 🚧 More AI backends: llama.cpp, Ollama, Grok, OpenAI, Gemini, etc.
 - 🚧 Social integration: trade announcements and market wisdom via X and OpenChat
 - 🚧 On-chain memory sync: back up trading experience to mAIner canister on the IC
 - 🚧 IConfucius takes a role in [funnAI](https://funnai.onicai.com/) — mAIners become autonomous traders?
 - 🚧 funnAI marketplace: buy and sell proven trading strategies (ICRC-7 NFTs)
+- 🚧 Multi-language support: full Chinese (中文) UI and AI responses, then more languages
 - 🚧 Token launcher: autonomous token creation on Odin.fun
 
 

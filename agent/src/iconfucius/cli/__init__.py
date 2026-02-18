@@ -249,22 +249,6 @@ def _resolve_network(network: Optional[str] = None) -> None:
     set_network(effective)
 
 
-def _print_banner():
-    """Print a command banner for visual separation."""
-    cmd = "iconfucius " + " ".join(sys.argv[1:]) if sys.argv[1:] else "iconfucius"
-    network = get_network()
-    if network != "prd":
-        cmd += f"  [network: {network}]"
-    inner = f" {cmd} "
-    width = max(len(inner) + 2, 55)
-    border = "$" * width
-    padded = f"${inner:<{width - 2}}$"
-    print()
-    print(border)
-    print(padded)
-    print(border)
-    print()
-
 
 
 def _show_balance_and_instructions(
@@ -315,11 +299,8 @@ def main_callback(
     state.network = network
     state.persona = persona
     set_network(network)
-    if ctx.invoked_subcommand is not None:
-        _print_banner()
-    else:
+    if ctx.invoked_subcommand is None:
         # Bare invocation: start chat with default persona
-        _print_banner()
         _start_chat()
 
 

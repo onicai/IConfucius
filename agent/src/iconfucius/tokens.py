@@ -262,6 +262,29 @@ def _search_api(query: str) -> list[dict]:
         return []
 
 
+def fetch_token_data(token_id: str) -> dict | None:
+    """Fetch full token data from the Odin.fun /token/{id} endpoint.
+
+    Returns the raw API response dict, or None on failure.
+    Includes price, marketcap, volume, holder_count, price history, etc.
+    """
+    from iconfucius.config import ODIN_API_URL
+
+    try:
+        from curl_cffi import requests as cffi_requests
+
+        resp = cffi_requests.get(
+            f"{ODIN_API_URL}/token/{token_id}",
+            impersonate="chrome",
+            headers={"Accept": "application/json"},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        return resp.json()
+    except Exception:
+        return None
+
+
 def _safety_note(token: dict, is_known: bool) -> str:
     """Compute a safety note for a token search result."""
     parts = []

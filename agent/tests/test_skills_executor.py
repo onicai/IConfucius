@@ -5,8 +5,11 @@ from unittest.mock import patch
 
 from iconfucius.skills.executor import (
     execute_tool,
+    _build_balance_summary,
     _enable_verify_certificates,
     _resolve_bot_names,
+    _usd_to_sats,
+    _usd_to_tokens,
 )
 
 
@@ -540,3 +543,433 @@ class TestInstallBlstExecutor:
         assert result["status"] == "error"
         assert "swig" in result["error"]
         assert "git" not in result["error"].split("Missing")[1]
+
+
+class TestTradeRecording:
+    """Tests that buy/sell tool calls record trades to memory."""
+
+    def _fake_handler(self, result):
+        """Return a handler function that returns the given result."""
+        return lambda args: result
+
+    @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100000.0)
+    @patch("iconfucius.tokens.fetch_token_data",
+           return_value={"price": 1500, "ticker": "ICONFUCIUS"})
+    @patch("iconfucius.memory.append_trade")
+    def test_buy_records_trade(self, mock_append, _mock_fetch, _mock_usd,
+                               tmp_path, monkeypatch):
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        from iconfucius.skills.executor import _HANDLERS
+        original = _HANDLERS["trade_buy"]
+        _HANDLERS["trade_buy"] = self._fake_handler(
+            {"status": "ok", "display": "Bought!"})
+        try:
+            result = execute_tool("trade_buy",
+                                  {"token_id": "29m8", "amount": 1000,
+                                   "bot_name": "bot-1"},
+                                  persona_name="iconfucius")
+        finally:
+            _HANDLERS["trade_buy"] = original
+        assert result["status"] == "ok"
+        mock_append.assert_called_once()
+        entry = mock_append.call_args[0][1]
+        assert "BUY" in entry
+        assert "29m8" in entry
+        assert "ICONFUCIUS" in entry
+        assert "bot-1" in entry
+        assert "1,000 sats" in entry
+        assert "Price:" in entry
+        assert "Est. tokens:" in entry
+
+    @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100000.0)
+    @patch("iconfucius.tokens.fetch_token_data",
+           return_value={"price": 1500, "ticker": "ICONFUCIUS"})
+    @patch("iconfucius.memory.append_trade")
+    def test_sell_records_trade(self, mock_append, _mock_fetch, _mock_usd,
+                                tmp_path, monkeypatch):
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        from iconfucius.skills.executor import _HANDLERS
+        original = _HANDLERS["trade_sell"]
+        _HANDLERS["trade_sell"] = self._fake_handler(
+            {"status": "ok", "display": "Sold!"})
+        try:
+            result = execute_tool("trade_sell",
+                                  {"token_id": "29m8", "amount": 5000000,
+                                   "bot_name": "bot-1"},
+                                  persona_name="iconfucius")
+        finally:
+            _HANDLERS["trade_sell"] = original
+        assert result["status"] == "ok"
+        mock_append.assert_called_once()
+        entry = mock_append.call_args[0][1]
+        assert "SELL" in entry
+        assert "29m8" in entry
+        assert "ICONFUCIUS" in entry
+        assert "Price:" in entry
+        assert "Est. received:" in entry
+
+    @patch("iconfucius.memory.append_trade")
+    def test_failed_trade_not_recorded(self, mock_append):
+        from iconfucius.skills.executor import _HANDLERS
+        original = _HANDLERS["trade_buy"]
+        _HANDLERS["trade_buy"] = self._fake_handler(
+            {"status": "error", "error": "No wallet"})
+        try:
+            result = execute_tool("trade_buy",
+                                  {"token_id": "29m8", "amount": 1000,
+                                   "bot_name": "bot-1"},
+                                  persona_name="iconfucius")
+        finally:
+            _HANDLERS["trade_buy"] = original
+        assert result["status"] == "error"
+        mock_append.assert_not_called()
+
+    @patch("iconfucius.memory.append_trade")
+    def test_no_persona_no_recording(self, mock_append):
+        from iconfucius.skills.executor import _HANDLERS
+        original = _HANDLERS["trade_buy"]
+        _HANDLERS["trade_buy"] = self._fake_handler(
+            {"status": "ok", "display": "Bought!"})
+        try:
+            result = execute_tool("trade_buy",
+                                  {"token_id": "29m8", "amount": 1000,
+                                   "bot_name": "bot-1"})
+        finally:
+            _HANDLERS["trade_buy"] = original
+        assert result["status"] == "ok"
+        mock_append.assert_not_called()
+
+    @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100000.0)
+    @patch("iconfucius.tokens.fetch_token_data",
+           return_value={"price": 1500, "ticker": "ICONFUCIUS"})
+    @patch("iconfucius.memory.append_trade",
+           side_effect=Exception("disk full"))
+    def test_recording_failure_is_silent(self, mock_append, _mock_fetch,
+                                         _mock_usd):
+        """Trade recording errors don't break the trade result."""
+        from iconfucius.skills.executor import _HANDLERS
+        original = _HANDLERS["trade_buy"]
+        _HANDLERS["trade_buy"] = self._fake_handler(
+            {"status": "ok", "display": "Bought!"})
+        try:
+            result = execute_tool("trade_buy",
+                                  {"token_id": "29m8", "amount": 1000,
+                                   "bot_name": "bot-1"},
+                                  persona_name="iconfucius")
+        finally:
+            _HANDLERS["trade_buy"] = original
+        assert result["status"] == "ok"
+
+
+class TestMemoryToolHandlers:
+    """Tests for memory_read_strategy, memory_read_learnings, memory_update."""
+
+    def test_read_strategy_empty(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        result = execute_tool("memory_read_strategy", {},
+                              persona_name="test-persona")
+        assert result["status"] == "ok"
+        assert "No strategy" in result["display"]
+
+    def test_read_strategy_with_content(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        from iconfucius.memory import write_strategy
+        write_strategy("test-persona", "# My Strategy\nBuy low sell high")
+        result = execute_tool("memory_read_strategy", {},
+                              persona_name="test-persona")
+        assert result["status"] == "ok"
+        assert "Buy low sell high" in result["display"]
+
+    def test_read_learnings_empty(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        result = execute_tool("memory_read_learnings", {},
+                              persona_name="test-persona")
+        assert result["status"] == "ok"
+        assert "No learnings" in result["display"]
+
+    def test_read_learnings_with_content(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        from iconfucius.memory import write_learnings
+        write_learnings("test-persona", "# Learnings\nVolume spikes matter")
+        result = execute_tool("memory_read_learnings", {},
+                              persona_name="test-persona")
+        assert result["status"] == "ok"
+        assert "Volume spikes matter" in result["display"]
+
+    def test_update_strategy(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        result = execute_tool("memory_update",
+                              {"file": "strategy", "content": "New strategy"},
+                              persona_name="test-persona")
+        assert result["status"] == "ok"
+        assert "updated" in result["display"].lower()
+        from iconfucius.memory import read_strategy
+        assert read_strategy("test-persona") == "New strategy"
+
+    def test_update_learnings(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        result = execute_tool("memory_update",
+                              {"file": "learnings", "content": "New learnings"},
+                              persona_name="test-persona")
+        assert result["status"] == "ok"
+        from iconfucius.memory import read_learnings
+        assert read_learnings("test-persona") == "New learnings"
+
+    def test_update_invalid_file(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        result = execute_tool("memory_update",
+                              {"file": "trades", "content": "Nope"},
+                              persona_name="test-persona")
+        assert result["status"] == "error"
+        assert "Unknown file" in result["error"]
+
+    def test_update_missing_params(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        result = execute_tool("memory_update", {},
+                              persona_name="test-persona")
+        assert result["status"] == "error"
+        assert "required" in result["error"].lower()
+
+    def test_no_persona_returns_error(self):
+        result = execute_tool("memory_read_strategy", {})
+        assert result["status"] == "error"
+        assert "persona" in result["error"].lower()
+
+
+class TestBuildBalanceSummary:
+    """Tests for _build_balance_summary helper."""
+
+    def test_includes_full_output_and_bot_count(self):
+        output = "bot-1   100 sats\nTOTAL  100 sats\n\nTotal portfolio value: $42.00"
+        summary = _build_balance_summary(output, 50)
+        assert "50 bots" in summary
+        assert "printed to terminal" in summary
+        assert "bot-1" in summary
+        assert "Total portfolio value: $42.00" in summary
+
+    def test_preserves_per_bot_data(self):
+        output = (
+            "Bot     ckBTC\n"
+            "bot-1   100 sats\n"
+            "bot-2   200 sats\n"
+            "TOTAL   300 sats ($0.20)\n"
+            "\n"
+            "Total portfolio value: $1,234.56"
+        )
+        summary = _build_balance_summary(output, 2)
+        assert "bot-1   100 sats" in summary
+        assert "bot-2   200 sats" in summary
+        assert "TOTAL" in summary
+
+
+class TestWalletBalanceLargeBotCount:
+    """Tests for >100 bot terminal output behavior."""
+
+    def test_small_bot_count_no_terminal_output(self):
+        """<=100 bots: no _terminal_output key."""
+        with patch("iconfucius.skills.executor._capture",
+                    return_value="table output"):
+            with patch("iconfucius.config.require_wallet", return_value=True):
+                with patch("iconfucius.config.get_bot_names",
+                            return_value=[f"bot-{i}" for i in range(1, 51)]):
+                    result = execute_tool("wallet_balance", {})
+        assert result["status"] == "ok"
+        assert "_terminal_output" not in result
+        assert result["display"] == "table output"
+
+    def test_large_bot_count_has_terminal_output(self):
+        """>100 bots: returns _terminal_output and summary with full data."""
+        fake_output = "Wallet\nbot data\nTOTAL 5000\n\nTotal portfolio value: $99.00"
+        with patch("iconfucius.skills.executor._capture",
+                    return_value=fake_output):
+            with patch("iconfucius.config.require_wallet", return_value=True):
+                with patch("iconfucius.config.get_bot_names",
+                            return_value=[f"bot-{i}" for i in range(1, 151)]):
+                    result = execute_tool("wallet_balance", {})
+        assert result["status"] == "ok"
+        assert "_terminal_output" in result
+        assert result["_terminal_output"] == fake_output.strip()
+        assert "150 bots" in result["display"]
+        assert "bot data" in result["display"]
+        assert "Total portfolio value: $99.00" in result["display"]
+
+
+class TestTokenPriceExecutor:
+    """Tests for the token_price agent skill."""
+
+    _FAKE_API = {
+        "id": "29m8",
+        "name": "IConfucius",
+        "ticker": "ICONFUCIUS",
+        "price": 1500,
+        "price_5m": 1500,
+        "price_1h": 1400,
+        "price_6h": 2000,
+        "price_1d": 1000,
+        "marketcap": 31500000000,
+        "volume_24": 20000000000,
+        "holder_count": 253,
+        "btc_liquidity": 11000000000,
+        "divisibility": 8,
+        "bonded": True,
+    }
+
+    def test_returns_price_data(self):
+        with patch("iconfucius.tokens._search_api", return_value=[]):
+            with patch("iconfucius.tokens.fetch_token_data",
+                        return_value=self._FAKE_API):
+                with patch("iconfucius.config.get_btc_to_usd_rate",
+                            return_value=100000.0):
+                    result = execute_tool("token_price",
+                                          {"query": "IConfucius"})
+        assert result["status"] == "ok"
+        assert result["token_id"] == "29m8"
+        assert result["price_sats"] == 1500
+        assert result["ticker"] == "ICONFUCIUS"
+        assert "IConfucius" in result["display"]
+
+    def test_price_change_percentages(self):
+        with patch("iconfucius.tokens._search_api", return_value=[]):
+            with patch("iconfucius.tokens.fetch_token_data",
+                        return_value=self._FAKE_API):
+                with patch("iconfucius.config.get_btc_to_usd_rate",
+                            return_value=100000.0):
+                    result = execute_tool("token_price", {"query": "29m8"})
+        # 1500 vs 1400 = +7.1%
+        assert result["change_1h"] == "+7.1%"
+        # 1500 vs 2000 = -25.0%
+        assert result["change_6h"] == "-25.0%"
+        # 1500 vs 1000 = +50.0%
+        assert result["change_24h"] == "+50.0%"
+
+    def test_missing_query_returns_error(self):
+        result = execute_tool("token_price", {})
+        assert result["status"] == "error"
+        assert "required" in result["error"].lower()
+
+    def test_unknown_token_returns_error(self):
+        with patch("iconfucius.tokens._search_api", return_value=[]):
+            result = execute_tool("token_price",
+                                  {"query": "nonexistent_xyz_999"})
+        assert result["status"] == "error"
+        assert "not found" in result["error"].lower()
+
+    def test_api_failure_returns_error(self):
+        with patch("iconfucius.tokens._search_api", return_value=[]):
+            with patch("iconfucius.tokens.fetch_token_data",
+                        return_value=None):
+                result = execute_tool("token_price",
+                                      {"query": "IConfucius"})
+        assert result["status"] == "error"
+        assert "Could not fetch" in result["error"]
+
+    def test_usd_rate_failure_graceful(self):
+        with patch("iconfucius.tokens._search_api", return_value=[]):
+            with patch("iconfucius.tokens.fetch_token_data",
+                        return_value=self._FAKE_API):
+                with patch("iconfucius.config.get_btc_to_usd_rate",
+                            side_effect=Exception("offline")):
+                    result = execute_tool("token_price",
+                                          {"query": "IConfucius"})
+        assert result["status"] == "ok"
+        assert result["price_sats"] == 1500
+        assert result["price_usd"] is None
+        assert "sats" in result["display"]
+
+
+class TestUsdConversion:
+    """Tests for USD-to-sats and USD-to-tokens conversion."""
+
+    @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100000.0)
+    def test_usd_to_sats(self, _mock):
+        # $1 at $100k/BTC = 1000 sats
+        assert _usd_to_sats(1.0) == 1000
+
+    @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100000.0)
+    def test_usd_to_sats_twenty_dollars(self, _mock):
+        # $20 at $100k/BTC = 20,000 sats
+        assert _usd_to_sats(20.0) == 20000
+
+    @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100000.0)
+    @patch("iconfucius.tokens.fetch_token_data",
+           return_value={"price": 1500, "divisibility": 8})
+    def test_usd_to_tokens(self, _mock_fetch, _mock_usd):
+        # $5 at $100k/BTC = 5000 sats
+        # raw_tokens = 5000 * 1_000_000 * 10^8 / 1500
+        tokens = _usd_to_tokens(5.0, "29m8")
+        assert tokens > 0
+        # Verify: value_sats = (tokens * 1500) / 10^8 / 10^6 ≈ 5000
+        value_sats = (tokens * 1500) / (10 ** 8) / 1_000_000
+        assert abs(value_sats - 5000) < 1  # within 1 sat
+
+    @patch("iconfucius.tokens.fetch_token_data", return_value=None)
+    def test_usd_to_tokens_no_price_raises(self, _mock):
+        from pytest import raises
+        with raises(ValueError, match="Could not fetch price"):
+            _usd_to_tokens(5.0, "nonexistent")
+
+
+class TestTradeUsdAmount:
+    """Tests for amount_usd parameter in trade_buy and trade_sell."""
+
+    @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100000.0)
+    def test_buy_with_amount_usd(self, _mock_usd, tmp_path, monkeypatch):
+        """trade_buy with amount_usd converts to sats."""
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        with patch("iconfucius.config.require_wallet", return_value=True):
+            with patch("iconfucius.skills.executor._capture",
+                        return_value="Bought!") as mock_cap:
+                result = execute_tool("trade_buy", {
+                    "token_id": "29m8",
+                    "amount_usd": 20.0,
+                    "bot_name": "bot-1",
+                })
+        assert result["status"] == "ok"
+
+    @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100000.0)
+    @patch("iconfucius.tokens.fetch_token_data",
+           return_value={"price": 1500, "divisibility": 8})
+    def test_sell_with_amount_usd(self, _mock_fetch, _mock_usd,
+                                   tmp_path, monkeypatch):
+        """trade_sell with amount_usd converts to raw tokens."""
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        with patch("iconfucius.config.require_wallet", return_value=True):
+            with patch("iconfucius.skills.executor._capture",
+                        return_value="Sold!"):
+                result = execute_tool("trade_sell", {
+                    "token_id": "29m8",
+                    "amount_usd": 5.0,
+                    "bot_name": "bot-1",
+                })
+        assert result["status"] == "ok"
+
+    def test_buy_no_amount_returns_error(self):
+        """trade_buy without amount or amount_usd returns error."""
+        with patch("iconfucius.config.require_wallet", return_value=True):
+            result = execute_tool("trade_buy", {
+                "token_id": "29m8",
+                "bot_name": "bot-1",
+            })
+        assert result["status"] == "error"
+
+    def test_sell_no_amount_returns_error(self):
+        """trade_sell without amount or amount_usd returns error."""
+        with patch("iconfucius.config.require_wallet", return_value=True):
+            result = execute_tool("trade_sell", {
+                "token_id": "29m8",
+                "bot_name": "bot-1",
+            })
+        assert result["status"] == "error"
+
+    @patch("iconfucius.config.get_btc_to_usd_rate",
+           side_effect=Exception("offline"))
+    def test_buy_usd_conversion_failure(self, _mock):
+        """trade_buy returns error when USD conversion fails."""
+        with patch("iconfucius.config.require_wallet", return_value=True):
+            result = execute_tool("trade_buy", {
+                "token_id": "29m8",
+                "amount_usd": 20.0,
+                "bot_name": "bot-1",
+            })
+        assert result["status"] == "error"
+        assert "USD conversion failed" in result["error"]
