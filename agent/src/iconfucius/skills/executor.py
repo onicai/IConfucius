@@ -45,6 +45,17 @@ def execute_tool(name: str, args: dict, *, persona_name: str = "") -> dict:
             _record_trade(name, args, result, persona_name)
 
         return result
+    except SystemExit:
+        # get_verify_certificates() raises SystemExit when blst is missing
+        return {
+            "status": "error",
+            "error": (
+                "verify_certificates is enabled in iconfucius.toml "
+                "but the 'blst' library is not installed. "
+                "Either install blst (see https://github.com/onicai/IConfucius/blob/main/agent/README-security.md) "
+                "or set verify_certificates = false in [settings]."
+            ),
+        }
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
