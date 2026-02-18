@@ -1,0 +1,58 @@
+# Repo specific
+*.log
+OLD/
+TODO.md
+*_wip.py
+open-chat/
+open-chat-bots/
+motoko_oc_bot_sdk/
+*.cbor
+*.har
+secret/
+.wallet/
+.cache/
+iconfucius.toml
+e2e-bots-*/
+
+# Various IDEs and Editors
+.vscode/
+.idea/
+**/*~
+
+# Mac OSX temporary files
+.DS_Store
+**/.DS_Store
+
+# dfx temporary files
+.dfx/
+**/.dfx/
+
+# generated files
+**/declarations/
+
+# rust
+target/
+
+# frontend code
+node_modules/
+dist/
+.svelte-kit/
+
+# environment variables
+.env
+**/.env
+
+# LLM models
+*.gguf
+
+# Python - Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+
+# Reproducible Build artifacts
+out/
+
+# PyPI
+.pypirc

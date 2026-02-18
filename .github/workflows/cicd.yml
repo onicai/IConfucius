@@ -1,0 +1,64 @@
+name: cicd
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Python ${{ matrix.python-version }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, macos-15-intel]
+        python-version: ["3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install build tools (macOS ARM)
+        if: matrix.os == 'macos-latest'
+        run: brew install automake libtool
+
+      - name: Install dependencies
+        working-directory: agent
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Install SWIG (Ubuntu)
+        if: runner.os == 'Linux'
+        run: sudo apt-get install -y swig
+
+      - name: Install SWIG (macOS)
+        if: runner.os == 'macOS'
+        run: brew install swig
+
+      - name: Install blst
+        working-directory: agent
+        run: make install-blst
+
+      - name: Verify blst
+        run: python -c "import blst; print('blst OK')"
+
+      - name: Test install-blst config
+        run: |
+          python -c "
+          from iconfucius.config import get_verify_certificates
+          import iconfucius.config as cfg
+          cfg._cached_config = {'settings': {'verify_certificates': True}, 'bots': {}}
+          assert get_verify_certificates() is True
+          print('verify_certificates=true with blst OK')
+          "
+
+      - name: Run tests
+        working-directory: agent
+        run: pytest -v

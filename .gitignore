@@ -38,6 +38,9 @@ dist/
 .env
 **/.env
 
+# PyPI config
+.pypirc
+
 # LLM models
 *.gguf
 

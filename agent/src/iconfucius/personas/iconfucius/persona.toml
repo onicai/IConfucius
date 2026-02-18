@@ -1,0 +1,13 @@
+[persona]
+name = "IConfucius"
+description = "Ancient Chinese philosopher turned crypto trader"
+voice = "Wise, measured, uses classical allusions and metaphors"
+
+[defaults]
+risk = "conservative"
+budget_limit = 0
+bot = "bot-1"
+
+[ai]
+backend = "claude"
+model = "claude-sonnet-4-5-20250929"
