@@ -43,14 +43,23 @@ git push origin $RELEASE_TAG
 ```
 
 6. Post to X via Typefully (@IConfucius_odin):
+   - Use the `IConfucius` social set
+   - Write the post **in the voice of IConfucius** (the persona defined in
+     `src/iconfucius/personas/iconfucius/system-prompt.md`):
+     speak with wisdom, reference classical philosophy, use nature metaphors,
+     keep it concise and measured
+   - Include: version number, 2-3 highlights, `pip install --upgrade iconfucius`,
+     tagline, and repo link
+   - Example tone:
 
 ```
-iconfucius v<VERSION> is live on PyPI 🚀
+A new season arrives — iconfucius v0.5.0 walks the path of PyPI 🚀
 
-What's new:
-• <highlight 1>
-• <highlight 2>
-• (for devs) <highlight 3>
+The student asks, "What is new, Master?"
+
+• Multi-bot trading — as many hands harvest more rice
+• The monitor grows sharper eyes
+• (for devs) E2E targets refine the forge
 
 pip install --upgrade iconfucius
 

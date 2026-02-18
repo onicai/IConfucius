@@ -62,21 +62,32 @@ The software and hosted services are provided "as is", without warranty of any k
 
 # IConfucius Roadmap
 
-We have the following roadmap in mind for IConfucius:
+## Done
 
-- ✅️ Launched on [ODIN•FUN](https://odin.fun?r=mgb3mzvghe) → Token https://odin.fun/token/29m8
-- ✅️ IConfucius on-chain can generate quotes in either English or Chinese → [Try it out](https://aiconfucius-w8i.caffeine.xyz/)
-- ✅️ IConfucius on-chain deployed with reproducible builds, in preparation of decentralization
-- ✅️ IConfucius daily quote of wisdom posted to [IConfucius X (Twitter) account](https://x.com/IConfucius_odin)
-- ✅️ IConfucius daily quote of wisdom posted to OpenChat
-- ✅️ IConfucius Chain Fusion AI agent: trade from the command line
-- 🚧 IConfucius takes a role in [funnAI](https://funnai.onicai.com/)
-- 🧠 IConfucius evolves his abilities under governance of the [onicai SNS](https://www.onicai.com/files/onicai_SNS_Whitepaper.pdf)
+- ✅ Launched on [ODIN•FUN](https://odin.fun?r=mgb3mzvghe) → Token https://odin.fun/token/29m8
+- ✅ IConfucius on-chain can generate quotes in either English or Chinese → [Try it out](https://aiconfucius-w8i.caffeine.xyz/)
+- ✅ IConfucius on-chain deployed with reproducible builds
+- ✅ Daily quote of wisdom posted to [X (@IConfucius_odin)](https://x.com/IConfucius_odin) and OpenChat
+- ✅ Chain Fusion AI agent: AI chat, multi-bot trading, wallet management
+- ✅ Agent skills with tool use (buy, sell, fund, withdraw, sweep, token lookup)
+- ✅ IC certificate verification (blst) for secure balance checks
+- ✅ CI/CD pipeline across Python 3.11, 3.12, 3.13
+
+## Coming Next
+
+- 🚧 Auto-pilot mode: autonomous trading with budget limits
+- 🚧 Learning loop: AI reflects on trades, extracts patterns, revises strategy over time
+- 🚧 More AI backends: llama.cpp, Ollama, Grok, OpenAI, Gemini, etc.
+- 🚧 Social integration: trade announcements and market wisdom via X and OpenChat
+- 🚧 On-chain memory sync: back up trading experience to mAIner canister on the IC
+- 🚧 IConfucius takes a role in [funnAI](https://funnai.onicai.com/) — mAIners become autonomous traders?
+- 🚧 funnAI marketplace: buy and sell proven trading strategies (ICRC-7 NFTs)
+- 🚧 Token launcher: autonomous token creation on Odin.fun
 
 
 # Reference
 
-The Bitcoin rune trading platform is [Odin Fun](https://odin.fun/)
+[Odin Fun](https://odin.fun/) - Bitcoin Rune memecoin trading platform
 
 # License
 
