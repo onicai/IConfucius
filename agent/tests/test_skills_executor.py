@@ -824,7 +824,7 @@ class TestTokenPriceExecutor:
                                           {"query": "IConfucius"})
         assert result["status"] == "ok"
         assert result["token_id"] == "29m8"
-        assert result["price_sats"] == 1500
+        assert result["price_sats"] == 1.5  # 1500 msat / 1000
         assert result["ticker"] == "ICONFUCIUS"
         assert "IConfucius" in result["display"]
 
@@ -872,7 +872,7 @@ class TestTokenPriceExecutor:
                     result = execute_tool("token_price",
                                           {"query": "IConfucius"})
         assert result["status"] == "ok"
-        assert result["price_sats"] == 1500
+        assert result["price_sats"] == 1.5  # 1500 msat / 1000
         assert result["price_usd"] is None
         assert "sats" in result["display"]
 

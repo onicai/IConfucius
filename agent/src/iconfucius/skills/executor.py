@@ -814,14 +814,19 @@ def _handle_token_price(args: dict) -> dict:
             "error": f"Could not fetch price data for {token_name} ({token_id}).",
         }
 
-    price = data.get("price", 0)
-    price_1h = data.get("price_1h", 0)
-    price_6h = data.get("price_6h", 0)
-    price_1d = data.get("price_1d", 0)
-    marketcap = data.get("marketcap", 0)
-    volume_24 = data.get("volume_24", 0)
+    # API returns BTC-denominated fields in millisatoshis (msat)
+    MSAT_PER_SAT = 1000
+    price_msat = data.get("price", 0)
+    price_1h_msat = data.get("price_1h", 0)
+    price_6h_msat = data.get("price_6h", 0)
+    price_1d_msat = data.get("price_1d", 0)
+    marketcap_sats = data.get("marketcap", 0) // MSAT_PER_SAT
+    volume_24_sats = data.get("volume_24", 0) // MSAT_PER_SAT
     holder_count = data.get("holder_count", 0)
-    btc_liquidity = data.get("btc_liquidity", 0)
+    btc_liquidity_sats = data.get("btc_liquidity", 0) // MSAT_PER_SAT
+
+    # Price: API gives msat per token, convert to sats
+    price_sats = price_msat / MSAT_PER_SAT
 
     def _pct_change(current: int, previous: int) -> str:
         if not previous or not current:
@@ -835,15 +840,22 @@ def _handle_token_price(args: dict) -> dict:
     except Exception:
         btc_usd = None
 
+    # Format price with appropriate precision (can be fractional sats)
+    if btc_usd:
+        price_usd = (price_sats / 100_000_000) * btc_usd
+        price_str = f"{price_sats:,.3f} sats (${price_usd:.5f})"
+    else:
+        price_str = f"{price_sats:,.3f} sats"
+
     lines = [
         f"{token_name} ({token_ticker}) — {token_id}",
-        f"Price:        {fmt_sats(price, btc_usd)} per token",
-        f"Change 1h:    {_pct_change(price, price_1h)}",
-        f"Change 6h:    {_pct_change(price, price_6h)}",
-        f"Change 24h:   {_pct_change(price, price_1d)}",
-        f"Market cap:   {fmt_sats(marketcap, btc_usd)}",
-        f"24h volume:   {fmt_sats(volume_24, btc_usd)}",
-        f"Liquidity:    {fmt_sats(btc_liquidity, btc_usd)}",
+        f"Price:        {price_str} per token",
+        f"Change 1h:    {_pct_change(price_msat, price_1h_msat)}",
+        f"Change 6h:    {_pct_change(price_msat, price_6h_msat)}",
+        f"Change 24h:   {_pct_change(price_msat, price_1d_msat)}",
+        f"Market cap:   {fmt_sats(marketcap_sats, btc_usd)}",
+        f"24h volume:   {fmt_sats(volume_24_sats, btc_usd)}",
+        f"Liquidity:    {fmt_sats(btc_liquidity_sats, btc_usd)}",
         f"Holders:      {holder_count:,}",
     ]
 
@@ -853,13 +865,13 @@ def _handle_token_price(args: dict) -> dict:
         "token_id": token_id,
         "token_name": token_name,
         "ticker": token_ticker,
-        "price_sats": price,
-        "price_usd": (price / 100_000_000) * btc_usd if btc_usd else None,
-        "change_1h": _pct_change(price, price_1h),
-        "change_6h": _pct_change(price, price_6h),
-        "change_24h": _pct_change(price, price_1d),
-        "marketcap_sats": marketcap,
-        "volume_24h_sats": volume_24,
+        "price_sats": price_sats,
+        "price_usd": (price_sats / 100_000_000) * btc_usd if btc_usd else None,
+        "change_1h": _pct_change(price_msat, price_1h_msat),
+        "change_6h": _pct_change(price_msat, price_6h_msat),
+        "change_24h": _pct_change(price_msat, price_1d_msat),
+        "marketcap_sats": marketcap_sats,
+        "volume_24h_sats": volume_24_sats,
         "holder_count": holder_count,
     }
 
