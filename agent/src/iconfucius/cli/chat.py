@@ -509,6 +509,14 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False) -> None:
         try:
             _run_tool_loop(backend, messages, system, tools, persona.name,
                           persona_key=persona_name)
+        except KeyboardInterrupt:
+            print("\n\nInterrupted.")
+            messages.pop()
+            continue
+        except SystemExit as e:
+            print(f"\nInternal error (exit code {e.code})\n")
+            messages.pop()
+            continue
         except Exception as e:
             print(f"\n{_format_api_error(e)}\n")
             messages.pop()  # Remove the failed user message
