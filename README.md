@@ -8,11 +8,24 @@
 
 # Setup
 
+## Prerequisites
+
+A C compiler is currently required to install iconfucius because one of
+its transitive dependencies (`ed25519-blake2b`, pulled in by
+`bitcoin-utils` -> `hdwallet`) ships without pre-built wheels and must
+be compiled from source. We are working on removing this dependency.
+
+| Platform        | Install build tools                                       |
+| --------------- | --------------------------------------------------------- |
+| macOS (Homebrew) | `xcode-select --install && brew install automake libtool` |
+| Ubuntu / Debian | `sudo apt-get install -y build-essential`                 |
+| Fedora / RHEL   | `sudo dnf install gcc gcc-c++ make`                       |
+| Windows         | Use [WSL](https://learn.microsoft.com/en-us/windows/wsl/install), then follow the Ubuntu instructions above |
+
+## Install
+
 ```bash
-pip install iconfucius # Note: On macOS Apple Silicon 
-                       # install `automake` and `libtool` 
-                       # before running `pip install`:
-                       # brew install automake libtool
+pip install iconfucius
 
 mkdir my-iconfucius
 cd my-iconfucius

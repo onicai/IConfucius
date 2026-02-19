@@ -63,11 +63,11 @@ jobs:
         working-directory: agent
         run: pytest -v
 
-  # Simulate end-user `pip install iconfucius` on a machine without C
-  # build tools. Setting CC/CXX to /bin/false makes any C extension
-  # compilation fail, catching missing pre-built wheels that CI runners
-  # would mask with their full toolchains (Xcode, automake, gcc).
-  # Pure-Python sdist-only packages still install fine.
+  # Verify the built wheel installs cleanly, all dependencies resolve,
+  # the package imports, and the CLI entry point works.
+  # TODO: once ed25519-blake2b dependency is removed, re-enable
+  # CC=/bin/false CXX=/bin/false to catch C extension deps without
+  # pre-built wheels.
   test-wheel:
     name: Wheel ${{ matrix.python-version }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
@@ -91,10 +91,11 @@ jobs:
           python -m pip install --upgrade pip build
           python -m build
 
-      - name: Install wheel (no C compiler)
-        env:
-          CC: /bin/false
-          CXX: /bin/false
+      - name: Install build tools (macOS ARM)
+        if: matrix.os == 'macos-latest'
+        run: brew install automake libtool
+
+      - name: Install wheel
         run: pip install agent/dist/*.whl
 
       - name: Verify package imports
