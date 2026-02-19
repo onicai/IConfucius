@@ -63,11 +63,11 @@ jobs:
         working-directory: agent
         run: pytest -v
 
-  # Simulate end-user `pip install iconfucius` experience.
-  # CI runners have full C toolchains (Xcode, automake, gcc) which can compile
-  # C extensions from source, masking missing pre-built wheels. Using
-  # --only-binary :all: refuses to build from source, catching dependency
-  # issues that real users without build tools would hit.
+  # Simulate end-user `pip install iconfucius` on a machine without C
+  # build tools. Setting CC/CXX to /bin/false makes any C extension
+  # compilation fail, catching missing pre-built wheels that CI runners
+  # would mask with their full toolchains (Xcode, automake, gcc).
+  # Pure-Python sdist-only packages still install fine.
   test-wheel:
     name: Wheel ${{ matrix.python-version }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
@@ -91,8 +91,11 @@ jobs:
           python -m pip install --upgrade pip build
           python -m build
 
-      - name: Install wheel (binary-only deps)
-        run: "pip install --only-binary :all: agent/dist/*.whl"
+      - name: Install wheel (no C compiler)
+        env:
+          CC: /bin/false
+          CXX: /bin/false
+        run: pip install agent/dist/*.whl
 
       - name: Verify package imports
         run: |
