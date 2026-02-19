@@ -8,9 +8,9 @@ import pytest
 from iconfucius.cli.balance import (
     BotBalances,
     _fmt_token_amount,
-    _print_padded_table,
-    _print_holdings_table,
-    _print_wallet_info,
+    _format_padded_table,
+    _format_holdings_table,
+    _collect_wallet_info,
     collect_balances,
     run_all_balances,
 )
@@ -73,26 +73,26 @@ class TestFmtTokenAmount:
 
 
 # ---------------------------------------------------------------------------
-# _print_padded_table
+# _format_padded_table
 # ---------------------------------------------------------------------------
 
-class TestPrintPaddedTable:
-    def test_basic_table(self, capsys):
+class TestFormatPaddedTable:
+    def test_basic_table(self):
         headers = ["Name", "Value"]
         rows = [("Alice", "100"), ("Bob", "2000")]
-        _print_padded_table(headers, rows)
-        output = capsys.readouterr().out
+        lines = _format_padded_table(headers, rows)
+        output = "\n".join(lines)
         assert "Name" in output
         assert "Value" in output
         assert "Alice" in output
         assert "Bob" in output
         assert "---" in output
 
-    def test_auto_sizes_columns(self, capsys):
+    def test_auto_sizes_columns(self):
         headers = ["A", "B"]
         rows = [("very long cell", "x")]
-        _print_padded_table(headers, rows)
-        output = capsys.readouterr().out
+        lines = _format_padded_table(headers, rows)
+        output = "\n".join(lines)
         assert "very long cell" in output
 
 
@@ -116,30 +116,28 @@ class TestBotBalances:
 
 
 # ---------------------------------------------------------------------------
-# _print_holdings_table
+# _format_holdings_table
 # ---------------------------------------------------------------------------
 
-class TestPrintHoldingsTable:
-    def test_single_bot_no_tokens(self, capsys):
+class TestFormatHoldingsTable:
+    def test_single_bot_no_tokens(self):
         data = [BotBalances("bot-1", "abc", odin_sats=1000.0)]
-        _print_holdings_table(data, btc_usd_rate=100_000.0)
-        output = capsys.readouterr().out
+        output = _format_holdings_table(data, btc_usd_rate=100_000.0)
         assert "bot-1" in output
         assert "1,000 sats" in output
 
-    def test_single_bot_with_tokens(self, capsys):
+    def test_single_bot_with_tokens(self):
         data = [BotBalances("bot-1", "abc", odin_sats=5000.0,
                             token_holdings=[
                                 {"ticker": "TEST", "token_id": "t1",
                                  "balance": 50_000_000_000, "divisibility": 8,
                                  "value_sats": 100}
                             ])]
-        _print_holdings_table(data, btc_usd_rate=100_000.0)
-        output = capsys.readouterr().out
+        output = _format_holdings_table(data, btc_usd_rate=100_000.0)
         assert "TEST (t1)" in output
         assert "500.00" in output
 
-    def test_multi_bot_shows_totals(self, capsys):
+    def test_multi_bot_shows_totals(self):
         data = [
             BotBalances("bot-1", "abc", odin_sats=3000.0,
                         token_holdings=[
@@ -154,27 +152,24 @@ class TestPrintHoldingsTable:
                              "value_sats": 20}
                         ]),
         ]
-        _print_holdings_table(data, btc_usd_rate=100_000.0)
-        output = capsys.readouterr().out
+        output = _format_holdings_table(data, btc_usd_rate=100_000.0)
         assert "TOTAL" in output
         assert "5,000 sats" in output
         assert "300.00" in output
         assert "Total portfolio value:" in output
 
-    def test_no_totals_for_single_bot(self, capsys):
+    def test_no_totals_for_single_bot(self):
         data = [BotBalances("bot-1", "abc", odin_sats=1000.0)]
-        _print_holdings_table(data, btc_usd_rate=100_000.0)
-        output = capsys.readouterr().out
+        output = _format_holdings_table(data, btc_usd_rate=100_000.0)
         assert "TOTAL" not in output
 
-    def test_no_usd_rate(self, capsys):
+    def test_no_usd_rate(self):
         data = [BotBalances("bot-1", "abc", odin_sats=1000.0)]
-        _print_holdings_table(data, btc_usd_rate=None)
-        output = capsys.readouterr().out
+        output = _format_holdings_table(data, btc_usd_rate=None)
         assert "1,000 sats" in output
         assert "$" not in output
 
-    def test_token_balance_adjusted_for_divisibility(self, capsys):
+    def test_token_balance_adjusted_for_divisibility(self):
         """Regression: raw balance must be divided by 10^divisibility.
 
         Without the fix, 2_771_411_893_677_396 would display as
@@ -187,8 +182,7 @@ class TestPrintHoldingsTable:
                                  "divisibility": 8,
                                  "value_sats": 2200}
                             ])]
-        _print_holdings_table(data, btc_usd_rate=100_000.0)
-        output = capsys.readouterr().out
+        output = _format_holdings_table(data, btc_usd_rate=100_000.0)
         # Should show the adjusted amount, not the raw integer
         assert "27,714,118.94" in output
         # Must NOT contain the raw 16-digit number
@@ -196,10 +190,10 @@ class TestPrintHoldingsTable:
 
 
 # ---------------------------------------------------------------------------
-# _print_wallet_info
+# _collect_wallet_info
 # ---------------------------------------------------------------------------
 
-class TestPrintWalletInfo:
+class TestCollectWalletInfo:
     @patch("iconfucius.transfers.get_btc_address", return_value="bc1qtest456")
     @patch("iconfucius.transfers.create_ckbtc_minter")
     @patch("iconfucius.transfers.get_balance", return_value=50000)
@@ -207,18 +201,18 @@ class TestPrintWalletInfo:
     @patch("iconfucius.cli.balance.Agent")
     @patch("iconfucius.cli.balance.Client")
     @patch("iconfucius.cli.balance.Identity")
-    def test_prints_core_info(self, MockId, MockClient, MockAgent,
+    def test_returns_data_and_display(self, MockId, MockClient, MockAgent,
                                mock_create, mock_get_bal, mock_minter,
                                mock_btc_addr,
-                               odin_project, capsys):
+                               odin_project):
         mock_identity = MagicMock()
         mock_identity.sender.return_value = MagicMock(
             __str__=lambda s: "ctrl-principal"
         )
         MockId.from_pem.return_value = mock_identity
 
-        _print_wallet_info(100_000.0)
-        output = capsys.readouterr().out
+        data, lines = _collect_wallet_info(100_000.0)
+        output = "\n".join(lines)
         assert "ICRC-1 ckBTC:" in output
         assert "50,000 sats" in output
         assert "To fund your wallet:" in output
@@ -226,8 +220,10 @@ class TestPrintWalletInfo:
         assert "bc1qtest456" in output
         # No minter section by default
         assert "ckBTC minter:" not in output
-        # PEM file not shown by _print_wallet_info (wallet info command handles it)
-        assert "PEM file:" not in output
+        # Data dict
+        assert data["balance_sats"] == 50000
+        assert data["principal"] == "ctrl-principal"
+        assert data["btc_address"] == "bc1qtest456"
 
     @patch("iconfucius.transfers.unwrap_canister_result", return_value=0)
     @patch("iconfucius.transfers.get_withdrawal_account",
@@ -244,15 +240,15 @@ class TestPrintWalletInfo:
                                mock_create, mock_get_bal, mock_minter,
                                mock_pending, mock_btc_addr,
                                mock_withdrawal_acct, mock_unwrap,
-                               odin_project, capsys):
+                               odin_project):
         mock_identity = MagicMock()
         mock_identity.sender.return_value = MagicMock(
             __str__=lambda s: "ctrl-principal"
         )
         MockId.from_pem.return_value = mock_identity
 
-        _print_wallet_info(100_000.0, ckbtc_minter=True)
-        output = capsys.readouterr().out
+        data, lines = _collect_wallet_info(100_000.0, ckbtc_minter=True)
+        output = "\n".join(lines)
         assert "ICRC-1 ckBTC:" in output
         assert "ckBTC minter:" in output
         assert "Incoming BTC:" in output
@@ -274,15 +270,15 @@ class TestPrintWalletInfo:
                               mock_create, mock_get_bal, mock_minter,
                               mock_pending, mock_btc_addr,
                               mock_withdrawal_acct, mock_unwrap,
-                              odin_project, capsys):
+                              odin_project):
         mock_identity = MagicMock()
         mock_identity.sender.return_value = MagicMock(
             __str__=lambda s: "ctrl-principal"
         )
         MockId.from_pem.return_value = mock_identity
 
-        _print_wallet_info(100_000.0, ckbtc_minter=True)
-        output = capsys.readouterr().out
+        data, lines = _collect_wallet_info(100_000.0, ckbtc_minter=True)
+        output = "\n".join(lines)
         assert "640 sats" in output
         assert "fee dust" in output
 
@@ -359,29 +355,42 @@ class TestCollectBalances:
 # ---------------------------------------------------------------------------
 
 class TestRunAllBalances:
-    def test_no_wallet(self, odin_project_no_wallet, capsys):
-        run_all_balances(bot_names=["bot-1"])
-        output = capsys.readouterr().out
-        assert "No iconfucius wallet found" in output
+    def test_no_wallet(self, odin_project_no_wallet):
+        result = run_all_balances(bot_names=["bot-1"])
+        assert result is None
 
-    @patch("iconfucius.cli.balance._print_holdings_table")
-    @patch("iconfucius.cli.balance._print_wallet_info", return_value=(50000, 0, 0, 0, 0))
+    @patch("iconfucius.cli.balance._format_holdings_table", return_value="table")
+    @patch("iconfucius.cli.balance._collect_wallet_info")
     @patch("iconfucius.cli.balance.collect_balances")
     @patch("iconfucius.cli.balance._fetch_btc_usd_rate", return_value=100_000.0)
     def test_success(self, mock_rate, mock_collect, mock_wallet,
                      mock_holdings, odin_project):
+        mock_wallet.return_value = (
+            {"principal": "p", "btc_address": "bc1", "balance_sats": 50000,
+             "pending_sats": 0, "withdrawal_balance_sats": 0,
+             "active_withdrawal_count": 0, "address_btc_sats": 0},
+            ["wallet line"],
+        )
         mock_collect.return_value = BotBalances("bot-1", "abc", odin_sats=1000.0)
-        run_all_balances(bot_names=["bot-1"])
+
+        result = run_all_balances(bot_names=["bot-1"])
+        assert result is not None
+        assert result["wallet_ckbtc_sats"] == 50000
+        assert "_display" in result
         mock_wallet.assert_called_once()
         mock_holdings.assert_called_once()
 
-    @patch("iconfucius.cli.balance._print_wallet_info", return_value=(50000, 0, 0, 0, 0))
+    @patch("iconfucius.cli.balance._collect_wallet_info")
     @patch("iconfucius.cli.balance.collect_balances", side_effect=Exception("fail"))
     @patch("iconfucius.cli.balance._fetch_btc_usd_rate", return_value=100_000.0)
     def test_handles_collection_error(self, mock_rate, mock_collect,
-                                       mock_wallet, odin_project, capsys):
-        run_all_balances(bot_names=["bot-1"])
-        output = capsys.readouterr().out
-        assert "Failed to get balances" in output
+                                       mock_wallet, odin_project):
+        mock_wallet.return_value = (
+            {"principal": "p", "btc_address": "bc1", "balance_sats": 50000,
+             "pending_sats": 0, "withdrawal_balance_sats": 0,
+             "active_withdrawal_count": 0, "address_btc_sats": 0},
+            ["wallet line"],
+        )
 
-
+        result = run_all_balances(bot_names=["bot-1"])
+        assert result is None

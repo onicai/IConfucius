@@ -515,8 +515,6 @@ def siwb_login(bot_name: str = None, verbose: bool = True) -> dict:
     assert sighash_result["address"] == address, (
         f"Address mismatch: {sighash_result['address']} != {address}"
     )
-    log(f"Sighash: {sighash_hex}")
-
     # Step 4: Sign sighash with canister (includes fee payment if configured)
     log(f"\n--- Step 4: Sign sighash with canister ---")
     log(f"  -> IC canister signs the sighash using threshold Schnorr (BIP340) - proves key ownership")
@@ -525,15 +523,11 @@ def siwb_login(bot_name: str = None, verbose: bool = True) -> dict:
     if "Err" in sign_result:
         raise RuntimeError(f"sign failed: {sign_result['Err']}")
     signature_hex = sign_result["Ok"]["signatureHex"]
-    log(f"Signature: {signature_hex} ({len(bytes.fromhex(signature_hex))} bytes)")
-
     # Step 5: Encode BIP322 witness
     log(f"\n--- Step 5: Encode BIP322 witness ---")
     log(f"  -> Wrap signature in BIP322 witness format (Bitcoin's standard message signing proof)")
     witness_result = inject_signature_and_extract_witness(message, pubkey_hex, signature_hex)
     witness_b64 = witness_result["witness"]
-    log(f"Witness (base64): {witness_b64}")
-
     # Step 6: Generate Ed25519 session key
     log(f"\n--- Step 6: Generate Ed25519 session key ---")
     log(f"  -> Create ephemeral Ed25519 keypair for IC canister calls (SIWB will delegate to this key)")

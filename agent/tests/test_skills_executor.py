@@ -5,7 +5,6 @@ from unittest.mock import patch
 
 from iconfucius.skills.executor import (
     execute_tool,
-    _capture_with_return,
     _enable_verify_certificates,
     _resolve_bot_names,
     _usd_to_sats,
@@ -763,36 +762,18 @@ class TestMemoryToolHandlers:
         assert "persona" in result["error"].lower()
 
 
-class TestCaptureWithReturn:
-    """Tests for _capture_with_return helper."""
-
-    def test_captures_stdout_and_return(self):
-        def greet():
-            print("hello")
-            return 42
-        text, val = _capture_with_return(greet)
-        assert text.strip() == "hello"
-        assert val == 42
-
-    def test_none_return(self):
-        def noop():
-            print("output")
-        text, val = _capture_with_return(noop)
-        assert "output" in text
-        assert val is None
-
-
 class TestWalletBalanceDualOutput:
-    """wallet_balance always returns _terminal_output + structured JSON."""
+    """wallet_balance returns _terminal_output + structured JSON."""
 
     def test_returns_terminal_output_and_json(self):
         fake_data = {
             "wallet_ckbtc_sats": 1000,
             "bots": [],
             "totals": {"portfolio_sats": 1000},
+            "_display": "table output",
         }
-        with patch("iconfucius.skills.executor._capture_with_return",
-                    return_value=("table output", fake_data)):
+        with patch("iconfucius.cli.balance.run_all_balances",
+                    return_value=fake_data):
             with patch("iconfucius.config.require_wallet", return_value=True):
                 with patch("iconfucius.config.get_bot_names",
                             return_value=["bot-1"]):
@@ -806,8 +787,8 @@ class TestWalletBalanceDualOutput:
         assert parsed["totals"]["portfolio_sats"] == 1000
 
     def test_none_data_returns_error(self):
-        with patch("iconfucius.skills.executor._capture_with_return",
-                    return_value=("", None)):
+        with patch("iconfucius.cli.balance.run_all_balances",
+                    return_value=None):
             with patch("iconfucius.config.require_wallet", return_value=True):
                 with patch("iconfucius.config.get_bot_names",
                             return_value=["bot-1"]):
@@ -937,15 +918,17 @@ class TestTradeUsdAmount:
     def test_buy_with_amount_usd(self, _mock_usd, tmp_path, monkeypatch):
         """trade_buy with amount_usd converts to sats."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        fake_results = [("bot-1", {"status": "ok", "action": "buy"})]
         with patch("iconfucius.config.require_wallet", return_value=True):
-            with patch("iconfucius.skills.executor._capture",
-                        return_value="Bought!") as mock_cap:
+            with patch("iconfucius.cli.concurrent.run_per_bot",
+                        return_value=fake_results):
                 result = execute_tool("trade_buy", {
                     "token_id": "29m8",
                     "amount_usd": 20.0,
                     "bot_name": "bot-1",
                 })
         assert result["status"] == "ok"
+        assert result["succeeded"] == 1
 
     @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100000.0)
     @patch("iconfucius.tokens.fetch_token_data",
@@ -954,15 +937,17 @@ class TestTradeUsdAmount:
                                    tmp_path, monkeypatch):
         """trade_sell with amount_usd converts to raw tokens."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        fake_results = [("bot-1", {"status": "ok", "action": "sell"})]
         with patch("iconfucius.config.require_wallet", return_value=True):
-            with patch("iconfucius.skills.executor._capture",
-                        return_value="Sold!"):
+            with patch("iconfucius.cli.concurrent.run_per_bot",
+                        return_value=fake_results):
                 result = execute_tool("trade_sell", {
                     "token_id": "29m8",
                     "amount_usd": 5.0,
                     "bot_name": "bot-1",
                 })
         assert result["status"] == "ok"
+        assert result["succeeded"] == 1
 
     def test_buy_no_amount_returns_error(self):
         """trade_buy without amount or amount_usd returns error."""
@@ -994,3 +979,43 @@ class TestTradeUsdAmount:
             })
         assert result["status"] == "error"
         assert "USD conversion failed" in result["error"]
+
+
+class TestAggregateTradeResults:
+    """Tests for _aggregate_trade_results helper."""
+
+    def test_all_succeeded(self):
+        from iconfucius.skills.executor import _aggregate_trade_results
+        results = [
+            ("bot-1", {"status": "ok", "action": "buy"}),
+            ("bot-2", {"status": "ok", "action": "buy"}),
+        ]
+        r = _aggregate_trade_results(results, "buy", "29m8")
+        assert r["status"] == "ok"
+        assert r["succeeded"] == 2
+        assert r["failed"] == 0
+        assert r["skipped"] == 0
+        assert "Bought 29m8 from 2 bot(s)" in r["display"]
+
+    def test_mixed_results(self):
+        from iconfucius.skills.executor import _aggregate_trade_results
+        results = [
+            ("bot-1", {"status": "ok", "action": "sell"}),
+            ("bot-2", {"status": "skipped", "reason": "No tokens"}),
+            ("bot-3", Exception("connection timeout")),
+        ]
+        r = _aggregate_trade_results(results, "sell", "29m8")
+        assert r["status"] == "partial"
+        assert r["succeeded"] == 1
+        assert r["failed"] == 1
+        assert r["skipped"] == 1
+
+    def test_all_skipped(self):
+        from iconfucius.skills.executor import _aggregate_trade_results
+        results = [
+            ("bot-1", {"status": "skipped", "reason": "No tokens"}),
+        ]
+        r = _aggregate_trade_results(results, "sell", "29m8")
+        assert r["status"] == "ok"
+        assert r["succeeded"] == 0
+        assert r["skipped"] == 1

@@ -11,6 +11,7 @@ motoko_oc_bot_sdk/
 secret/
 .wallet/
 .cache/
+.logs/
 iconfucius.toml
 e2e-bots-*/
 

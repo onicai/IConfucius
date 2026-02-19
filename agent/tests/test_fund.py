@@ -41,7 +41,7 @@ class TestRunFundSuccess:
                          MockCanister, mock_load, mock_create_icrc1,
                          mock_get_bal, mock_transfer, mock_patch_del,
                          mock_unwrap, mock_rate, mock_run_all,
-                         odin_project, capsys, mock_siwb_auth):
+                         odin_project, mock_siwb_auth):
         MockId.from_pem.return_value = _make_mock_identity()
         mock_load.return_value = mock_siwb_auth
 
@@ -54,11 +54,12 @@ class TestRunFundSuccess:
         MockCanister.side_effect = [mock_ckbtc, mock_deposit]
 
         from iconfucius.cli.fund import run_fund
-        run_fund(bot_names=["bot-1"], amount=5000, verbose=False)
+        result = run_fund(bot_names=["bot-1"], amount=5000, verbose=False)
 
-        output = capsys.readouterr().out
-        assert "bot-1: done" in output
-        assert "Funded 1 bot(s) successfully" in output
+        assert result["status"] == "ok"
+        assert result["funded"] == ["bot-1"]
+        assert result["failed"] == []
+        assert result["amount"] == 5000
         mock_transfer.assert_called_once()
         mock_ckbtc.icrc2_approve.assert_called_once()
         mock_deposit.ckbtc_deposit.assert_called_once()
@@ -80,7 +81,7 @@ class TestRunFundSuccess:
                             MockCanister, mock_load, mock_create_icrc1,
                             mock_get_bal, mock_transfer, mock_patch_del,
                             mock_unwrap, mock_rate, mock_run_all,
-                            odin_project, capsys, mock_siwb_auth):
+                            odin_project, mock_siwb_auth):
         MockId.from_pem.return_value = _make_mock_identity()
         mock_load.return_value = mock_siwb_auth
 
@@ -91,25 +92,26 @@ class TestRunFundSuccess:
         MockCanister.side_effect = [mock_ckbtc, mock_deposit] * 3
 
         from iconfucius.cli.fund import run_fund
-        run_fund(bot_names=["bot-1", "bot-2", "bot-3"], amount=5000, verbose=False)
+        result = run_fund(bot_names=["bot-1", "bot-2", "bot-3"], amount=5000, verbose=False)
 
-        output = capsys.readouterr().out
-        assert "Funded 3 bot(s) successfully" in output
+        assert result["status"] == "ok"
+        assert len(result["funded"]) == 3
+        assert result["bot_count"] == 3
         assert mock_transfer.call_count == 3
 
 
 class TestRunFundErrors:
-    def test_no_wallet(self, odin_project_no_wallet, capsys):
+    def test_no_wallet(self, odin_project_no_wallet):
         from iconfucius.cli.fund import run_fund
-        run_fund(bot_names=["bot-1"], amount=5000)
-        output = capsys.readouterr().out
-        assert "No iconfucius wallet found" in output
+        result = run_fund(bot_names=["bot-1"], amount=5000)
+        assert result["status"] == "error"
+        assert "No wallet found" in result["error"]
 
-    def test_zero_amount(self, odin_project, capsys):
+    def test_zero_amount(self, odin_project):
         from iconfucius.cli.fund import run_fund
-        run_fund(bot_names=["bot-1"], amount=0)
-        output = capsys.readouterr().out
-        assert "Amount must be positive" in output
+        result = run_fund(bot_names=["bot-1"], amount=0)
+        assert result["status"] == "error"
+        assert "Amount must be positive" in result["error"]
 
     @patch(f"{M}.get_btc_to_usd_rate", return_value=100_000.0)
     @patch(f"{M}.get_balance", return_value=100)
@@ -119,14 +121,14 @@ class TestRunFundErrors:
     @patch(f"{M}.Identity")
     def test_insufficient_balance(self, MockId, MockClient, MockAgent,
                                    mock_create, mock_get_bal, mock_rate,
-                                   odin_project, capsys):
+                                   odin_project):
         MockId.from_pem.return_value = _make_mock_identity()
 
         from iconfucius.cli.fund import run_fund
-        run_fund(bot_names=["bot-1"], amount=50000)
+        result = run_fund(bot_names=["bot-1"], amount=50000)
 
-        output = capsys.readouterr().out
-        assert "Insufficient wallet balance" in output
+        assert result["status"] == "error"
+        assert "Insufficient wallet balance" in result["error"]
 
     @patch(f"{M}.get_btc_to_usd_rate", return_value=100_000.0)
     @patch(f"{M}.patch_delegate_sender")
@@ -140,15 +142,16 @@ class TestRunFundErrors:
     def test_transfer_failure(self, MockId, MockClient, MockAgent,
                                mock_load, mock_create, mock_get_bal,
                                mock_transfer, mock_patch_del, mock_rate,
-                               odin_project, capsys, mock_siwb_auth):
+                               odin_project, mock_siwb_auth):
         MockId.from_pem.return_value = _make_mock_identity()
         mock_load.return_value = mock_siwb_auth
 
         from iconfucius.cli.fund import run_fund
-        run_fund(bot_names=["bot-1"], amount=5000)
+        result = run_fund(bot_names=["bot-1"], amount=5000)
 
-        output = capsys.readouterr().out
-        assert "FAILED (transfer)" in output
+        assert result["status"] == "partial"
+        assert len(result["failed"]) == 1
+        assert "transfer" in result["failed"][0]["error"]
 
     @patch(f"{M}.get_btc_to_usd_rate", return_value=100_000.0)
     @patch(f"{M}.unwrap_canister_result", side_effect=lambda x: x)
@@ -166,7 +169,7 @@ class TestRunFundErrors:
                               MockCanister, mock_load, mock_create,
                               mock_get_bal, mock_transfer, mock_patch_del,
                               mock_unwrap, mock_rate,
-                              odin_project, capsys, mock_siwb_auth):
+                              odin_project, mock_siwb_auth):
         MockId.from_pem.return_value = _make_mock_identity()
         mock_load.return_value = mock_siwb_auth
 
@@ -175,10 +178,11 @@ class TestRunFundErrors:
         MockCanister.return_value = mock_ckbtc
 
         from iconfucius.cli.fund import run_fund
-        run_fund(bot_names=["bot-1"], amount=5000)
+        result = run_fund(bot_names=["bot-1"], amount=5000)
 
-        output = capsys.readouterr().out
-        assert "FAILED (approve)" in output
+        assert result["status"] == "partial"
+        assert len(result["failed"]) == 1
+        assert "approve" in result["failed"][0]["error"]
 
     @patch(f"{M}.get_btc_to_usd_rate", return_value=100_000.0)
     @patch(f"{M}.unwrap_canister_result", side_effect=lambda x: x)
@@ -196,7 +200,7 @@ class TestRunFundErrors:
                               MockCanister, mock_load, mock_create,
                               mock_get_bal, mock_transfer, mock_patch_del,
                               mock_unwrap, mock_rate,
-                              odin_project, capsys, mock_siwb_auth):
+                              odin_project, mock_siwb_auth):
         MockId.from_pem.return_value = _make_mock_identity()
         mock_load.return_value = mock_siwb_auth
 
@@ -207,7 +211,8 @@ class TestRunFundErrors:
         MockCanister.side_effect = [mock_ckbtc, mock_deposit]
 
         from iconfucius.cli.fund import run_fund
-        run_fund(bot_names=["bot-1"], amount=5000)
+        result = run_fund(bot_names=["bot-1"], amount=5000)
 
-        output = capsys.readouterr().out
-        assert "FAILED (deposit)" in output
+        assert result["status"] == "partial"
+        assert len(result["failed"]) == 1
+        assert "deposit" in result["failed"][0]["error"]

@@ -251,17 +251,6 @@ def _resolve_network(network: Optional[str] = None) -> None:
 
 
 
-def _show_balance_and_instructions(
-    bot: Optional[str] = None, all_bots: bool = False
-):
-    """Show live balances + instructions (used by 'instructions' command)."""
-    from iconfucius.cli.balance import run_all_balances
-
-    bot_names = _resolve_bot_names(bot, all_bots)
-    run_all_balances(bot_names=bot_names, verbose=state.verbose)
-    print(INSTRUCTIONS_TEXT)
-
-
 def _version_callback(value: bool):
     if value:
         print(f"iconfucius {__version__}")
@@ -695,8 +684,14 @@ def instructions(
     ),
 ):
     """Show balance and usage instructions."""
+    from iconfucius.cli.balance import run_all_balances
+
     _resolve_network(network)
-    _show_balance_and_instructions(bot, all_bots)
+    bot_names = _resolve_bot_names(bot, all_bots)
+    result = run_all_balances(bot_names=bot_names, verbose=state.verbose)
+    if result:
+        print(result.get("_display", ""))
+    print(INSTRUCTIONS_TEXT)
 
 
 @app.command()
@@ -713,7 +708,18 @@ def fund(
     from iconfucius.cli.fund import run_fund
 
     bot_names = _resolve_bot_names(bot, all_bots)
-    run_fund(bot_names=bot_names, amount=amount, verbose=state.verbose)
+    result = run_fund(bot_names=bot_names, amount=amount, verbose=state.verbose)
+
+    if result["status"] == "error":
+        print(f"FAILED: {result['error']}")
+        return
+
+    funded = result.get("funded", [])
+    failed = result.get("failed", [])
+    if funded:
+        print(f"Funded {len(funded)} bot(s) with {amount:,} sats each")
+    for f in failed:
+        print(f"  {f['bot']}: FAILED — {f['error']}")
 
 
 @app.command()
@@ -740,6 +746,35 @@ def withdraw(
     for bot_name, result in results:
         if isinstance(result, Exception):
             print(f"{bot_name}: FAILED — {result}")
+        elif isinstance(result, dict):
+            status = result.get("status", "")
+            if status == "ok":
+                print(f"{bot_name}: withdrawn {result.get('withdrawn_sats', '?'):,} sats")
+            elif status == "error":
+                print(f"{bot_name}: FAILED — {result.get('error', '')}")
+            elif status == "partial":
+                print(f"{bot_name}: partial — {result.get('error', '')}")
+
+
+def _print_trade_result(bot_name: str, result) -> None:
+    """Print a one-line summary for a trade result (dict or list of dicts)."""
+    if isinstance(result, list):
+        for r in result:
+            _print_trade_result(bot_name, r)
+        return
+    if not isinstance(result, dict):
+        return
+    status = result.get("status", "")
+    if status == "ok":
+        action = result.get("action", "?")
+        token_label = result.get("token_label", result.get("token_id", "?"))
+        amount = result.get("amount", "?")
+        print(f"{bot_name}: {action} {amount:,} {token_label}" if isinstance(amount, int)
+              else f"{bot_name}: {action} {token_label}")
+    elif status == "skipped":
+        print(f"{bot_name}: skipped — {result.get('reason', '')}")
+    elif status == "error":
+        print(f"{bot_name}: FAILED — {result.get('error', '')}")
 
 
 @app.command()
@@ -771,20 +806,25 @@ def trade(
         def _sell_all_tokens(bot_name):
             data = collect_balances(bot_name, verbose=state.verbose)
             if not data.token_holdings:
-                print(f"{bot_name}: no token holdings to sell")
-                return
+                return {"status": "skipped", "bot_name": bot_name,
+                        "reason": "no token holdings to sell"}
+            results = []
             for holding in data.token_holdings:
                 if holding["balance"] > 0:
-                    run_trade(
+                    r = run_trade(
                         bot_name=bot_name, action="sell",
                         token_id=holding["token_id"], amount="all",
                         verbose=state.verbose,
                     )
+                    results.append(r)
+            return results
 
         results = run_per_bot(_sell_all_tokens, bot_names)
         for bot_name, result in results:
             if isinstance(result, Exception):
                 print(f"{bot_name}: FAILED — {result}")
+            else:
+                _print_trade_result(bot_name, result)
     else:
         results = run_per_bot(
             lambda name: run_trade(
@@ -796,6 +836,8 @@ def trade(
         for bot_name, result in results:
             if isinstance(result, Exception):
                 print(f"{bot_name}: FAILED — {result}")
+            else:
+                _print_trade_result(bot_name, result)
 
 
 @app.command()
@@ -819,20 +861,25 @@ def sweep(
     def _sell_all(bot_name):
         data = collect_balances(bot_name, verbose=state.verbose)
         if not data.token_holdings:
-            print(f"{bot_name}: no token holdings to sell")
-        else:
-            for holding in data.token_holdings:
-                if holding["balance"] > 0:
-                    run_trade(
-                        bot_name=bot_name, action="sell",
-                        token_id=holding["token_id"], amount="all",
-                        verbose=state.verbose,
-                    )
+            return {"status": "skipped", "bot_name": bot_name,
+                    "reason": "no token holdings to sell"}
+        results = []
+        for holding in data.token_holdings:
+            if holding["balance"] > 0:
+                r = run_trade(
+                    bot_name=bot_name, action="sell",
+                    token_id=holding["token_id"], amount="all",
+                    verbose=state.verbose,
+                )
+                results.append(r)
+        return results
 
     results = run_per_bot(_sell_all, bot_names)
     for bot_name, result in results:
         if isinstance(result, Exception):
             print(f"{bot_name}: sell FAILED — {result}")
+        else:
+            _print_trade_result(bot_name, result)
 
     # Phase 2: Withdraw all ckBTC for each bot (concurrent)
     results = run_per_bot(
@@ -842,6 +889,14 @@ def sweep(
     for bot_name, result in results:
         if isinstance(result, Exception):
             print(f"{bot_name}: withdraw FAILED — {result}")
+        elif isinstance(result, dict):
+            status = result.get("status", "")
+            if status == "ok":
+                print(f"{bot_name}: withdrawn {result.get('withdrawn_sats', '?'):,} sats")
+            elif status == "error":
+                print(f"{bot_name}: withdraw FAILED — {result.get('error', '')}")
+            elif status == "partial":
+                print(f"{bot_name}: withdraw partial — {result.get('error', '')}")
 
 
 def main():

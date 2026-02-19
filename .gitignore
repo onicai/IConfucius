@@ -10,6 +10,9 @@ motoko_oc_bot_sdk/
 *.har
 secret/
 
+# Claude Code
+.claude/
+
 # Various IDEs and Editors
 .vscode/
 .idea/

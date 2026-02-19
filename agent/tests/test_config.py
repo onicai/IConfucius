@@ -19,11 +19,11 @@ class TestVerboseFlag:
 
     def teardown_method(self):
         # Reset to default after each test
-        set_verbose(True)
+        set_verbose(False)
 
-    def test_default_is_verbose(self):
-        set_verbose(True)  # ensure default
-        assert is_verbose() is True
+    def test_default_is_not_verbose(self):
+        set_verbose(False)  # ensure default
+        assert is_verbose() is False
 
     def test_set_verbose_false(self):
         set_verbose(False)
@@ -34,22 +34,26 @@ class TestVerboseFlag:
         set_verbose(True)
         assert is_verbose() is True
 
+    def test_set_verbose_calls_set_debug(self):
+        from unittest.mock import patch
+        with patch("iconfucius.logging_config.set_debug") as mock_set_debug:
+            set_verbose(True)
+            mock_set_debug.assert_called_once_with(True)
+        set_verbose(False)  # reset
+
 
 class TestLog:
-    """Test log() output gated by verbose flag."""
+    """Test log() writes to file logger (not stdout)."""
 
-    def teardown_method(self):
-        set_verbose(True)
-
-    def test_log_prints_when_verbose(self, capsys):
-        set_verbose(True)
+    def test_log_writes_to_logger_not_stdout(self, capsys):
         log("hello")
-        assert capsys.readouterr().out == "hello\n"
+        assert capsys.readouterr().out == ""  # no stdout output
 
-    def test_log_silent_when_not_verbose(self, capsys):
-        set_verbose(False)
-        log("hello")
-        assert capsys.readouterr().out == ""
+    def test_log_calls_debug(self, caplog):
+        import logging
+        with caplog.at_level(logging.DEBUG, logger="iconfucius"):
+            log("test message")
+        assert "test message" in caplog.text
 
 
 class TestNetworkSelection:

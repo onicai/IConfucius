@@ -1,30 +1,12 @@
 """Tool executor — dispatches tool calls to underlying iconfucius functions.
 
-Each handler captures stdout (since existing functions print their output)
-and returns a structured dict.
+Each handler calls the underlying function, which returns a structured dict,
+and builds the response for the AI agent.
 """
 
-import io
 import json
 import os
-from contextlib import redirect_stdout
 from pathlib import Path
-
-
-def _capture(fn, *args, **kwargs) -> str:
-    """Call fn and capture its stdout output as a string."""
-    buf = io.StringIO()
-    with redirect_stdout(buf):
-        fn(*args, **kwargs)
-    return buf.getvalue()
-
-
-def _capture_with_return(fn, *args, **kwargs) -> tuple:
-    """Call fn, capture its stdout, and return (stdout_text, return_value)."""
-    buf = io.StringIO()
-    with redirect_stdout(buf):
-        ret = fn(*args, **kwargs)
-    return buf.getvalue(), ret
 
 
 def execute_tool(name: str, args: dict, *, persona_name: str = "") -> dict:
@@ -296,16 +278,17 @@ def _handle_wallet_balance(args: dict) -> dict:
     from iconfucius.cli.balance import run_all_balances
 
     names = [bot_name] if bot_name else get_bot_names()
-    output, data = _capture_with_return(run_all_balances, names,
-                                        ckbtc_minter=ckbtc_minter)
+    data = run_all_balances(names, ckbtc_minter=ckbtc_minter)
 
     if data is None:
         return {"status": "error", "error": "Balance check failed."}
 
+    display_text = data.pop("_display", "")
+
     return {
         "status": "ok",
         "display": json.dumps(data, default=str),
-        "_terminal_output": output.strip(),
+        "_terminal_output": display_text.strip(),
     }
 
 
@@ -372,8 +355,13 @@ def _handle_wallet_info(args: dict) -> dict:
         return {"status": "error", "error": "No wallet found. Run: iconfucius wallet create"}
 
     from iconfucius.cli.balance import run_wallet_balance
-    output = _capture(run_wallet_balance)
-    return {"status": "ok", "display": output.strip()}
+
+    data = run_wallet_balance()
+    if data is None:
+        return {"status": "error", "error": "Wallet balance check failed."}
+
+    display_text = data.pop("_display", "")
+    return {"status": "ok", "display": display_text.strip()}
 
 
 def _handle_wallet_monitor(args: dict) -> dict:
@@ -383,8 +371,13 @@ def _handle_wallet_monitor(args: dict) -> dict:
         return {"status": "error", "error": "No wallet found. Run: iconfucius wallet create"}
 
     from iconfucius.cli.balance import run_wallet_balance
-    output = _capture(run_wallet_balance, ckbtc_minter=True)
-    return {"status": "ok", "display": output.strip()}
+
+    data = run_wallet_balance(ckbtc_minter=True)
+    if data is None:
+        return {"status": "error", "error": "Wallet balance check failed."}
+
+    display_text = data.pop("_display", "")
+    return {"status": "ok", "display": display_text.strip()}
 
 
 def _handle_security_status(args: dict) -> dict:
@@ -897,8 +890,28 @@ def _handle_fund(args: dict) -> dict:
         return {"status": "error", "error": "'amount' and at least one bot are required."}
 
     from iconfucius.cli.fund import run_fund
-    output = _capture(run_fund, bot_names, int(amount))
-    return {"status": "ok", "display": output.strip()}
+
+    result = run_fund(bot_names, int(amount))
+
+    if result["status"] == "error":
+        return result
+
+    # Build display from structured result
+    funded = result.get("funded", [])
+    failed = result.get("failed", [])
+    lines = []
+    if funded:
+        lines.append(f"Funded {len(funded)} bot(s) with {result['amount']:,} sats each")
+    for f in failed:
+        lines.append(f"  {f['bot']}: FAILED — {f['error']}")
+    display = "\n".join(lines) if lines else "No bots funded"
+
+    return {
+        "status": result["status"],
+        "display": display,
+        "funded": len(funded),
+        "failed": len(failed),
+    }
 
 
 def _usd_to_sats(amount_usd: float) -> int:
@@ -953,17 +966,11 @@ def _handle_trade_buy(args: dict) -> dict:
     from iconfucius.cli.concurrent import run_per_bot
     from iconfucius.cli.trade import run_trade
 
-    def _do():
-        results = run_per_bot(
-            lambda name: run_trade(name, "buy", token_id, str(amount)),
-            bot_names,
-        )
-        for name, result in results:
-            if isinstance(result, Exception):
-                print(f"{name}: FAILED — {result}")
-
-    output = _capture(_do)
-    return {"status": "ok", "display": output.strip()}
+    results = run_per_bot(
+        lambda name: run_trade(name, "buy", token_id, str(amount)),
+        bot_names,
+    )
+    return _aggregate_trade_results(results, "buy", token_id)
 
 
 def _handle_trade_sell(args: dict) -> dict:
@@ -991,17 +998,47 @@ def _handle_trade_sell(args: dict) -> dict:
     from iconfucius.cli.concurrent import run_per_bot
     from iconfucius.cli.trade import run_trade
 
-    def _do():
-        results = run_per_bot(
-            lambda name: run_trade(name, "sell", token_id, str(amount)),
-            bot_names,
-        )
-        for name, result in results:
-            if isinstance(result, Exception):
-                print(f"{name}: FAILED — {result}")
+    results = run_per_bot(
+        lambda name: run_trade(name, "sell", token_id, str(amount)),
+        bot_names,
+    )
+    return _aggregate_trade_results(results, "sell", token_id)
 
-    output = _capture(_do)
-    return {"status": "ok", "display": output.strip()}
+
+def _aggregate_trade_results(results: list, action: str, token_id: str) -> dict:
+    """Aggregate per-bot trade results into a single structured response."""
+    succeeded, failed, skipped = [], [], []
+    for bot_name, result in results:
+        if isinstance(result, Exception):
+            failed.append({"bot": bot_name, "error": str(result)})
+        elif isinstance(result, dict) and result.get("status") == "skipped":
+            skipped.append({"bot": bot_name, "reason": result.get("reason", "")})
+        elif isinstance(result, dict) and result.get("status") == "error":
+            failed.append({"bot": bot_name, "error": result.get("error", "")})
+        elif isinstance(result, dict) and result.get("status") == "ok":
+            succeeded.append({"bot": bot_name, **result})
+        else:
+            failed.append({"bot": bot_name, "error": f"Unexpected result: {result}"})
+
+    # Build terminal summary for the user watching the chat
+    verb = "Bought" if action == "buy" else "Sold"
+    lines = []
+    if succeeded:
+        lines.append(f"{verb} {token_id} from {len(succeeded)} bot(s)")
+    for s in skipped:
+        lines.append(f"  {s['bot']}: skipped — {s['reason']}")
+    for f in failed:
+        lines.append(f"  {f['bot']}: FAILED — {f['error']}")
+    display = "\n".join(lines) if lines else "No trades executed"
+
+    all_ok = not failed
+    return {
+        "status": "ok" if all_ok else "partial",
+        "display": display,
+        "succeeded": len(succeeded),
+        "failed": len(failed),
+        "skipped": len(skipped),
+    }
 
 
 def _handle_withdraw(args: dict) -> dict:
@@ -1018,17 +1055,38 @@ def _handle_withdraw(args: dict) -> dict:
     from iconfucius.cli.concurrent import run_per_bot
     from iconfucius.cli.withdraw import run_withdraw
 
-    def _do():
-        results = run_per_bot(
-            lambda name: run_withdraw(name, str(amount)),
-            bot_names,
-        )
-        for name, result in results:
-            if isinstance(result, Exception):
-                print(f"{name}: FAILED — {result}")
+    results = run_per_bot(
+        lambda name: run_withdraw(name, str(amount)),
+        bot_names,
+    )
 
-    output = _capture(_do)
-    return {"status": "ok", "display": output.strip()}
+    succeeded, failed = [], []
+    for bot_name, result in results:
+        if isinstance(result, Exception):
+            failed.append({"bot": bot_name, "error": str(result)})
+        elif isinstance(result, dict) and result.get("status") == "error":
+            failed.append({"bot": bot_name, "error": result.get("error", "")})
+        elif isinstance(result, dict) and result.get("status") == "partial":
+            failed.append({"bot": bot_name, "error": result.get("error", "partial")})
+        elif isinstance(result, dict) and result.get("status") == "ok":
+            succeeded.append({"bot": bot_name, **result})
+        else:
+            failed.append({"bot": bot_name, "error": f"Unexpected result: {result}"})
+
+    lines = []
+    if succeeded:
+        lines.append(f"Withdrew from {len(succeeded)} bot(s)")
+    for f in failed:
+        lines.append(f"  {f['bot']}: FAILED — {f['error']}")
+    display = "\n".join(lines) if lines else "No withdrawals executed"
+
+    all_ok = not failed
+    return {
+        "status": "ok" if all_ok else "partial",
+        "display": display,
+        "succeeded": len(succeeded),
+        "failed": len(failed),
+    }
 
 
 def _handle_wallet_send(args: dict) -> dict:

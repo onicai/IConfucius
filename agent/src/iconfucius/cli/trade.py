@@ -52,33 +52,39 @@ def _fetch_token_info(token_id: str) -> dict | None:
 # ---------------------------------------------------------------------------
 
 def run_trade(bot_name: str, action: str, token_id: str, amount: str,
-              verbose: bool = False):
+              verbose: bool = False) -> dict:
     """Run the trade with specified action, token, and amount.
+
+    Returns a structured dict:
+        {"status": "ok", "action": ..., "bot_name": ..., ...}
+        {"status": "error", "error": "..."}
+        {"status": "skipped", "reason": "..."}
 
     Args:
         bot_name: Name of the bot to trade with.
         action: Trade action ('buy' or 'sell').
         token_id: Token ID to trade.
         amount: Amount in sats (buy), tokens (sell), or 'all' (sell entire balance).
-        verbose: If True, print detailed step output.
+        verbose: If True, enable detailed logging.
     """
+    from iconfucius.logging_config import get_logger
+    logger = get_logger()
+
     set_verbose(verbose)
     if not require_wallet():
-        return
+        return {"status": "error", "error": "No wallet found. Run: iconfucius wallet create"}
 
     if action not in ("buy", "sell"):
-        print(f"Error: action must be 'buy' or 'sell', got '{action}'")
-        return
+        return {"status": "error", "error": f"action must be 'buy' or 'sell', got '{action}'"}
 
     sell_all = amount.lower() == "all"
     if sell_all and action != "sell":
-        print("Error: 'all' amount is only supported for sell, not buy")
-        return
+        return {"status": "error", "error": "'all' amount is only supported for sell, not buy"}
     if not sell_all:
         amount_int = int(amount)
         if action == "buy" and amount_int < MIN_TRADE_SATS:
-            print(f"Error: Minimum buy amount is {MIN_TRADE_SATS:,} sats, got {amount_int:,}")
-            return
+            return {"status": "error",
+                    "error": f"Minimum buy amount is {MIN_TRADE_SATS:,} sats, got {amount_int:,}"}
 
     # Fetch BTC/USD rate for display
     try:
@@ -96,32 +102,22 @@ def run_trade(bot_name: str, action: str, token_id: str, amount: str,
     token_divisibility = 8  # Odin default
     token_label = f"{token_id} ({ticker})" if ticker != token_id else token_id
 
-    def fmt_tokens(token_balance):
-        """Format token balance with USD value."""
-        if token_price and btc_usd_rate:
-            value_microsats = (token_balance * token_price) / (10 ** token_divisibility)
-            value_sats = value_microsats / 1_000_000
-            usd = (value_sats / 100_000_000) * btc_usd_rate
-            return f"{token_balance:,} (${usd:.2f})"
-        return f"{token_balance:,}"
-
     # -----------------------------------------------------------------------
     # Header
     # -----------------------------------------------------------------------
     if action == "buy":
-        print(f"Trade: BUY {_fmt(amount_int)} of {token_label}")
+        logger.info("Trade: BUY %s of %s (bot=%s)", _fmt(amount_int), token_label, bot_name)
     elif sell_all:
-        print(f"Trade: SELL ALL {token_label}")
+        logger.info("Trade: SELL ALL %s (bot=%s)", token_label, bot_name)
     else:
-        print(f"Trade: SELL {amount_int:,} {token_label}")
+        logger.info("Trade: SELL %s %s (bot=%s)", f"{amount_int:,}", token_label, bot_name)
 
     # -----------------------------------------------------------------------
     # Step 1: SIWB login
     # -----------------------------------------------------------------------
-    print(f"Step 1: SIWB Login (bot={bot_name})...", end=" ", flush=True)
+    logger.info("Step 1: SIWB Login (bot=%s)...", bot_name)
     auth = load_session(bot_name=bot_name, verbose=verbose)
     if not auth:
-        log("")
         log("No valid cached session, performing full SIWB login...")
         auth = siwb_login(bot_name=bot_name, verbose=verbose)
         set_verbose(verbose)
@@ -129,7 +125,7 @@ def run_trade(bot_name: str, action: str, token_id: str, amount: str,
     delegate_identity = auth["delegate_identity"]
     bot_principal_text = auth["bot_principal_text"]
     patch_delegate_sender(delegate_identity)
-    print("done")
+    logger.info("Step 1: SIWB Login done")
     log(f"  Bot principal: {bot_principal_text}")
 
     client = Client(url=IC_HOST)
@@ -150,7 +146,7 @@ def run_trade(bot_name: str, action: str, token_id: str, amount: str,
     # -----------------------------------------------------------------------
     # Step 2: Check Odin.Fun holdings before
     # -----------------------------------------------------------------------
-    print(f"Step 2: Odin.Fun holdings (before)...", end=" ", flush=True)
+    logger.info("Step 2: Odin.Fun holdings (bot=%s)...", bot_name)
 
     btc_before_msat = unwrap_canister_result(
         odin_anon.getBalance(bot_principal_text, "btc", "btc",
@@ -162,13 +158,14 @@ def run_trade(bot_name: str, action: str, token_id: str, amount: str,
                              verify_certificate=get_verify_certificates())
     )
 
-    print(f"BTC: {_fmt(btc_before_sats)}, {token_label}: {fmt_tokens(token_before)}")
+    logger.info("Step 2: BTC=%s, %s=%s (bot=%s)",
+                _fmt(btc_before_sats), token_label, f"{token_before:,}", bot_name)
 
     # Resolve 'all' to actual token balance
     if sell_all:
         if token_before <= 0:
-            print(f"\nNo {token_label} to sell. Skipping.")
-            return
+            return {"status": "skipped", "bot_name": bot_name,
+                    "reason": f"No {token_label} to sell"}
         amount_int = token_before
 
     # Check minimum trade value for sell
@@ -176,9 +173,9 @@ def run_trade(bot_name: str, action: str, token_id: str, amount: str,
         sell_value_microsats = (amount_int * token_price) / (10 ** token_divisibility)
         sell_value_sats = int(sell_value_microsats / 1_000_000)
         if sell_value_sats < MIN_TRADE_SATS:
-            print(f"\nSell value too low: {_fmt(sell_value_sats)} "
-                  f"(minimum {MIN_TRADE_SATS:,} sats). Skipping.")
-            return
+            return {"status": "skipped", "bot_name": bot_name,
+                    "reason": f"Sell value too low: {_fmt(sell_value_sats)} "
+                              f"(minimum {MIN_TRADE_SATS:,} sats)"}
 
     # -----------------------------------------------------------------------
     # Step 3: Execute trade
@@ -191,7 +188,7 @@ def run_trade(bot_name: str, action: str, token_id: str, amount: str,
             "amount": {"btc": amount_msat},
             "settings": [],
         }
-        print(f"Step 3: Buy {token_label} with {_fmt(amount_int)}...", end=" ", flush=True)
+        logger.info("Step 3: Buy %s with %s (bot=%s)...", token_label, _fmt(amount_int), bot_name)
     else:
         trade_request = {
             "tokenid": token_id,
@@ -199,9 +196,8 @@ def run_trade(bot_name: str, action: str, token_id: str, amount: str,
             "amount": {"token": amount_int},
             "settings": [],
         }
-        print(f"Step 3: Sell {amount_int:,} {token_label}...", end=" ", flush=True)
+        logger.info("Step 3: Sell %s %s (bot=%s)...", f"{amount_int:,}", token_label, bot_name)
 
-    log("")
     log(f"  Trade request: {trade_request}")
 
     result = unwrap_canister_result(
@@ -210,11 +206,20 @@ def run_trade(bot_name: str, action: str, token_id: str, amount: str,
     log(f"  Result: {result}")
 
     if isinstance(result, dict) and "err" in result:
-        print(f"FAILED: {result['err']}")
-        return
+        return {"status": "error", "bot_name": bot_name,
+                "error": str(result["err"])}
 
-    print("done")
-    print(f"\n✅ Trade executed successfully!")
+    logger.info("Trade executed successfully (bot=%s)", bot_name)
+    return {
+        "status": "ok",
+        "action": action,
+        "bot_name": bot_name,
+        "token_id": token_id,
+        "token_label": token_label,
+        "amount": amount_int,
+        "btc_before_sats": btc_before_sats,
+        "token_before": token_before,
+    }
 
 
 def main():

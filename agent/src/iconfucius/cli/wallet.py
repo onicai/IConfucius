@@ -209,6 +209,9 @@ def balance(
         from iconfucius.cli.balance import run_wallet_balance
         result = run_wallet_balance(monitor=monitor, ckbtc_minter=ckbtc_minter)
 
+        if result:
+            print(result.get("_display", ""))
+
         if not monitor:
             print()
             print("Notes:")
@@ -217,18 +220,16 @@ def balance(
             return
 
         if result:
-            _, pending, _, active_count, address_btc = result
+            pending = result.get("pending_sats", 0)
+            active_count = result.get("active_withdrawal_count", 0)
+            address_btc = result.get("address_btc_sats", 0)
             has_incoming = pending > 0 or address_btc > 0
             has_outgoing = active_count > 0
             if not has_incoming and not has_outgoing:
                 print()
                 print("All pending BTC activity completed.")
                 return
-            from iconfucius.config import get_btc_to_usd_rate
-            try:
-                btc_usd_rate = get_btc_to_usd_rate()
-            except Exception:
-                btc_usd_rate = None
+            btc_usd_rate = result.get("btc_usd_rate")
             print()
             if has_incoming and has_outgoing:
                 print("Monitoring incoming BTC deposit and outgoing BTC withdrawal...")
@@ -241,8 +242,10 @@ def balance(
             _run_monitor_loop(btc_usd_rate)
     else:
         bot_names = _resolve_bot_names(bot, all_bots)
-        run_all_balances(bot_names=bot_names, token_id=token_id,
-                         verbose=state.verbose, ckbtc_minter=ckbtc_minter)
+        result = run_all_balances(bot_names=bot_names, token_id=token_id,
+                                  verbose=state.verbose, ckbtc_minter=ckbtc_minter)
+        if result:
+            print(result.get("_display", ""))
 
 
 MONITOR_INTERVAL = 30  # seconds between polls
@@ -337,18 +340,16 @@ def info(
 ):
     """Show wallet address and ckBTC balance."""
     from iconfucius.cli import _resolve_network
-    from iconfucius.config import get_btc_to_usd_rate, get_pem_file
+    from iconfucius.config import get_pem_file
 
     _resolve_network(network)
     _load_identity()  # Ensure wallet exists
 
-    try:
-        btc_usd_rate = get_btc_to_usd_rate()
-    except Exception:
-        btc_usd_rate = None
+    from iconfucius.cli.balance import run_wallet_balance
 
-    from iconfucius.cli.balance import _print_wallet_info
-    _print_wallet_info(btc_usd_rate, ckbtc_minter=ckbtc_minter)
+    result = run_wallet_balance(ckbtc_minter=ckbtc_minter)
+    if result:
+        print(result.get("_display", ""))
 
     pem_path = get_pem_file()
     print()
@@ -476,8 +477,7 @@ def send(
     print(f"Wallet balance: {fmt_sats(wallet_balance, btc_usd_rate)}")
 
     if is_btc_address:
-        # BTC withdrawal via ckBTC minter
-        _send_btc(
+        result = _send_btc(
             amount, address, wallet_principal, wallet_balance,
             auth_agent, anon_agent, icrc1_canister__anon, icrc1_canister__wallet,
             create_ckbtc_minter, get_withdrawal_account,
@@ -486,13 +486,33 @@ def send(
             btc_usd_rate,
         )
     else:
-        # ckBTC transfer to IC principal
-        _send_ckbtc(
+        result = _send_ckbtc(
             amount, address, wallet_principal, wallet_balance,
             icrc1_canister__anon, icrc1_canister__wallet,
             transfer, get_balance, CKBTC_FEE,
             btc_usd_rate,
         )
+
+    if result["status"] == "error":
+        print(result["error"])
+        raise typer.Exit(1)
+
+    # Print success summary
+    if result.get("is_send_all"):
+        print(f"Sending all: {fmt_sats(result['sent_sats'], btc_usd_rate)}"
+              f" (balance {fmt_sats(result['balance_before_sats'], btc_usd_rate)}"
+              f" - fee {result.get('ckbtc_fee', '')})")
+
+    if result["type"] == "ckbtc_transfer":
+        print(f"Sending {fmt_sats(result['sent_sats'], btc_usd_rate)} to {result['to']}...")
+        print(f"Transfer succeeded! Block index: {result['tx_index']}")
+    elif result["type"] == "btc_withdrawal":
+        print(f"BTC withdrawal initiated! Block index: {result['block_index']}")
+        print("BTC will arrive after the transaction is confirmed on the Bitcoin network.")
+        print("Check progress with: iconfucius wallet balance --monitor")
+
+    print(f"Wallet balance: {fmt_sats(result['balance_after_sats'], btc_usd_rate)}"
+          f" (was {fmt_sats(result['balance_before_sats'], btc_usd_rate)})")
 
 
 def _send_ckbtc(
@@ -500,50 +520,63 @@ def _send_ckbtc(
     icrc1_canister__anon, icrc1_canister__wallet,
     transfer, get_balance, ckbtc_fee,
     btc_usd_rate=None,
-):
-    """Send ckBTC to an IC principal via ICRC-1 transfer."""
+) -> dict:
+    """Send ckBTC to an IC principal via ICRC-1 transfer.
+
+    Returns a structured dict:
+        {"status": "ok", "tx_index": ..., "sent_sats": ..., ...}
+        {"status": "error", "error": "..."}
+    """
     from iconfucius.config import fmt_sats
+    from iconfucius.logging_config import get_logger
+    logger = get_logger()
+
+    is_send_all = amount.lower() == "all"
 
     # Determine amount
-    if amount.lower() == "all":
+    if is_send_all:
         if wallet_balance <= ckbtc_fee:
-            print(f"Insufficient balance. Have {fmt_sats(wallet_balance, btc_usd_rate)}, fee is {fmt_sats(ckbtc_fee, btc_usd_rate)}.")
-            raise typer.Exit(1)
+            return {"status": "error",
+                    "error": f"Insufficient balance. Have {fmt_sats(wallet_balance, btc_usd_rate)}, fee is {fmt_sats(ckbtc_fee, btc_usd_rate)}."}
         send_amount = wallet_balance - ckbtc_fee
-        print(f"Sending all: {fmt_sats(send_amount, btc_usd_rate)} (balance {fmt_sats(wallet_balance, btc_usd_rate)} - fee {ckbtc_fee})")
     else:
         send_amount = int(amount)
 
     if send_amount <= 0:
-        print("Nothing to send.")
-        raise typer.Exit(1)
+        return {"status": "error", "error": "Nothing to send."}
 
     total_needed = send_amount + ckbtc_fee
     if wallet_balance < total_needed:
-        print(f"Insufficient balance. Need {fmt_sats(total_needed, btc_usd_rate)}, have {fmt_sats(wallet_balance, btc_usd_rate)}.")
-        raise typer.Exit(1)
+        return {"status": "error",
+                "error": f"Insufficient balance. Need {fmt_sats(total_needed, btc_usd_rate)}, have {fmt_sats(wallet_balance, btc_usd_rate)}."}
 
     # Execute transfer
-    print(f"Sending {fmt_sats(send_amount, btc_usd_rate)} to {to_principal}...")
+    logger.info("Sending %s to %s...", fmt_sats(send_amount, btc_usd_rate), to_principal)
     try:
         result = transfer(icrc1_canister__wallet, to_principal, send_amount)
 
         if isinstance(result, dict) and "Err" in result:
-            print(f"Transfer failed: {result['Err']}")
-            raise typer.Exit(1)
+            return {"status": "error", "error": f"Transfer failed: {result['Err']}"}
 
         tx_index = result.get("Ok", result) if isinstance(result, dict) else result
-        print(f"Transfer succeeded! Block index: {tx_index}")
 
-    except typer.Exit:
-        raise
     except Exception as e:
-        print(f"Transfer failed: {e}")
-        raise typer.Exit(1)
+        return {"status": "error", "error": f"Transfer failed: {e}"}
 
     # Verify
     wallet_balance_after = get_balance(icrc1_canister__anon, wallet_principal)
-    print(f"Wallet balance: {fmt_sats(wallet_balance_after, btc_usd_rate)} (was {fmt_sats(wallet_balance, btc_usd_rate)})")
+
+    return {
+        "status": "ok",
+        "type": "ckbtc_transfer",
+        "tx_index": tx_index,
+        "sent_sats": send_amount,
+        "to": to_principal,
+        "is_send_all": is_send_all,
+        "balance_before_sats": wallet_balance,
+        "balance_after_sats": wallet_balance_after,
+        "ckbtc_fee": ckbtc_fee,
+    }
 
 
 def _send_btc(
@@ -553,29 +586,37 @@ def _send_btc(
     estimate_withdrawal_fee, retrieve_btc_withdrawal,
     transfer, get_balance, unwrap_canister_result, ckbtc_fee,
     btc_usd_rate=None,
-):
-    """Withdraw BTC to a Bitcoin address via ckBTC minter."""
+) -> dict:
+    """Withdraw BTC to a Bitcoin address via ckBTC minter.
+
+    Returns a structured dict:
+        {"status": "ok", "block_index": ..., "sent_sats": ..., ...}
+        {"status": "error", "error": "..."}
+    """
     from iconfucius.config import fmt_sats, get_verify_certificates
+    from iconfucius.logging_config import get_logger
+    logger = get_logger()
 
     # Estimate withdrawal fee
     minter = create_ckbtc_minter(auth_agent)
 
-    print("Estimating withdrawal fee...")
+    logger.info("Estimating withdrawal fee...")
     try:
         fee_info = estimate_withdrawal_fee(minter)
         minter_fee = fee_info.get("minter_fee", 0)
         bitcoin_fee = fee_info.get("bitcoin_fee", 0)
         total_fee = minter_fee + bitcoin_fee
-        print(f"  Minter fee: {fmt_sats(minter_fee, btc_usd_rate)}")
-        print(f"  Bitcoin fee: {fmt_sats(bitcoin_fee, btc_usd_rate)}")
-        print(f"  Total fee: {fmt_sats(total_fee, btc_usd_rate)}")
+        logger.info("  Minter fee: %s", fmt_sats(minter_fee, btc_usd_rate))
+        logger.info("  Bitcoin fee: %s", fmt_sats(bitcoin_fee, btc_usd_rate))
+        logger.info("  Total fee: %s", fmt_sats(total_fee, btc_usd_rate))
     except Exception as e:
-        print(f"Could not estimate fee: {e}")
-        print("Proceeding with default estimate...")
+        logger.warning("Could not estimate fee: %s", e)
+        minter_fee = 0
+        bitcoin_fee = 0
         total_fee = 0
 
-    # Step 1: Get withdrawal account and check existing balance
-    print("Getting withdrawal account...")
+    # Get withdrawal account and check existing balance
+    logger.info("Getting withdrawal account...")
     withdrawal_account = get_withdrawal_account(minter)
     withdrawal_owner = withdrawal_account.get("owner")
     withdrawal_subaccount = withdrawal_account.get("subaccount", [])
@@ -587,33 +628,33 @@ def _send_btc(
         }, verify_certificate=get_verify_certificates())
     )
     if existing_balance > 0:
-        print(f"  Existing balance in withdrawal account: {fmt_sats(existing_balance, btc_usd_rate)}")
+        logger.info("  Existing balance in withdrawal account: %s",
+                     fmt_sats(existing_balance, btc_usd_rate))
 
     # Determine amount (wallet + existing withdrawal account balance)
+    is_send_all = amount.lower() == "all"
     available = wallet_balance + existing_balance
-    if amount.lower() == "all":
+    if is_send_all:
         # ckbtc_fee only charged when we actually transfer to the withdrawal account
         send_amount = available - total_fee
         if existing_balance < available:
             send_amount -= ckbtc_fee  # need a transfer, so deduct transfer fee
         if send_amount <= 0:
-            print(f"Insufficient balance. Have {fmt_sats(available, btc_usd_rate)}, fees are {fmt_sats(ckbtc_fee + total_fee, btc_usd_rate)}.")
-            raise typer.Exit(1)
-        print(f"Withdrawing all: {fmt_sats(send_amount, btc_usd_rate)}")
+            return {"status": "error",
+                    "error": f"Insufficient balance. Have {fmt_sats(available, btc_usd_rate)}, fees are {fmt_sats(ckbtc_fee + total_fee, btc_usd_rate)}."}
     else:
         send_amount = int(amount)
 
     if send_amount <= 0:
-        print("Nothing to send.")
-        raise typer.Exit(1)
+        return {"status": "error", "error": "Nothing to send."}
 
     # Check minimum BTC withdrawal amount (ckBTC minter enforces this)
     from iconfucius.config import MIN_BTC_WITHDRAWAL_SATS
     if send_amount < MIN_BTC_WITHDRAWAL_SATS:
-        print(f"BTC withdrawal amount too low: {fmt_sats(send_amount, btc_usd_rate)}.")
-        print(f"Minimum BTC withdrawal via ckBTC minter: {fmt_sats(MIN_BTC_WITHDRAWAL_SATS, btc_usd_rate)}.")
-        print(f"To send smaller amounts, use ckBTC transfer to an IC principal instead.")
-        raise typer.Exit(1)
+        return {"status": "error",
+                "error": (f"BTC withdrawal amount too low: {fmt_sats(send_amount, btc_usd_rate)}.\n"
+                          f"Minimum BTC withdrawal via ckBTC minter: {fmt_sats(MIN_BTC_WITHDRAWAL_SATS, btc_usd_rate)}.\n"
+                          f"To send smaller amounts, use ckBTC transfer to an IC principal instead.")}
 
     # How much more needs to go into the withdrawal account?
     needed_in_account = send_amount + total_fee
@@ -622,13 +663,15 @@ def _send_btc(
     # Check wallet has enough for the transfer (+ ckbtc transfer fee if needed)
     wallet_needed = transfer_amount + (ckbtc_fee if transfer_amount > 0 else 0)
     if wallet_balance < wallet_needed:
-        print(f"Insufficient wallet balance. Need {fmt_sats(wallet_needed, btc_usd_rate)}, have {fmt_sats(wallet_balance, btc_usd_rate)}.")
-        raise typer.Exit(1)
+        return {"status": "error",
+                "error": f"Insufficient wallet balance. Need {fmt_sats(wallet_needed, btc_usd_rate)}, have {fmt_sats(wallet_balance, btc_usd_rate)}."}
 
     if transfer_amount == 0:
-        print(f"Withdrawal account already has enough ({fmt_sats(existing_balance, btc_usd_rate)}), skipping transfer.")
+        logger.info("Withdrawal account already has enough (%s), skipping transfer.",
+                     fmt_sats(existing_balance, btc_usd_rate))
     else:
-        print(f"Transferring {fmt_sats(transfer_amount, btc_usd_rate)} to minter withdrawal account...")
+        logger.info("Transferring %s to minter withdrawal account...",
+                     fmt_sats(transfer_amount, btc_usd_rate))
         try:
             to_account = {"owner": withdrawal_owner, "subaccount": withdrawal_subaccount}
             result_raw = icrc1_canister__wallet.icrc1_transfer(
@@ -644,49 +687,57 @@ def _send_btc(
             )
             result = unwrap_canister_result(result_raw)
             if isinstance(result, dict) and "Err" in result:
-                print(f"Transfer to withdrawal account failed: {result['Err']}")
-                raise typer.Exit(1)
-            print(f"  Transfer block index: {result.get('Ok', result) if isinstance(result, dict) else result}")
-        except typer.Exit:
-            raise
+                return {"status": "error",
+                        "error": f"Transfer to withdrawal account failed: {result['Err']}"}
+            logger.info("  Transfer block index: %s",
+                         result.get('Ok', result) if isinstance(result, dict) else result)
         except Exception as e:
-            print(f"Transfer to withdrawal account failed: {e}")
-            raise typer.Exit(1)
+            return {"status": "error",
+                    "error": f"Transfer to withdrawal account failed: {e}"}
 
-    # Step 3: Call retrieve_btc
-    print(f"Initiating BTC withdrawal of {fmt_sats(send_amount, btc_usd_rate)} to {btc_address}...")
+    # Call retrieve_btc
+    logger.info("Initiating BTC withdrawal of %s to %s...",
+                 fmt_sats(send_amount, btc_usd_rate), btc_address)
     try:
         result = retrieve_btc_withdrawal(minter, btc_address, send_amount)
 
         if isinstance(result, dict) and "Err" in result:
             err = result["Err"]
             if "AmountTooLow" in err:
-                print(f"Amount too low. Minimum: {fmt_sats(err['AmountTooLow'], btc_usd_rate)}")
+                return {"status": "error",
+                        "error": f"Amount too low. Minimum: {fmt_sats(err['AmountTooLow'], btc_usd_rate)}"}
             elif "InsufficientFunds" in err:
-                print(f"Insufficient funds in withdrawal account: {err['InsufficientFunds']}")
+                return {"status": "error",
+                        "error": f"Insufficient funds in withdrawal account: {err['InsufficientFunds']}"}
             elif "MalformedAddress" in err:
-                print(f"Invalid Bitcoin address: {err['MalformedAddress']}")
+                return {"status": "error",
+                        "error": f"Invalid Bitcoin address: {err['MalformedAddress']}"}
             else:
-                print(f"Withdrawal failed: {err}")
-            raise typer.Exit(1)
+                return {"status": "error", "error": f"Withdrawal failed: {err}"}
 
         block_index = result.get("Ok", result) if isinstance(result, dict) else result
         if isinstance(block_index, dict):
             block_index = block_index.get("block_index", block_index)
-        print(f"BTC withdrawal initiated! Block index: {block_index}")
-        print("BTC will arrive after the transaction is confirmed on the Bitcoin network.")
-        print("Check progress with: iconfucius wallet balance --monitor")
 
         # Save for status tracking
         if isinstance(block_index, int):
             save_withdrawal_status(block_index, btc_address, send_amount)
 
-    except typer.Exit:
-        raise
     except Exception as e:
-        print(f"Withdrawal failed: {e}")
-        raise typer.Exit(1)
+        return {"status": "error", "error": f"Withdrawal failed: {e}"}
 
     # Verify remaining balance
     wallet_balance_after = get_balance(icrc1_canister__anon, wallet_principal)
-    print(f"Wallet balance: {fmt_sats(wallet_balance_after, btc_usd_rate)} (was {fmt_sats(wallet_balance, btc_usd_rate)})")
+
+    return {
+        "status": "ok",
+        "type": "btc_withdrawal",
+        "block_index": block_index,
+        "sent_sats": send_amount,
+        "to": btc_address,
+        "is_send_all": is_send_all,
+        "minter_fee_sats": minter_fee,
+        "bitcoin_fee_sats": bitcoin_fee,
+        "balance_before_sats": wallet_balance,
+        "balance_after_sats": wallet_balance_after,
+    }

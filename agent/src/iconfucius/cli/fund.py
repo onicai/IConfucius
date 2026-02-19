@@ -132,25 +132,30 @@ def _fund_one_bot(bot_name, amount, pem_content, verbose, btc_usd_rate):
     return {"status": "ok"}
 
 
-def run_fund(bot_names: list, amount: int, verbose: bool = False):
+def run_fund(bot_names: list, amount: int, verbose: bool = False) -> dict:
     """Fund bot(s) and deposit into Odin.Fun trading accounts.
+
+    Returns a structured dict:
+        {"status": "ok"/"error"/"partial", ...}
 
     Args:
         bot_names: List of bot names to fund.
         amount: Amount in sats to deposit into each bot's Odin.Fun account.
-        verbose: If True, print detailed output.
+        verbose: If True, enable detailed logging.
     """
+    from iconfucius.logging_config import get_logger
+    logger = get_logger()
+
     set_verbose(verbose)
     if not require_wallet():
-        return
+        return {"status": "error", "error": "No wallet found. Run: iconfucius wallet create"}
 
     if amount <= 0:
-        print("Error: Amount must be positive")
-        return
+        return {"status": "error", "error": "Amount must be positive"}
 
     if amount < MIN_DEPOSIT_SATS:
-        print(f"Error: Minimum deposit is {MIN_DEPOSIT_SATS:,} sats, got {amount:,}")
-        return
+        return {"status": "error",
+                "error": f"Minimum deposit is {MIN_DEPOSIT_SATS:,} sats, got {amount:,}"}
 
     # Fetch BTC/USD rate
     try:
@@ -164,13 +169,13 @@ def run_fund(bot_names: list, amount: int, verbose: bool = False):
     # -----------------------------------------------------------------------
     # Step 1: Load iconfucius wallet
     # -----------------------------------------------------------------------
-    print("Step 1: Load iconfucius wallet...", end=" ", flush=True)
+    logger.info("Step 1: Load iconfucius wallet...")
     pem_path = get_pem_file()
     with open(pem_path, "r") as f:
         pem_content = f.read()
     wallet_identity = Identity.from_pem(pem_content)
     wallet_principal = str(wallet_identity.sender())
-    print("done")
+    logger.info("Step 1: Wallet loaded")
     log(f"  Wallet principal: {wallet_principal}")
 
     client = Client(url=IC_HOST)
@@ -186,22 +191,22 @@ def run_fund(bot_names: list, amount: int, verbose: bool = False):
     per_bot_cost = amount + 2 * CKBTC_FEE
     total_needed = per_bot_cost * len(bot_names)
 
-    print(f"Step 2: Wallet balance: {_fmt(wallet_balance)}")
+    logger.info("Step 2: Wallet balance: %s", _fmt(wallet_balance))
 
     if wallet_balance < total_needed:
-        print(f"\nInsufficient wallet balance.")
-        print(f"  Need: {_fmt(total_needed)} "
-              f"({len(bot_names)} bot(s) x {amount:,} + fees)")
-        print(f"  Have: {_fmt(wallet_balance)}")
-        print(f"\nFund the iconfucius wallet first:")
-        print(f"  iconfucius wallet receive")
-        return
+        return {
+            "status": "error",
+            "error": (f"Insufficient wallet balance. "
+                      f"Need {_fmt(total_needed)} "
+                      f"({len(bot_names)} bot(s) x {amount:,} + fees), "
+                      f"have {_fmt(wallet_balance)}"),
+        }
 
     # -----------------------------------------------------------------------
     # Step 3: Fund and deposit for each bot (concurrent)
     # -----------------------------------------------------------------------
-    print(f"Step 3: Funding {len(bot_names)} bot(s) with "
-          f"{_fmt(amount)} each...")
+    logger.info("Step 3: Funding %d bot(s) with %s each...",
+                len(bot_names), _fmt(amount))
 
     from iconfucius.cli.concurrent import run_per_bot
 
@@ -210,21 +215,23 @@ def run_fund(bot_names: list, amount: int, verbose: bool = False):
         bot_names,
     )
 
-    funded = []
+    funded, failed = [], []
     for bot_name, result in results:
         if isinstance(result, Exception):
-            print(f"  {bot_name}: FAILED — {result}")
+            failed.append({"bot": bot_name, "error": str(result)})
         elif result["status"] == "failed":
-            print(f"  {bot_name}: FAILED ({result['step']}): {result['error']}")
+            failed.append({"bot": bot_name,
+                           "error": f"{result['step']}: {result['error']}"})
         else:
             funded.append(bot_name)
-            print(f"  {bot_name}: done ({_fmt(amount)})")
 
-    # -----------------------------------------------------------------------
-    # Summary
-    # -----------------------------------------------------------------------
-    wallet_balance_after = get_balance(icrc1_canister__anon, wallet_principal)
-    print(f"\nWallet balance: {_fmt(wallet_balance_after)}")
+    logger.info("Funded %d/%d bot(s)", len(funded), len(bot_names))
 
-    if funded:
-        print(f"\n✅ Funded {len(funded)} bot(s) successfully!")
+    all_ok = not failed
+    return {
+        "status": "ok" if all_ok else "partial",
+        "funded": funded,
+        "failed": failed,
+        "amount": amount,
+        "bot_count": len(bot_names),
+    }

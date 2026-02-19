@@ -28,7 +28,7 @@ class TestRunTradeSuccess:
     @patch(f"{M}.Client")
     def test_buy(self, MockClient, MockAgent, MockCanister, mock_token_info,
                   mock_load, mock_patch_del, mock_unwrap, mock_rate,
-                  odin_project, capsys):
+                  odin_project):
         mock_load.return_value = _make_mock_auth()
         mock_odin = MagicMock()
         mock_odin.getBalance.side_effect = [5_000_000, 100]  # BTC msat, token
@@ -36,12 +36,14 @@ class TestRunTradeSuccess:
         MockCanister.side_effect = [mock_odin, mock_odin]
 
         from iconfucius.cli.trade import run_trade
-        run_trade(bot_name="bot-1", action="buy", token_id="29m8",
-                  amount="1000", verbose=False)
+        result = run_trade(bot_name="bot-1", action="buy", token_id="29m8",
+                           amount="1000", verbose=False)
 
-        output = capsys.readouterr().out
-        assert "Trade: BUY" in output
-        assert "Trade executed successfully" in output
+        assert result["status"] == "ok"
+        assert result["action"] == "buy"
+        assert result["bot_name"] == "bot-1"
+        assert result["token_id"] == "29m8"
+        assert result["amount"] == 1000
         mock_odin.token_trade.assert_called_once()
 
     @patch(f"{M}.get_btc_to_usd_rate", return_value=100_000.0)
@@ -54,7 +56,7 @@ class TestRunTradeSuccess:
     @patch(f"{M}.Client")
     def test_sell(self, MockClient, MockAgent, MockCanister, mock_token_info,
                    mock_load, mock_patch_del, mock_unwrap, mock_rate,
-                   odin_project, capsys):
+                   odin_project):
         mock_load.return_value = _make_mock_auth()
         mock_odin = MagicMock()
         mock_odin.getBalance.side_effect = [5_000_000, 500]
@@ -62,12 +64,12 @@ class TestRunTradeSuccess:
         MockCanister.side_effect = [mock_odin, mock_odin]
 
         from iconfucius.cli.trade import run_trade
-        run_trade(bot_name="bot-1", action="sell", token_id="29m8",
-                  amount="100", verbose=False)
+        result = run_trade(bot_name="bot-1", action="sell", token_id="29m8",
+                           amount="100", verbose=False)
 
-        output = capsys.readouterr().out
-        assert "Trade: SELL" in output
-        assert "Trade executed successfully" in output
+        assert result["status"] == "ok"
+        assert result["action"] == "sell"
+        assert result["amount"] == 100
 
 
 class TestRunTradeSellAll:
@@ -81,7 +83,7 @@ class TestRunTradeSellAll:
     @patch(f"{M}.Client")
     def test_sell_all(self, MockClient, MockAgent, MockCanister, mock_token_info,
                       mock_load, mock_patch_del, mock_unwrap, mock_rate,
-                      odin_project, capsys):
+                      odin_project):
         mock_load.return_value = _make_mock_auth()
         mock_odin = MagicMock()
         mock_odin.getBalance.side_effect = [5_000_000, 99_999]
@@ -89,12 +91,11 @@ class TestRunTradeSellAll:
         MockCanister.side_effect = [mock_odin, mock_odin]
 
         from iconfucius.cli.trade import run_trade
-        run_trade(bot_name="bot-1", action="sell", token_id="29m8",
-                  amount="all", verbose=False)
+        result = run_trade(bot_name="bot-1", action="sell", token_id="29m8",
+                           amount="all", verbose=False)
 
-        output = capsys.readouterr().out
-        assert "SELL ALL" in output
-        assert "Trade executed successfully" in output
+        assert result["status"] == "ok"
+        assert result["amount"] == 99_999
         # Verify trade used the full token balance
         call_args = mock_odin.token_trade.call_args[0][0]
         assert call_args["amount"] == {"token": 99_999}
@@ -110,39 +111,39 @@ class TestRunTradeSellAll:
     def test_sell_all_zero_balance(self, MockClient, MockAgent, MockCanister,
                                     mock_token_info, mock_load, mock_patch_del,
                                     mock_unwrap, mock_rate,
-                                    odin_project, capsys):
+                                    odin_project):
         mock_load.return_value = _make_mock_auth()
         mock_odin = MagicMock()
         mock_odin.getBalance.side_effect = [5_000_000, 0]
         MockCanister.side_effect = [mock_odin, mock_odin]
 
         from iconfucius.cli.trade import run_trade
-        run_trade(bot_name="bot-1", action="sell", token_id="29m8",
-                  amount="all", verbose=False)
+        result = run_trade(bot_name="bot-1", action="sell", token_id="29m8",
+                           amount="all", verbose=False)
 
-        output = capsys.readouterr().out
-        assert "No" in output and "to sell" in output
+        assert result["status"] == "skipped"
+        assert "to sell" in result["reason"]
         mock_odin.token_trade.assert_not_called()
 
 
 class TestRunTradeErrors:
-    def test_no_wallet(self, odin_project_no_wallet, capsys):
+    def test_no_wallet(self, odin_project_no_wallet):
         from iconfucius.cli.trade import run_trade
-        run_trade(bot_name="bot-1", action="buy", token_id="29m8", amount="1000")
-        output = capsys.readouterr().out
-        assert "No iconfucius wallet found" in output
+        result = run_trade(bot_name="bot-1", action="buy", token_id="29m8", amount="1000")
+        assert result["status"] == "error"
+        assert "wallet" in result["error"].lower()
 
-    def test_invalid_action(self, odin_project, capsys):
+    def test_invalid_action(self, odin_project):
         from iconfucius.cli.trade import run_trade
-        run_trade(bot_name="bot-1", action="hold", token_id="29m8", amount="1000")
-        output = capsys.readouterr().out
-        assert "must be 'buy' or 'sell'" in output
+        result = run_trade(bot_name="bot-1", action="hold", token_id="29m8", amount="1000")
+        assert result["status"] == "error"
+        assert "must be 'buy' or 'sell'" in result["error"]
 
-    def test_buy_all_rejected(self, odin_project, capsys):
+    def test_buy_all_rejected(self, odin_project):
         from iconfucius.cli.trade import run_trade
-        run_trade(bot_name="bot-1", action="buy", token_id="29m8", amount="all")
-        output = capsys.readouterr().out
-        assert "only supported for sell" in output
+        result = run_trade(bot_name="bot-1", action="buy", token_id="29m8", amount="all")
+        assert result["status"] == "error"
+        assert "only supported for sell" in result["error"]
 
     @patch(f"{M}.get_btc_to_usd_rate", return_value=100_000.0)
     @patch(f"{M}.unwrap_canister_result", side_effect=lambda x: x)
@@ -155,7 +156,7 @@ class TestRunTradeErrors:
     def test_trade_failure(self, MockClient, MockAgent, MockCanister,
                             mock_token_info, mock_load, mock_patch_del,
                             mock_unwrap, mock_rate,
-                            odin_project, capsys):
+                            odin_project):
         mock_load.return_value = _make_mock_auth()
         mock_odin = MagicMock()
         mock_odin.getBalance.side_effect = [5_000_000, 100]
@@ -163,11 +164,11 @@ class TestRunTradeErrors:
         MockCanister.side_effect = [mock_odin, mock_odin]
 
         from iconfucius.cli.trade import run_trade
-        run_trade(bot_name="bot-1", action="buy", token_id="29m8",
-                  amount="1000", verbose=False)
+        result = run_trade(bot_name="bot-1", action="buy", token_id="29m8",
+                           amount="1000", verbose=False)
 
-        output = capsys.readouterr().out
-        assert "FAILED" in output
+        assert result["status"] == "error"
+        assert "insufficient BTC" in result["error"]
 
     @patch(f"{M}.get_btc_to_usd_rate", return_value=100_000.0)
     @patch(f"{M}.unwrap_canister_result", side_effect=lambda x: x)
@@ -180,7 +181,7 @@ class TestRunTradeErrors:
     def test_token_info_unavailable(self, MockClient, MockAgent, MockCanister,
                                      mock_token_info, mock_load, mock_patch_del,
                                      mock_unwrap, mock_rate,
-                                     odin_project, capsys):
+                                     odin_project):
         """Trade should work even if token info API is unavailable."""
         mock_load.return_value = _make_mock_auth()
         mock_odin = MagicMock()
@@ -191,8 +192,7 @@ class TestRunTradeErrors:
         from iconfucius.cli.trade import run_trade
 
         # Should not raise
-        run_trade(bot_name="bot-1", action="buy", token_id="29m8",
-                  amount="1000", verbose=False)
+        result = run_trade(bot_name="bot-1", action="buy", token_id="29m8",
+                           amount="1000", verbose=False)
 
-        output = capsys.readouterr().out
-        assert "Trade executed successfully" in output
+        assert result["status"] == "ok"

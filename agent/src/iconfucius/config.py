@@ -101,14 +101,16 @@ CONFIG_FILENAME = "iconfucius.toml"
 _cached_config: Optional[dict] = None
 _cached_config_path: Optional[Path] = None
 
-# Module-level verbose flag (controlled by CLI --verbose in the future)
-_verbose: bool = True
+# Module-level verbose flag (controls DEBUG-level logging)
+_verbose: bool = False
 
 
 def set_verbose(enabled: bool) -> None:
-    """Set the global verbose flag."""
+    """Set the global verbose flag and switch log level accordingly."""
     global _verbose
     _verbose = enabled
+    from iconfucius.logging_config import set_debug
+    set_debug(enabled)
 
 
 def is_verbose() -> bool:
@@ -117,9 +119,9 @@ def is_verbose() -> bool:
 
 
 def log(msg: str) -> None:
-    """Print a message if verbose mode is enabled."""
-    if _verbose:
-        print(msg)
+    """Log a message to .logs/iconfucius.log (file only)."""
+    from iconfucius.logging_config import get_logger
+    get_logger().debug(msg)
 
 
 # Module-level network (default: prd)

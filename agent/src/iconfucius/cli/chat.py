@@ -114,8 +114,7 @@ class _Spinner:
     """Animated spinner for the terminal.
 
     Captures a reference to the real stdout at creation time so the
-    animation keeps running even when redirect_stdout is active
-    (e.g. inside _capture() in the skills executor).
+    animation keeps running on the real terminal regardless of context.
     """
 
     def __init__(self, message: str = ""):

@@ -44,17 +44,23 @@ from iconfucius.candid import ODIN_TRADING_CANDID
 # Main
 # ---------------------------------------------------------------------------
 
-def run_withdraw(bot_name: str, amount: str, verbose: bool = False):
+def run_withdraw(bot_name: str, amount: str, verbose: bool = False) -> dict:
     """Withdraw from Odin.Fun and transfer back to iconfucius wallet.
+
+    Returns a structured dict:
+        {"status": "ok"/"error"/"partial", ...}
 
     Args:
         bot_name: Name of the bot to withdraw from.
         amount: Amount in sats, or 'all' for entire balance.
-        verbose: If True, print detailed step output.
+        verbose: If True, enable detailed logging.
     """
+    from iconfucius.logging_config import get_logger
+    logger = get_logger()
+
     set_verbose(verbose)
     if not require_wallet():
-        return
+        return {"status": "error", "error": "No wallet found. Run: iconfucius wallet create"}
 
     # Fetch BTC/USD rate for display
     try:
@@ -68,7 +74,7 @@ def run_withdraw(bot_name: str, amount: str, verbose: bool = False):
     # -----------------------------------------------------------------------
     # Step 1: SIWB login
     # -----------------------------------------------------------------------
-    print(f"Step 1: SIWB Login (bot={bot_name})...", end=" ", flush=True)
+    logger.info("Step 1: SIWB Login (bot=%s)...", bot_name)
     auth = load_session(bot_name=bot_name, verbose=verbose)
     if not auth:
         log("")
@@ -79,7 +85,7 @@ def run_withdraw(bot_name: str, amount: str, verbose: bool = False):
     delegate_identity = auth["delegate_identity"]
     bot_principal_text = auth["bot_principal_text"]
     patch_delegate_sender(delegate_identity)
-    print("done")
+    logger.info("Step 1: SIWB Login done")
     log(f"  Bot principal: {bot_principal_text}")
 
     client = Client(url=IC_HOST)
@@ -100,7 +106,7 @@ def run_withdraw(bot_name: str, amount: str, verbose: bool = False):
     # -----------------------------------------------------------------------
     # Step 2: Check Odin.Fun balance
     # -----------------------------------------------------------------------
-    print(f"Step 2: Odin.Fun balance (bot={bot_name})...", end=" ", flush=True)
+    logger.info("Step 2: Odin.Fun balance (bot=%s)...", bot_name)
 
     odin_btc_msat = unwrap_canister_result(
         odin_anon.getBalance(bot_principal_text, "btc", "btc",
@@ -108,25 +114,26 @@ def run_withdraw(bot_name: str, amount: str, verbose: bool = False):
     )
     odin_btc_sats = odin_btc_msat // MSAT_PER_SAT
 
-    print(_fmt(odin_btc_sats))
+    logger.info("Step 2: Odin.Fun balance: %s", _fmt(odin_btc_sats))
 
     # -----------------------------------------------------------------------
     # Step 3: Determine withdrawal amount
     # -----------------------------------------------------------------------
     if amount.lower() == "all":
         withdraw_sats = odin_btc_sats
-        print(f"Step 3: Withdrawing ALL: {_fmt(withdraw_sats)}")
+        logger.info("Step 3: Withdrawing ALL: %s", _fmt(withdraw_sats))
     else:
         withdraw_sats = int(amount)
-        print(f"Step 3: Withdrawing: {_fmt(withdraw_sats)}")
+        logger.info("Step 3: Withdrawing: %s", _fmt(withdraw_sats))
 
     if withdraw_sats <= 0:
-        print("No funds to withdraw.")
-        return
+        return {"status": "error", "error": "No funds to withdraw"}
 
     if withdraw_sats > odin_btc_sats:
-        print(f"Insufficient balance. Available: {_fmt(odin_btc_sats)}")
-        return
+        return {
+            "status": "error",
+            "error": f"Insufficient balance. Available: {_fmt(odin_btc_sats)}",
+        }
 
     # Convert to millisatoshis for Odin
     withdraw_msat = withdraw_sats * MSAT_PER_SAT
@@ -134,7 +141,7 @@ def run_withdraw(bot_name: str, amount: str, verbose: bool = False):
     # -----------------------------------------------------------------------
     # Step 4: Execute Odin.Fun withdrawal
     # -----------------------------------------------------------------------
-    print(f"Step 4: token_withdraw ({_fmt(withdraw_sats)})...", end=" ", flush=True)
+    logger.info("Step 4: token_withdraw (%s)...", _fmt(withdraw_sats))
 
     withdraw_request = {
         "protocol": {"ckbtc": None},
@@ -152,35 +159,38 @@ def run_withdraw(bot_name: str, amount: str, verbose: bool = False):
         log(f"  Result: {result}")
 
         if isinstance(result, dict) and "err" in result:
-            print(f"FAILED: {result['err']}")
-            return
+            return {"status": "error", "step": "token_withdraw",
+                    "error": str(result["err"])}
 
-        print("done")
+        logger.info("Step 4: token_withdraw done")
     except RuntimeError as e:
         # The Odin canister sometimes returns malformed responses even on success
-        print("done (with warning)")
+        logger.info("Step 4: token_withdraw done (with warning)")
         log(f"  Warning: Response parsing error: {e}")
         log("  Checking if withdrawal completed anyway...")
 
     # -----------------------------------------------------------------------
     # Step 5: Wait and verify ckBTC arrived on bot
     # -----------------------------------------------------------------------
-    print(f"Step 5: Verify withdrawal (waiting 5s)...", end=" ", flush=True)
+    logger.info("Step 5: Verify withdrawal (waiting 5s)...")
     time.sleep(5)
 
     icrc1_canister__anon = create_icrc1_canister(anon_agent)
     bot_ckbtc = get_balance(icrc1_canister__anon, bot_principal_text)
-    print(f"done (bot received {_fmt(bot_ckbtc)})")
+    logger.info("Step 5: bot received %s", _fmt(bot_ckbtc))
 
     if bot_ckbtc <= CKBTC_FEE:
-        print(f"\n  Note: ckBTC balance too low to transfer to wallet. "
-              f"Withdrawal may be pending.")
-        return
+        return {
+            "status": "partial",
+            "error": "ckBTC balance too low to transfer to wallet. Withdrawal may be pending.",
+            "bot_name": bot_name,
+            "withdrawn_sats": withdraw_sats,
+        }
 
     # -----------------------------------------------------------------------
     # Step 6: Transfer ckBTC from bot to iconfucius wallet
     # -----------------------------------------------------------------------
-    print(f"Step 6: Transfer to iconfucius wallet...", end=" ", flush=True)
+    logger.info("Step 6: Transfer to iconfucius wallet...")
 
     # Load wallet identity for the destination
     pem_path = get_pem_file()
@@ -197,16 +207,24 @@ def run_withdraw(bot_name: str, amount: str, verbose: bool = False):
     result = transfer(icrc1_canister__bot, wallet_principal, sweep_amount)
 
     if isinstance(result, dict) and "Err" in result:
-        print(f"FAILED: {result['Err']}")
-    else:
-        tx_index = result.get("Ok", result) if isinstance(result, dict) else result
-        print(f"done ({_fmt(sweep_amount)})")
-        log(f"  Transfer block index: {tx_index}")
+        return {"status": "error", "step": "transfer",
+                "error": str(result["Err"])}
+
+    tx_index = result.get("Ok", result) if isinstance(result, dict) else result
+    logger.info("Step 6: Transfer done (%s), block index: %s",
+                _fmt(sweep_amount), tx_index)
 
     # Verify wallet balance
     wallet_balance = get_balance(icrc1_canister__anon, wallet_principal)
-    print(f"\n✅ Withdrawal complete!")
-    print(f"Wallet balance: {_fmt(wallet_balance)}")
+    logger.info("Withdrawal complete. Wallet balance: %s", _fmt(wallet_balance))
+
+    return {
+        "status": "ok",
+        "bot_name": bot_name,
+        "withdrawn_sats": withdraw_sats,
+        "transferred_sats": sweep_amount,
+        "wallet_balance_sats": wallet_balance,
+    }
 
 
 def main():

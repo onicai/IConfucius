@@ -40,7 +40,7 @@ class TestRunWithdrawSuccess:
                                        mock_patch_del, mock_unwrap,
                                        mock_create_icrc1, mock_get_bal,
                                        mock_transfer, mock_rate,
-                                       odin_project, capsys):
+                                       odin_project):
         mock_load.return_value = _make_mock_auth()
         MockId.from_pem.return_value = _make_mock_identity()
 
@@ -55,11 +55,11 @@ class TestRunWithdrawSuccess:
         mock_transfer.return_value = {"Ok": 1}
 
         from iconfucius.cli.withdraw import run_withdraw
-        run_withdraw(bot_name="bot-1", amount="3000")
+        result = run_withdraw(bot_name="bot-1", amount="3000")
 
-        output = capsys.readouterr().out
-        assert "Withdrawing: 3,000 sats" in output
-        assert "Withdrawal complete" in output
+        assert result["status"] == "ok"
+        assert result["withdrawn_sats"] == 3000
+        assert result["transferred_sats"] == 4990 - 10  # bot_ckbtc - CKBTC_FEE
 
     @patch(f"{M}.get_btc_to_usd_rate", return_value=100_000.0)
     @patch(f"{M}.transfer", return_value={"Ok": 1})
@@ -76,7 +76,7 @@ class TestRunWithdrawSuccess:
                            MockCanister, mock_load, mock_patch_del,
                            mock_unwrap, mock_create_icrc1, mock_get_bal,
                            mock_transfer, mock_rate,
-                           odin_project, capsys):
+                           odin_project):
         mock_load.return_value = _make_mock_auth()
         MockId.from_pem.return_value = _make_mock_identity()
 
@@ -89,19 +89,19 @@ class TestRunWithdrawSuccess:
         mock_transfer.return_value = {"Ok": 1}
 
         from iconfucius.cli.withdraw import run_withdraw
-        run_withdraw(bot_name="bot-1", amount="all")
+        result = run_withdraw(bot_name="bot-1", amount="all")
 
-        output = capsys.readouterr().out
-        assert "Withdrawing ALL" in output
-        assert "Withdrawal complete" in output
+        assert result["status"] == "ok"
+        assert result["withdrawn_sats"] == 10000
+        assert "wallet_balance_sats" in result
 
 
 class TestRunWithdrawErrors:
-    def test_no_wallet(self, odin_project_no_wallet, capsys):
+    def test_no_wallet(self, odin_project_no_wallet):
         from iconfucius.cli.withdraw import run_withdraw
-        run_withdraw(bot_name="bot-1", amount="1000")
-        output = capsys.readouterr().out
-        assert "No iconfucius wallet found" in output
+        result = run_withdraw(bot_name="bot-1", amount="1000")
+        assert result["status"] == "error"
+        assert "No wallet found" in result["error"]
 
     @patch(f"{M}.get_btc_to_usd_rate", return_value=100_000.0)
     @patch(f"{M}.unwrap_canister_result", side_effect=lambda x: x)
@@ -112,17 +112,17 @@ class TestRunWithdrawErrors:
     @patch(f"{M}.Client")
     def test_insufficient_balance(self, MockClient, MockAgent, MockCanister,
                                    mock_load, mock_patch_del, mock_unwrap,
-                                   mock_rate, odin_project, capsys):
+                                   mock_rate, odin_project):
         mock_load.return_value = _make_mock_auth()
         mock_odin = MagicMock()
         mock_odin.getBalance.return_value = 500_000  # 500 sats
         MockCanister.side_effect = [mock_odin, mock_odin]
 
         from iconfucius.cli.withdraw import run_withdraw
-        run_withdraw(bot_name="bot-1", amount="10000")
+        result = run_withdraw(bot_name="bot-1", amount="10000")
 
-        output = capsys.readouterr().out
-        assert "Insufficient balance" in output
+        assert result["status"] == "error"
+        assert "Insufficient balance" in result["error"]
 
     @patch(f"{M}.get_btc_to_usd_rate", return_value=100_000.0)
     @patch(f"{M}.unwrap_canister_result", side_effect=lambda x: x)
@@ -133,17 +133,17 @@ class TestRunWithdrawErrors:
     @patch(f"{M}.Client")
     def test_zero_balance(self, MockClient, MockAgent, MockCanister,
                            mock_load, mock_patch_del, mock_unwrap,
-                           mock_rate, odin_project, capsys):
+                           mock_rate, odin_project):
         mock_load.return_value = _make_mock_auth()
         mock_odin = MagicMock()
         mock_odin.getBalance.return_value = 0
         MockCanister.side_effect = [mock_odin, mock_odin]
 
         from iconfucius.cli.withdraw import run_withdraw
-        run_withdraw(bot_name="bot-1", amount="all")
+        result = run_withdraw(bot_name="bot-1", amount="all")
 
-        output = capsys.readouterr().out
-        assert "No funds to withdraw" in output
+        assert result["status"] == "error"
+        assert "No funds to withdraw" in result["error"]
 
     @patch(f"{M}.get_btc_to_usd_rate", return_value=100_000.0)
     @patch(f"{M}.unwrap_canister_result", side_effect=lambda x: x)
@@ -154,7 +154,7 @@ class TestRunWithdrawErrors:
     @patch(f"{M}.Client")
     def test_withdraw_canister_error(self, MockClient, MockAgent, MockCanister,
                                       mock_load, mock_patch_del, mock_unwrap,
-                                      mock_rate, odin_project, capsys):
+                                      mock_rate, odin_project):
         mock_load.return_value = _make_mock_auth()
         mock_odin = MagicMock()
         mock_odin.getBalance.return_value = 5_000_000
@@ -162,10 +162,10 @@ class TestRunWithdrawErrors:
         MockCanister.side_effect = [mock_odin, mock_odin]
 
         from iconfucius.cli.withdraw import run_withdraw
-        run_withdraw(bot_name="bot-1", amount="1000")
+        result = run_withdraw(bot_name="bot-1", amount="1000")
 
-        output = capsys.readouterr().out
-        assert "FAILED" in output
+        assert result["status"] == "error"
+        assert result["step"] == "token_withdraw"
 
     @patch(f"{M}.get_btc_to_usd_rate", return_value=100_000.0)
     @patch(f"{M}.get_balance", return_value=5)  # Below fee
@@ -181,7 +181,7 @@ class TestRunWithdrawErrors:
                                                   mock_patch_del, mock_unwrap,
                                                   mock_create_icrc1,
                                                   mock_get_bal, mock_rate,
-                                                  odin_project, capsys):
+                                                  odin_project):
         mock_load.return_value = _make_mock_auth()
         mock_odin = MagicMock()
         mock_odin.getBalance.return_value = 5_000_000
@@ -189,7 +189,7 @@ class TestRunWithdrawErrors:
         MockCanister.side_effect = [mock_odin, mock_odin]
 
         from iconfucius.cli.withdraw import run_withdraw
-        run_withdraw(bot_name="bot-1", amount="1000")
+        result = run_withdraw(bot_name="bot-1", amount="1000")
 
-        output = capsys.readouterr().out
-        assert "too low to transfer" in output
+        assert result["status"] == "partial"
+        assert "too low to transfer" in result["error"]

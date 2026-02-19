@@ -223,6 +223,9 @@ e2e-trade-bot-1:
 	@echo "--- 3/5: trade buy $(E2E_TOKEN) $(E2E_TRADE_AMT) sats ---"
 	$(ODIN) trade buy $(E2E_TOKEN) $(E2E_TRADE_AMT) --bot $(E2E_BOT)
 	@echo ""
+	@echo "Waiting 10s for query replica to sync..."
+	@sleep 10
+	@echo ""
 	@echo "--- 4/5: trade sell $(E2E_TOKEN) all ---"
 	$(ODIN) trade sell $(E2E_TOKEN) all --bot $(E2E_BOT)
 	@echo ""
@@ -258,6 +261,9 @@ e2e-trade-all-bots:
 	@echo ""
 	@echo "--- 3/5: trade buy $(E2E_TOKEN) $(E2E_TRADE_AMT) sats ---"
 	$(ODIN) trade buy $(E2E_TOKEN) $(E2E_TRADE_AMT) --all-bots
+	@echo ""
+	@echo "Waiting 10s for query replica to sync..."
+	@sleep 10
 	@echo ""
 	@echo "--- 4/5: trade sell $(E2E_TOKEN) all ---"
 	$(ODIN) trade sell $(E2E_TOKEN) all --all-bots
