@@ -43,10 +43,18 @@ class TestHelpOutput:
         assert "How to use your bots:" in result.output
 
     def test_version_flag(self):
+        import tomllib
+        pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
+        with open(pyproject, "rb") as f:
+            version = tomllib.load(f)["project"]["version"]
+        from iconfucius import __version__
+        assert version == __version__, (
+            f"pyproject.toml ({version}) != __init__.py ({__version__})"
+        )
         result = runner.invoke(app, ["--version"])
         assert result.exit_code == 0
         assert "iconfucius" in result.output
-        assert "0.3.5" in result.output
+        assert version in result.output
 
     def test_version_short_flag(self):
         result = runner.invoke(app, ["-V"])
