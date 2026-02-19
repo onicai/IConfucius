@@ -1108,7 +1108,8 @@ def _record_trade(tool_name: str, args: dict, result: dict,
     lines = [f"## {action} — {ts}"]
     lines.append(f"- Token: {token_id} ({ticker})")
 
-    amount_int = int(amount) if str(amount).isdigit() else 0
+    is_sell_all = str(amount).lower() == "all"
+    amount_int = 0 if is_sell_all else (int(amount) if str(amount).isdigit() else 0)
     if action == "BUY":
         # amount is sats spent; estimate display tokens received
         lines.append(f"- Spent: {amount_int:,} sats ({_fmt_usd(amount_int)})")
@@ -1116,6 +1117,8 @@ def _record_trade(tool_name: str, args: dict, result: dict,
             # display_tokens = sats * 10^6 / price (divisibility cancels out)
             display_tokens = amount_int * 1_000_000 / price
             lines.append(f"- Est. tokens: ~{display_tokens:,.2f}")
+    elif is_sell_all:
+        lines.append(f"- Sold: ALL tokens")
     else:
         # amount is raw token sub-units; show display tokens and estimate sats
         display_tokens = amount_int / (10 ** divisibility)

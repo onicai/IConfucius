@@ -608,6 +608,33 @@ class TestTradeRecording:
         assert "Price:" in entry
         assert "Est. received:" in entry
 
+    @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100000.0)
+    @patch("iconfucius.tokens.fetch_token_data",
+           return_value={"price": 1500, "ticker": "ICONFUCIUS"})
+    @patch("iconfucius.memory.append_trade")
+    def test_sell_all_records_trade(self, mock_append, _mock_fetch, _mock_usd,
+                                    tmp_path, monkeypatch):
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        from iconfucius.skills.executor import _HANDLERS
+        original = _HANDLERS["trade_sell"]
+        _HANDLERS["trade_sell"] = self._fake_handler(
+            {"status": "ok", "display": "Sold!"})
+        try:
+            result = execute_tool("trade_sell",
+                                  {"token_id": "29m8", "amount": "all",
+                                   "all_bots": True},
+                                  persona_name="iconfucius")
+        finally:
+            _HANDLERS["trade_sell"] = original
+        assert result["status"] == "ok"
+        mock_append.assert_called_once()
+        entry = mock_append.call_args[0][1]
+        assert "SELL" in entry
+        assert "ALL tokens" in entry
+        assert "29m8" in entry
+        # sell-all should NOT have "Est. received" or sub-units
+        assert "sub-units" not in entry
+
     @patch("iconfucius.memory.append_trade")
     def test_failed_trade_not_recorded(self, mock_append):
         from iconfucius.skills.executor import _HANDLERS
