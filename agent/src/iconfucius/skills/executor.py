@@ -5,6 +5,7 @@ and returns a structured dict.
 """
 
 import io
+import json
 import os
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -16,6 +17,14 @@ def _capture(fn, *args, **kwargs) -> str:
     with redirect_stdout(buf):
         fn(*args, **kwargs)
     return buf.getvalue()
+
+
+def _capture_with_return(fn, *args, **kwargs) -> tuple:
+    """Call fn, capture its stdout, and return (stdout_text, return_value)."""
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        ret = fn(*args, **kwargs)
+    return buf.getvalue(), ret
 
 
 def execute_tool(name: str, args: dict, *, persona_name: str = "") -> dict:
@@ -275,16 +284,6 @@ def _handle_bot_list(args: dict) -> dict:
     }
 
 
-def _build_balance_summary(output: str, bot_count: int) -> str:
-    """Extract a compact summary from the full balance output.
-
-    Includes the full table so the AI can answer per-bot questions,
-    plus a note that it was also printed to the terminal.
-    """
-    lines = [output.strip(), "", f"({bot_count} bots — full table also printed to terminal)"]
-    return "\n".join(lines)
-
-
 def _handle_wallet_balance(args: dict) -> dict:
     from iconfucius.config import get_bot_names, require_wallet
 
@@ -296,24 +295,16 @@ def _handle_wallet_balance(args: dict) -> dict:
 
     from iconfucius.cli.balance import run_all_balances
 
-    if bot_name:
-        output = _capture(run_all_balances, [bot_name],
-                          ckbtc_minter=ckbtc_minter)
-        return {"status": "ok", "display": output.strip()}
+    names = [bot_name] if bot_name else get_bot_names()
+    output, data = _capture_with_return(run_all_balances, names,
+                                        ckbtc_minter=ckbtc_minter)
 
-    # Default: show all bots
-    bot_names = get_bot_names()
-    output = _capture(run_all_balances, bot_names,
-                      ckbtc_minter=ckbtc_minter)
+    if data is None:
+        return {"status": "error", "error": "Balance check failed."}
 
-    if len(bot_names) <= 100:
-        return {"status": "ok", "display": output.strip()}
-
-    # Large bot count: print full table to terminal, return summary to AI
-    summary = _build_balance_summary(output, len(bot_names))
     return {
         "status": "ok",
-        "display": summary,
+        "display": json.dumps(data, default=str),
         "_terminal_output": output.strip(),
     }
 

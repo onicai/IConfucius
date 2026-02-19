@@ -763,16 +763,19 @@ def run_wallet_balance(monitor: bool = False, ckbtc_minter: bool = False):
 
 
 def run_all_balances(bot_names: list, token_id: str = "29m8",
-                     verbose: bool = False, ckbtc_minter: bool = False):
+                     verbose: bool = False, ckbtc_minter: bool = False) -> dict | None:
     """Run the balances check for one or more bots with condensed tables.
 
     Args:
         bot_names: List of bot names to check.
         token_id: Token ID to check holdings for.
         verbose: If True, print Steps 1-3 debug output per bot.
+
+    Returns:
+        Structured dict with pre-calculated totals, or None on failure.
     """
     if not require_wallet():
-        return
+        return None
     btc_usd_rate = _fetch_btc_usd_rate()
     wallet_balance, wallet_pending, wallet_withdrawal, _, _ = _print_wallet_info(
         btc_usd_rate, ckbtc_minter=ckbtc_minter,
@@ -797,8 +800,59 @@ def run_all_balances(bot_names: list, token_id: str = "29m8",
         else:
             all_data.append(result)
     if not all_data:
-        return
+        return None
     _print_holdings_table(all_data, btc_usd_rate, wallet_balance, wallet_pending, wallet_withdrawal)
+
+    # Build structured data with pre-calculated totals
+    total_odin_sats = 0
+    token_totals = {}
+
+    bots_data = []
+    for d in all_data:
+        bot_odin = int(d.odin_sats)
+        total_odin_sats += bot_odin
+        bot_tokens = []
+        for t in d.token_holdings:
+            ticker = t["ticker"]
+            token_id_val = t["token_id"]
+            vs = round(t.get("value_sats", 0))
+            bot_tokens.append({
+                "ticker": ticker, "id": token_id_val,
+                "balance": t["balance"], "div": t.get("divisibility", 8),
+                "value_sats": vs,
+            })
+            if ticker not in token_totals:
+                token_totals[ticker] = {
+                    "id": token_id_val, "balance": 0,
+                    "div": t.get("divisibility", 8), "value_sats": 0,
+                }
+            token_totals[ticker]["balance"] += t["balance"]
+            token_totals[ticker]["value_sats"] += vs
+
+        bots_data.append({
+            "name": d.bot_name,
+            "odin_sats": bot_odin,
+            "tokens": bot_tokens,
+        })
+
+    wallet_total_sats = wallet_balance + wallet_pending + wallet_withdrawal
+    token_value_sats = sum(v["value_sats"] for v in token_totals.values())
+    portfolio_sats = total_odin_sats + wallet_total_sats + token_value_sats
+
+    return {
+        "wallet_ckbtc_sats": wallet_balance,
+        "wallet_pending_sats": wallet_pending,
+        "wallet_withdrawal_sats": wallet_withdrawal,
+        "bots": bots_data,
+        "totals": {
+            "odin_sats": total_odin_sats,
+            "tokens": token_totals,
+            "token_value_sats": token_value_sats,
+            "bots_value_sats": total_odin_sats + token_value_sats,
+            "wallet_sats": wallet_total_sats,
+            "portfolio_sats": portfolio_sats,
+        },
+    }
 
 
 def main():

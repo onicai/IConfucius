@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 from iconfucius.skills.executor import (
     execute_tool,
-    _build_balance_summary,
+    _capture_with_return,
     _enable_verify_certificates,
     _resolve_bot_names,
     _usd_to_sats,
@@ -736,62 +736,56 @@ class TestMemoryToolHandlers:
         assert "persona" in result["error"].lower()
 
 
-class TestBuildBalanceSummary:
-    """Tests for _build_balance_summary helper."""
+class TestCaptureWithReturn:
+    """Tests for _capture_with_return helper."""
 
-    def test_includes_full_output_and_bot_count(self):
-        output = "bot-1   100 sats\nTOTAL  100 sats\n\nTotal portfolio value: $42.00"
-        summary = _build_balance_summary(output, 50)
-        assert "50 bots" in summary
-        assert "printed to terminal" in summary
-        assert "bot-1" in summary
-        assert "Total portfolio value: $42.00" in summary
+    def test_captures_stdout_and_return(self):
+        def greet():
+            print("hello")
+            return 42
+        text, val = _capture_with_return(greet)
+        assert text.strip() == "hello"
+        assert val == 42
 
-    def test_preserves_per_bot_data(self):
-        output = (
-            "Bot     ckBTC\n"
-            "bot-1   100 sats\n"
-            "bot-2   200 sats\n"
-            "TOTAL   300 sats ($0.20)\n"
-            "\n"
-            "Total portfolio value: $1,234.56"
-        )
-        summary = _build_balance_summary(output, 2)
-        assert "bot-1   100 sats" in summary
-        assert "bot-2   200 sats" in summary
-        assert "TOTAL" in summary
+    def test_none_return(self):
+        def noop():
+            print("output")
+        text, val = _capture_with_return(noop)
+        assert "output" in text
+        assert val is None
 
 
-class TestWalletBalanceLargeBotCount:
-    """Tests for >100 bot terminal output behavior."""
+class TestWalletBalanceDualOutput:
+    """wallet_balance always returns _terminal_output + structured JSON."""
 
-    def test_small_bot_count_no_terminal_output(self):
-        """<=100 bots: no _terminal_output key."""
-        with patch("iconfucius.skills.executor._capture",
-                    return_value="table output"):
+    def test_returns_terminal_output_and_json(self):
+        fake_data = {
+            "wallet_ckbtc_sats": 1000,
+            "bots": [],
+            "totals": {"portfolio_sats": 1000},
+        }
+        with patch("iconfucius.skills.executor._capture_with_return",
+                    return_value=("table output", fake_data)):
             with patch("iconfucius.config.require_wallet", return_value=True):
                 with patch("iconfucius.config.get_bot_names",
-                            return_value=[f"bot-{i}" for i in range(1, 51)]):
-                    result = execute_tool("wallet_balance", {})
-        assert result["status"] == "ok"
-        assert "_terminal_output" not in result
-        assert result["display"] == "table output"
-
-    def test_large_bot_count_has_terminal_output(self):
-        """>100 bots: returns _terminal_output and summary with full data."""
-        fake_output = "Wallet\nbot data\nTOTAL 5000\n\nTotal portfolio value: $99.00"
-        with patch("iconfucius.skills.executor._capture",
-                    return_value=fake_output):
-            with patch("iconfucius.config.require_wallet", return_value=True):
-                with patch("iconfucius.config.get_bot_names",
-                            return_value=[f"bot-{i}" for i in range(1, 151)]):
+                            return_value=["bot-1"]):
                     result = execute_tool("wallet_balance", {})
         assert result["status"] == "ok"
         assert "_terminal_output" in result
-        assert result["_terminal_output"] == fake_output.strip()
-        assert "150 bots" in result["display"]
-        assert "bot data" in result["display"]
-        assert "Total portfolio value: $99.00" in result["display"]
+        assert result["_terminal_output"] == "table output"
+        import json
+        parsed = json.loads(result["display"])
+        assert parsed["wallet_ckbtc_sats"] == 1000
+        assert parsed["totals"]["portfolio_sats"] == 1000
+
+    def test_none_data_returns_error(self):
+        with patch("iconfucius.skills.executor._capture_with_return",
+                    return_value=("", None)):
+            with patch("iconfucius.config.require_wallet", return_value=True):
+                with patch("iconfucius.config.get_bot_names",
+                            return_value=["bot-1"]):
+                    result = execute_tool("wallet_balance", {})
+        assert result["status"] == "error"
 
 
 class TestTokenPriceExecutor:
