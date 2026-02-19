@@ -92,7 +92,7 @@ jobs:
           python -m build
 
       - name: Install wheel (binary-only deps)
-        run: pip install --only-binary :all: agent/dist/*.whl
+        run: "pip install --only-binary :all: agent/dist/*.whl"
 
       - name: Verify package imports
         run: |
