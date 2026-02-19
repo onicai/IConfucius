@@ -62,3 +62,45 @@ jobs:
       - name: Run tests
         working-directory: agent
         run: pytest -v
+
+  # Simulate end-user `pip install iconfucius` experience.
+  # CI runners have full C toolchains (Xcode, automake, gcc) which can compile
+  # C extensions from source, masking missing pre-built wheels. Using
+  # --only-binary :all: refuses to build from source, catching dependency
+  # issues that real users without build tools would hit.
+  test-wheel:
+    name: Wheel ${{ matrix.python-version }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, macos-15-intel]
+        python-version: ["3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Build wheel
+        working-directory: agent
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build
+
+      - name: Install wheel (binary-only deps)
+        run: pip install --only-binary :all: agent/dist/*.whl
+
+      - name: Verify package imports
+        run: |
+          python -c "
+          import iconfucius
+          from iconfucius.config import get_verify_certificates
+          print('iconfucius imports OK')
+          "
+
+      - name: Verify CLI entry point
+        run: iconfucius --help
