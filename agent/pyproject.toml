@@ -38,7 +38,6 @@ dependencies = [
     "typer>=0.21.1",
     "requests>=2.31",
     "curl_cffi>=0.7",
-    "btclib>=2023.7",
     "bitcoin-utils>=0.7.3",
     "icp-py-core>=2.3.0",
     "filelock>=3.0",
