@@ -418,7 +418,8 @@ def _run_tool_loop(backend, messages: list[dict], system: str,
         persona_key: Persona identifier for memory operations (e.g. "iconfucius").
     """
     for _ in range(_MAX_TOOL_ITERATIONS):
-        response = backend.chat_with_tools(messages, system, tools)
+        with _Spinner(f"{persona_name} is thinking..."):
+            response = backend.chat_with_tools(messages, system, tools)
 
         # Check if response has any tool_use blocks
         has_tool_use = any(
@@ -474,7 +475,7 @@ def _run_tool_loop(backend, messages: list[dict], system: str,
             if b.name == "trade_sell":
                 continue
             usd = b.input.get("amount_usd")
-            if usd is not None and b.input.get("amount") is None:
+            if usd is not None and not b.input.get("amount"):
                 try:
                     from iconfucius.config import get_btc_to_usd_rate
                     rate = get_btc_to_usd_rate()
@@ -536,7 +537,7 @@ def _run_tool_loop(backend, messages: list[dict], system: str,
             use_spinner = meta.get("category") == "write" or block.name in (
                 "wallet_balance", "wallet_receive", "wallet_monitor",
                 "wallet_info", "token_lookup", "token_price",
-                "security_status", "install_blst",
+                "token_discover", "security_status", "install_blst",
             )
 
             if use_spinner:
@@ -709,9 +710,9 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False) -> None:
                 if len(all_bot_names) > 1:
                     try:
                         show = input(
-                            "\033[2mShow bot holdings? [Y/n]\033[0m "
+                            "\033[2mShow bot holdings? [y/N]\033[0m "
                         ).strip().lower()
-                        if show not in ("n", "no"):
+                        if show in ("y", "yes"):
                             from iconfucius.cli.concurrent import (
                                 set_progress_callback,
                                 set_status_callback,

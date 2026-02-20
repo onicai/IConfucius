@@ -129,7 +129,31 @@ def _fund_one_bot(bot_name, amount, pem_content, verbose, btc_usd_rate):
     if isinstance(deposit_result, dict) and "err" in deposit_result:
         return {"status": "failed", "step": "deposit", "error": str(deposit_result["err"])}
 
-    return {"status": "ok"}
+    # Best-effort: query post-deposit Odin.Fun balance
+    MSAT_PER_SAT = 1000
+    odin_balance_sats = None
+    try:
+        anon_agent = Agent(Identity(anonymous=True), client)
+        odin_anon = Canister(
+            agent=anon_agent,
+            canister_id=ODIN_TRADING_CANISTER_ID,
+            candid_str=ODIN_TRADING_CANDID,
+        )
+        odin_balance_msat = unwrap_canister_result(
+            odin_anon.getBalance(bot_principal, "btc", "btc",
+                                 verify_certificate=get_verify_certificates())
+        )
+        odin_balance_sats = odin_balance_msat // MSAT_PER_SAT
+    except Exception:
+        pass  # deposit succeeded; balance check is informational
+
+    result = {"status": "ok", "odin_balance_sats": odin_balance_sats}
+    if odin_balance_sats is not None:
+        result["note"] = (
+            f"Deposited {fmt_sats(amount, btc_usd_rate)} into {bot_name}. "
+            f"New Odin.Fun balance is {fmt_sats(odin_balance_sats, btc_usd_rate)}."
+        )
+    return result
 
 
 def run_fund(bot_names: list, amount: int, verbose: bool = False) -> dict:
@@ -219,7 +243,7 @@ def run_fund(bot_names: list, amount: int, verbose: bool = False) -> dict:
         bot_names,
     )
 
-    funded, failed = [], []
+    funded, failed, details, notes = [], [], [], []
     for bot_name, result in results:
         if isinstance(result, Exception):
             failed.append({"bot": bot_name, "error": str(result)})
@@ -228,6 +252,12 @@ def run_fund(bot_names: list, amount: int, verbose: bool = False) -> dict:
                            "error": f"{result['step']}: {result['error']}"})
         else:
             funded.append(bot_name)
+            details.append({
+                "bot": bot_name,
+                "odin_balance_sats": result.get("odin_balance_sats"),
+            })
+            if result.get("note"):
+                notes.append(result["note"])
 
     logger.info("Funded %d/%d bot(s)", len(funded), len(bot_names))
 
@@ -238,4 +268,6 @@ def run_fund(bot_names: list, amount: int, verbose: bool = False) -> dict:
         "failed": failed,
         "amount": amount,
         "bot_count": len(bot_names),
+        "details": details,
+        "notes": notes,
     }

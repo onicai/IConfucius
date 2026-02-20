@@ -36,3 +36,22 @@ IConfucius | Wisdom for Bitcoin Markets.
 
 **When in doubt, ask for clarification before implementing. Simple, clear code beats clever code every time.**
 
+---
+
+## UX Convention: Spinner for Long-Running Tasks
+
+Any long-running operation must be wrapped in `_Spinner` (from `cli/chat.py`)
+with a progress bar so the user always sees visual feedback. This includes:
+
+- **AI thinking**: Every `backend.chat_with_tools()` call must be wrapped in
+  `_Spinner(f"{persona_name} is thinking...")`
+- **Tool execution**: Any tool that makes a network call (API requests, IC
+  canister calls) must be included in the `use_spinner` list in
+  `_run_tool_loop()` (`cli/chat.py`). Use the progress callback for multi-step
+  operations (e.g. per-bot balance checks).
+- **Startup operations**: Wallet checks, bot holdings, and greeting generation
+  already use spinners — maintain this pattern for any new startup work.
+
+When adding a new tool, check whether it makes network calls. If so, add it to
+the `use_spinner` tuple in `_run_tool_loop`.
+

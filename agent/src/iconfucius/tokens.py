@@ -285,6 +285,63 @@ def fetch_token_data(token_id: str) -> dict | None:
         return None
 
 
+def discover_tokens(sort: str = "volume", limit: int = 20) -> list[dict]:
+    """Fetch tokens from Odin.fun sorted by volume or creation time.
+
+    Args:
+        sort: "volume" (trending) or "newest" (recently created)
+        limit: Number of tokens to return (max 50)
+
+    Returns:
+        List of token dicts with: id, name, ticker, price (sats), marketcap,
+        volume_24h, holder_count, bonded, twitter_verified
+    """
+    from iconfucius.config import ODIN_API_URL
+
+    limit = max(1, min(50, limit))
+
+    sort_param = "created_time:desc" if sort == "newest" else "volume:desc"
+
+    try:
+        from curl_cffi import requests as cffi_requests
+
+        resp = cffi_requests.get(
+            f"{ODIN_API_URL}/tokens",
+            params={"limit": limit, "sort": sort_param},
+            impersonate="chrome",
+            headers={"Accept": "application/json"},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception:
+        return []
+
+    MSAT_PER_SAT = 1000
+    known_ids = set(load_known_tokens().keys())
+    results = []
+
+    for token in data.get("data", []):
+        if not token.get("bonded"):
+            continue
+        token_id = token.get("id", "")
+        entry = {
+            "id": token_id,
+            "name": token.get("name", ""),
+            "ticker": token.get("ticker", ""),
+            "price_sats": token.get("price", 0) / MSAT_PER_SAT,
+            "marketcap_sats": token.get("marketcap", 0) // MSAT_PER_SAT,
+            "volume_24h_sats": token.get("volume_24", 0) // MSAT_PER_SAT,
+            "holder_count": token.get("holder_count", 0),
+            "bonded": True,
+            "twitter_verified": token.get("twitter_verified", False),
+            "safety": _safety_note(token, token_id in known_ids),
+        }
+        results.append(entry)
+
+    return results
+
+
 def _safety_note(token: dict, is_known: bool) -> str:
     """Compute a safety note for a token search result."""
     parts = []

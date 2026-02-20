@@ -161,6 +161,18 @@ def run_trade(bot_name: str, action: str, token_id: str, amount: str,
     logger.info("Step 2: BTC=%s, %s=%s (bot=%s)",
                 _fmt(btc_before_sats), token_label, fmt_tokens(token_before, token_id), bot_name)
 
+    # Cap buy amount to actual Odin.Fun balance
+    capped_from = None
+    if action == "buy" and amount_int > btc_before_sats:
+        if btc_before_sats < MIN_TRADE_SATS:
+            return {"status": "error", "bot_name": bot_name,
+                    "error": f"Odin.Fun balance too low: {_fmt(btc_before_sats)} "
+                             f"(minimum {MIN_TRADE_SATS:,} sats)"}
+        logger.info("Capping buy from %s to %s (actual balance) (bot=%s)",
+                    _fmt(amount_int), _fmt(btc_before_sats), bot_name)
+        capped_from = amount_int
+        amount_int = btc_before_sats
+
     # Resolve 'all' to actual token balance
     if sell_all:
         if token_before <= 0:
@@ -210,7 +222,7 @@ def run_trade(bot_name: str, action: str, token_id: str, amount: str,
                 "error": str(result["err"])}
 
     logger.info("Trade executed successfully (bot=%s)", bot_name)
-    return {
+    result = {
         "status": "ok",
         "action": action,
         "bot_name": bot_name,
@@ -220,6 +232,12 @@ def run_trade(bot_name: str, action: str, token_id: str, amount: str,
         "btc_before_sats": btc_before_sats,
         "token_before": token_before,
     }
+    if capped_from is not None:
+        result["note"] = (
+            f"Requested {_fmt(capped_from)} but {bot_name} only had "
+            f"{_fmt(amount_int)} on Odin.Fun. Buy amount was auto-capped."
+        )
+    return result
 
 
 def main():

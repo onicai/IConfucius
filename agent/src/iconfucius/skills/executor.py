@@ -786,6 +786,49 @@ def _handle_token_lookup(args: dict) -> dict:
     }
 
 
+def _handle_token_discover(args: dict) -> dict:
+    from iconfucius.config import fmt_sats, get_btc_to_usd_rate
+    from iconfucius.tokens import discover_tokens
+
+    sort = args.get("sort", "volume")
+    limit = args.get("limit", 20)
+
+    tokens = discover_tokens(sort=sort, limit=limit)
+
+    if not tokens:
+        return {"status": "ok", "display": "No tokens found.", "tokens": [], "sort": sort, "count": 0}
+
+    try:
+        btc_usd = get_btc_to_usd_rate()
+    except Exception:
+        btc_usd = None
+
+    label = "trending (by 24h volume)" if sort == "volume" else "newest"
+    lines = [f"Top {len(tokens)} {label} bonded tokens on Odin.fun:"]
+    lines.append("")
+    for i, t in enumerate(tokens, 1):
+        mcap_str = fmt_sats(t["marketcap_sats"], btc_usd)
+        vol_str = fmt_sats(t["volume_24h_sats"], btc_usd)
+        lines.append(
+            f"{i:>2}. {t['name']} ({t['ticker']}) — {t['id']}"
+        )
+        lines.append(
+            f"    Price: {t['price_sats']:,.3f} sats | "
+            f"MCap: {mcap_str} | "
+            f"Vol 24h: {vol_str} | "
+            f"Holders: {t['holder_count']:,}"
+        )
+        lines.append(f"    {t['safety']}")
+
+    return {
+        "status": "ok",
+        "display": "\n".join(lines),
+        "tokens": tokens,
+        "sort": sort,
+        "count": len(tokens),
+    }
+
+
 def _handle_token_price(args: dict) -> dict:
     from iconfucius.config import fmt_sats, get_btc_to_usd_rate
     from iconfucius.tokens import fetch_token_data, lookup_token_with_fallback
@@ -900,7 +943,7 @@ def _handle_fund(args: dict) -> dict:
     bot_names = _resolve_bot_names(args)
 
     # Convert USD to sats if needed
-    if amount_usd is not None and amount is None:
+    if amount_usd is not None and not amount:
         try:
             amount = _usd_to_sats(amount_usd)
         except Exception as e:
@@ -937,6 +980,8 @@ def _handle_fund(args: dict) -> dict:
         "display": display,
         "funded": len(funded),
         "failed": len(failed),
+        "details": result.get("details", []),
+        "notes": result.get("notes", []),
     }
 
 
@@ -988,7 +1033,7 @@ def _handle_trade_buy(args: dict) -> dict:
     bot_names = _resolve_bot_names(args)
 
     # Convert USD to sats if needed
-    if amount_usd is not None and amount is None:
+    if amount_usd is not None and not amount:
         try:
             amount = _usd_to_sats(amount_usd)
             args["amount"] = amount  # write back for _record_trade
@@ -1021,7 +1066,7 @@ def _handle_trade_sell(args: dict) -> dict:
     bot_names = _resolve_bot_names(args)
 
     # Convert USD to raw token amount if needed
-    if amount_usd is not None and amount is None:
+    if amount_usd is not None and not amount:
         try:
             amount = _usd_to_tokens(amount_usd, token_id)
             args["amount"] = amount  # write back for _record_trade
@@ -1068,6 +1113,14 @@ def _aggregate_trade_results(results: list, action: str, token_id: str) -> dict:
         lines.append(f"  {f['bot']}: FAILED — {f['error']}")
     display = "\n".join(lines) if lines else "No trades executed"
 
+    # Collect per-bot details and notes for the AI
+    details = []
+    notes = []
+    for s in succeeded:
+        details.append({"bot": s["bot"], "amount": s.get("amount")})
+        if s.get("note"):
+            notes.append(s["note"])
+
     all_ok = not failed
     return {
         "status": "ok" if all_ok else "partial",
@@ -1075,6 +1128,8 @@ def _aggregate_trade_results(results: list, action: str, token_id: str) -> dict:
         "succeeded": len(succeeded),
         "failed": len(failed),
         "skipped": len(skipped),
+        "details": details,
+        "notes": notes,
     }
 
 
@@ -1089,7 +1144,7 @@ def _handle_withdraw(args: dict) -> dict:
     bot_names = _resolve_bot_names(args)
 
     # Convert USD to sats if needed
-    if amount_usd is not None and amount is None:
+    if amount_usd is not None and not amount:
         try:
             amount = str(_usd_to_sats(amount_usd))
         except Exception as e:
@@ -1147,7 +1202,7 @@ def _handle_wallet_send(args: dict) -> dict:
     address = args.get("address")
 
     # Convert USD to sats if needed
-    if amount_usd is not None and amount is None:
+    if amount_usd is not None and not amount:
         try:
             amount = str(_usd_to_sats(amount_usd))
         except Exception as e:
@@ -1187,7 +1242,13 @@ def _record_trade(tool_name: str, args: dict, result: dict,
 
     action = "BUY" if tool_name == "trade_buy" else "SELL"
     token_id = args.get("token_id", "?")
-    amount = args.get("amount", "?")
+
+    # Prefer actual amount from result details (may be capped by run_trade)
+    details = result.get("details", [])
+    if details and details[0].get("amount") is not None:
+        amount = details[0]["amount"]
+    else:
+        amount = args.get("amount", "?")
     bots = _resolve_bot_names(args)
     bot_str = ", ".join(bots) if bots else "?"
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -1319,6 +1380,7 @@ _HANDLERS: dict[str, callable] = {
     "persona_list": _handle_persona_list,
     "persona_show": _handle_persona_show,
     "token_lookup": _handle_token_lookup,
+    "token_discover": _handle_token_discover,
     "token_price": _handle_token_price,
     "fund": _handle_fund,
     "trade_buy": _handle_trade_buy,

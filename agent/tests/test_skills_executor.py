@@ -800,6 +800,108 @@ class TestWalletBalanceResult:
         assert result["status"] == "error"
 
 
+class TestTokenDiscoverExecutor:
+    """Tests for the token_discover agent skill."""
+
+    _FAKE_TOKENS = [
+        {
+            "id": "abc1",
+            "name": "AlphaToken",
+            "ticker": "ALPHA",
+            "price_sats": 2.0,
+            "marketcap_sats": 50000000,
+            "volume_24h_sats": 10000000,
+            "holder_count": 150,
+            "bonded": True,
+            "twitter_verified": True,
+            "safety": "bonded (graduated to AMM) · Twitter verified · 150 holders · not in known tokens registry",
+        },
+        {
+            "id": "xyz2",
+            "name": "BetaToken",
+            "ticker": "BETA",
+            "price_sats": 0.5,
+            "marketcap_sats": 5000000,
+            "volume_24h_sats": 1000000,
+            "holder_count": 30,
+            "bonded": True,
+            "twitter_verified": False,
+            "safety": "bonded (graduated to AMM) · Twitter NOT verified · 30 holders · not in known tokens registry",
+        },
+    ]
+
+    def test_returns_tokens(self):
+        with patch("iconfucius.tokens.discover_tokens",
+                    return_value=self._FAKE_TOKENS):
+            with patch("iconfucius.config.get_btc_to_usd_rate",
+                        return_value=100000.0):
+                result = execute_tool("token_discover",
+                                      {"sort": "volume", "limit": 10})
+        assert result["status"] == "ok"
+        assert result["count"] == 2
+        ids = [t["id"] for t in result["tokens"]]
+        assert "abc1" in ids
+        assert "xyz2" in ids
+
+    def test_default_sort_is_volume(self):
+        with patch("iconfucius.tokens.discover_tokens",
+                    return_value=self._FAKE_TOKENS):
+            with patch("iconfucius.config.get_btc_to_usd_rate",
+                        return_value=100000.0):
+                result = execute_tool("token_discover", {})
+        assert result["status"] == "ok"
+        assert result["sort"] == "volume"
+        assert "trending" in result["display"].lower()
+
+    def test_newest_sort(self):
+        with patch("iconfucius.tokens.discover_tokens",
+                    return_value=self._FAKE_TOKENS):
+            with patch("iconfucius.config.get_btc_to_usd_rate",
+                        return_value=100000.0):
+                result = execute_tool("token_discover", {"sort": "newest"})
+        assert result["status"] == "ok"
+        assert result["sort"] == "newest"
+        assert "newest" in result["display"].lower()
+
+    def test_token_fields_present(self):
+        with patch("iconfucius.tokens.discover_tokens",
+                    return_value=self._FAKE_TOKENS[:1]):
+            with patch("iconfucius.config.get_btc_to_usd_rate",
+                        return_value=100000.0):
+                result = execute_tool("token_discover", {"limit": 1})
+        assert result["status"] == "ok"
+        token = result["tokens"][0]
+        assert "id" in token
+        assert "name" in token
+        assert "ticker" in token
+        assert "price_sats" in token
+        assert "marketcap_sats" in token
+        assert "volume_24h_sats" in token
+        assert "holder_count" in token
+        assert "bonded" in token
+        assert "safety" in token
+
+    def test_empty_results(self):
+        with patch("iconfucius.tokens.discover_tokens", return_value=[]):
+            with patch("iconfucius.config.get_btc_to_usd_rate",
+                        return_value=100000.0):
+                result = execute_tool("token_discover", {})
+        assert result["status"] == "ok"
+        assert result["tokens"] == []
+        assert result["count"] == 0
+        assert "No tokens found" in result["display"]
+
+    def test_display_includes_token_info(self):
+        with patch("iconfucius.tokens.discover_tokens",
+                    return_value=self._FAKE_TOKENS):
+            with patch("iconfucius.config.get_btc_to_usd_rate",
+                        return_value=100000.0):
+                result = execute_tool("token_discover", {})
+        assert "AlphaToken" in result["display"]
+        assert "ALPHA" in result["display"]
+        assert "abc1" in result["display"]
+
+
 class TestTokenPriceExecutor:
     """Tests for the token_price agent skill."""
 
@@ -991,8 +1093,8 @@ class TestAggregateTradeResults:
     def test_all_succeeded(self):
         from iconfucius.skills.executor import _aggregate_trade_results
         results = [
-            ("bot-1", {"status": "ok", "action": "buy"}),
-            ("bot-2", {"status": "ok", "action": "buy"}),
+            ("bot-1", {"status": "ok", "action": "buy", "amount": 3000}),
+            ("bot-2", {"status": "ok", "action": "buy", "amount": 2500}),
         ]
         r = _aggregate_trade_results(results, "buy", "29m8")
         assert r["status"] == "ok"
@@ -1000,6 +1102,11 @@ class TestAggregateTradeResults:
         assert r["failed"] == 0
         assert r["skipped"] == 0
         assert "Bought 29m8 from 2 bot(s)" in r["display"]
+        assert r["details"] == [
+            {"bot": "bot-1", "amount": 3000},
+            {"bot": "bot-2", "amount": 2500},
+        ]
+        assert r["notes"] == []
 
     def test_mixed_results(self):
         from iconfucius.skills.executor import _aggregate_trade_results
@@ -1013,6 +1120,18 @@ class TestAggregateTradeResults:
         assert r["succeeded"] == 1
         assert r["failed"] == 1
         assert r["skipped"] == 1
+
+    def test_notes_from_capped_buy(self):
+        from iconfucius.skills.executor import _aggregate_trade_results
+        results = [
+            ("bot-1", {"status": "ok", "action": "buy", "amount": 7371,
+                       "note": "Requested 7,380 sats but bot-1 only had 7,371 sats on Odin.Fun. Buy amount was auto-capped."}),
+        ]
+        r = _aggregate_trade_results(results, "buy", "2r74")
+        assert r["succeeded"] == 1
+        assert r["details"] == [{"bot": "bot-1", "amount": 7371}]
+        assert len(r["notes"]) == 1
+        assert "auto-capped" in r["notes"][0]
 
     def test_all_skipped(self):
         from iconfucius.skills.executor import _aggregate_trade_results

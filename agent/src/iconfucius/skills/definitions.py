@@ -202,6 +202,32 @@ TOOLS: list[dict] = [
         "category": "read",
     },
     {
+        "name": "token_discover",
+        "description": (
+            "Discover tokens on Odin.fun. "
+            "Use sort='volume' for trending tokens by 24h trading volume, "
+            "or sort='newest' for recently created tokens. "
+            "Returns top tokens with price, volume, holder count, and safety info."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "sort": {
+                    "type": "string",
+                    "enum": ["volume", "newest"],
+                    "description": "Sort order: 'volume' for trending, 'newest' for recent.",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Number of tokens to return (default 20, max 50).",
+                },
+            },
+            "required": [],
+        },
+        "requires_confirmation": False,
+        "category": "read",
+    },
+    {
         "name": "token_price",
         "description": (
             "Get the current price and recent price changes for a token. "
