@@ -169,6 +169,8 @@ def run_fund(bot_names: list, amount: int, verbose: bool = False) -> dict:
     # -----------------------------------------------------------------------
     # Step 1: Load iconfucius wallet
     # -----------------------------------------------------------------------
+    from iconfucius.cli.concurrent import report_status
+    report_status("loading wallet...")
     logger.info("Step 1: Load iconfucius wallet...")
     pem_path = get_pem_file()
     with open(pem_path, "r") as f:
@@ -205,8 +207,10 @@ def run_fund(bot_names: list, amount: int, verbose: bool = False) -> dict:
     # -----------------------------------------------------------------------
     # Step 3: Fund and deposit for each bot (concurrent)
     # -----------------------------------------------------------------------
-    logger.info("Step 3: Funding %d bot(s) with %s each...",
-                len(bot_names), _fmt(amount))
+    report_status(f"funding {len(bot_names)} bot(s)...")
+    suffix = " each" if len(bot_names) > 1 else ""
+    logger.info("Step 3: Funding %d bot(s) with %s%s...",
+                len(bot_names), _fmt(amount), suffix)
 
     from iconfucius.cli.concurrent import run_per_bot
 

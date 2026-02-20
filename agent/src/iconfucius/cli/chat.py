@@ -10,7 +10,7 @@ import time
 
 from iconfucius.ai import APIKeyMissingError, create_backend
 from iconfucius.memory import read_learnings, read_strategy, read_trades
-from iconfucius.persona import Persona, PersonaNotFoundError, load_persona
+from iconfucius.persona import DEFAULT_MODEL, Persona, PersonaNotFoundError, load_persona
 from iconfucius.skills.definitions import get_tool_metadata, get_tools_for_anthropic
 from iconfucius.skills.executor import execute_tool
 
@@ -216,17 +216,132 @@ def _generate_startup(backend, persona, lang: str) -> tuple[str, str]:
     return greeting, goodbye
 
 
+def _persist_ai_model(new_model: str) -> None:
+    """Write the AI model to the [ai] section in iconfucius.toml.
+
+    Handles four cases:
+    - Commented ``# [ai]`` block  → replace with uncommented section
+    - Existing ``[ai]`` with ``model =`` → update the value
+    - Existing ``[ai]`` without ``model =`` → append model line
+    - No ``[ai]`` section at all → append a new section
+    """
+    import re
+
+    from iconfucius import config as cfg
+
+    config_path = cfg.find_config()
+    if config_path is None:
+        return
+
+    content = config_path.read_text()
+
+    if re.search(r'^# ?\[ai\]', content, re.MULTILINE):
+        # Commented-out [ai] block → replace entire commented block
+        content = re.sub(
+            r'^# ?\[ai\]\n(?:#[^\n]*\n)*',
+            f'[ai]\nmodel = "{new_model}"\n',
+            content,
+            count=1,
+            flags=re.MULTILINE,
+        )
+    elif re.search(r'^\[ai\]', content, re.MULTILINE):
+        if re.search(r'^model\s*=', content, re.MULTILINE):
+            # Existing model line → update value
+            content = re.sub(
+                r'^(model\s*=\s*).*$',
+                f'model = "{new_model}"',
+                content,
+                count=1,
+                flags=re.MULTILINE,
+            )
+        else:
+            # [ai] exists but no model line → append after [ai]
+            content = re.sub(
+                r'^(\[ai\]\n)',
+                f'[ai]\nmodel = "{new_model}"\n',
+                content,
+                count=1,
+                flags=re.MULTILINE,
+            )
+    else:
+        # No [ai] section → append
+        separator = "" if content.endswith("\n") else "\n"
+        content += f'{separator}\n[ai]\nmodel = "{new_model}"\n'
+
+    config_path.write_text(content)
+    cfg._cached_config = None
+
+
+def _handle_model_interactive(backend) -> None:
+    """Show current model and optionally switch via numbered selection."""
+    print(f"\n  Current model: {backend.model}")
+
+    models = backend.list_models()
+    if not models:
+        print()
+        return
+
+    print("\n  Available models:\n")
+    for i, (model_id, display_name) in enumerate(models, 1):
+        marker = " *" if model_id == backend.model else ""
+        print(f"    {i}. {display_name} ({model_id}){marker}")
+
+    try:
+        answer = input("\n  Change model? [y/N] ").strip().lower()
+    except (KeyboardInterrupt, EOFError):
+        print()
+        return
+
+    if answer not in ("y", "yes"):
+        print()
+        return
+
+    try:
+        choice = input("  Enter number: ").strip()
+    except (KeyboardInterrupt, EOFError):
+        print()
+        return
+
+    try:
+        idx = int(choice) - 1
+        if idx < 0 or idx >= len(models):
+            print("\n  Invalid selection.\n")
+            return
+    except ValueError:
+        print("\n  Invalid selection.\n")
+        return
+
+    new_model = models[idx][0]
+    backend.model = new_model
+    _persist_ai_model(new_model)
+    print(f"\n  Model changed to: {new_model}\n")
+
+
 _MAX_TOOL_ITERATIONS = 10
 
 
 def _fmt_sats(val) -> str:
-    """Format a sats value with thousands separator, safe for None."""
+    """Format a sats value with thousands separator and USD, safe for None."""
     if val is None:
         return "?"
     try:
-        return f"{val:,}"
-    except (TypeError, ValueError):
-        return str(val)
+        from iconfucius.config import fmt_sats, get_btc_to_usd_rate
+        btc_usd_rate = get_btc_to_usd_rate()
+        return fmt_sats(int(val), btc_usd_rate)
+    except Exception:
+        try:
+            return f"{val:,}"
+        except (TypeError, ValueError):
+            return str(val)
+
+
+def _fmt_tokens(amount, token_id: str) -> str:
+    """Format a token amount with USD value, safe for None."""
+    try:
+        from iconfucius.config import fmt_tokens
+        return fmt_tokens(int(amount), token_id)
+    except Exception:
+        return f"{amount} tokens"
 
 
 def _bot_target(tool_input: dict) -> str:
@@ -246,35 +361,35 @@ def _describe_tool_call(name: str, tool_input: dict) -> str:
     if name == "wallet_create":
         return "Create a new wallet identity"
     if name == "fund":
-        return f"Fund {_bot_target(tool_input)} with {_fmt_sats(tool_input.get('amount'))} sats each"
+        target = _bot_target(tool_input)
+        multi = tool_input.get("all_bots") or (isinstance(tool_input.get("bot_names"), list) and len(tool_input["bot_names"]) > 1)
+        suffix = " each" if multi else ""
+        return f"Fund {target} with {_fmt_sats(tool_input.get('amount'))}{suffix}"
     if name == "trade_buy":
-        if tool_input.get("amount_usd") is not None:
-            amt = f"${tool_input['amount_usd']:.2f}"
-        else:
-            amt = f"{_fmt_sats(tool_input.get('amount'))} sats"
         return (
-            f"Buy {amt} of token "
+            f"Buy {_fmt_sats(tool_input.get('amount'))} of token "
             f"{tool_input.get('token_id')} via {_bot_target(tool_input)}"
         )
     if name == "trade_sell":
+        token_id = tool_input.get("token_id", "?")
         if tool_input.get("amount_usd") is not None:
             amt = f"${tool_input['amount_usd']:.2f} worth"
         elif str(tool_input.get("amount", "")).lower() == "all":
             amt = "all"
         else:
-            amt = f"{_fmt_sats(tool_input.get('amount'))} tokens"
+            amt = _fmt_tokens(tool_input.get("amount"), token_id)
         return (
             f"Sell {amt} of token "
-            f"{tool_input.get('token_id')} via {_bot_target(tool_input)}"
+            f"{token_id} via {_bot_target(tool_input)}"
         )
     if name == "withdraw":
         return (
-            f"Withdraw {tool_input.get('amount')} sats from "
+            f"Withdraw {_fmt_sats(tool_input.get('amount'))} from "
             f"{_bot_target(tool_input)}"
         )
     if name == "wallet_send":
         return (
-            f"Send {tool_input.get('amount')} sats to "
+            f"Send {_fmt_sats(tool_input.get('amount'))} to "
             f"{tool_input.get('address')}"
         )
     if name == "set_bot_count":
@@ -332,6 +447,43 @@ def _run_tool_loop(backend, messages: list[dict], system: str,
 
         # Separate tool calls by confirmation requirement
         tool_blocks = [b for b in response.content if b.type == "tool_use"]
+
+        # Enforce one distinct state-changing tool name per response.
+        # Multiple calls to the *same* write tool (e.g. 3x fund) are fine;
+        # only different write tool names (e.g. fund + trade_buy) are blocked.
+        write_names = {
+            b.name for b in tool_blocks
+            if (get_tool_metadata(b.name) or {}).get("category") == "write"
+        }
+        deferred_ids: set[str] = set()
+        if len(write_names) > 1:
+            first_write_name = next(
+                b.name for b in tool_blocks
+                if (get_tool_metadata(b.name) or {}).get("category") == "write"
+            )
+            for b in tool_blocks:
+                meta = get_tool_metadata(b.name) or {}
+                if meta.get("category") == "write" and b.name != first_write_name:
+                    deferred_ids.add(b.id)
+            tool_blocks = [b for b in tool_blocks if b.id not in deferred_ids]
+
+        # Pre-convert amount_usd → amount (sats) so the rest of the flow
+        # works uniformly with sats and fmt_sats shows the USD value.
+        # Skip trade_sell: it converts USD to tokens, not sats.
+        for b in tool_blocks:
+            if b.name == "trade_sell":
+                continue
+            usd = b.input.get("amount_usd")
+            if usd is not None and b.input.get("amount") is None:
+                try:
+                    from iconfucius.config import get_btc_to_usd_rate
+                    rate = get_btc_to_usd_rate()
+                    sats = int((usd / rate) * 100_000_000)
+                    b.input["amount"] = sats
+                    del b.input["amount_usd"]
+                except Exception:
+                    pass  # handler will convert or report error
+
         confirm_blocks = []
         for b in tool_blocks:
             meta = get_tool_metadata(b.name)
@@ -379,34 +531,62 @@ def _run_tool_loop(backend, messages: list[dict], system: str,
                 })
                 continue
 
-            with _Spinner(f"Running {block.name}...") as spinner:
-                from iconfucius.cli.concurrent import set_progress_callback
+            # Skip spinner for instant tools (read-only, no network)
+            meta = get_tool_metadata(block.name) or {}
+            use_spinner = meta.get("category") == "write" or block.name in (
+                "wallet_balance", "wallet_receive", "wallet_monitor",
+                "wallet_info", "token_lookup", "token_price",
+                "security_status", "install_blst",
+            )
 
-                def _on_progress(done, total):
-                    width = 20
-                    filled = int(width * done / total)
-                    bar = "█" * filled + "░" * (width - filled)
-                    spinner.update(
-                        f"Running {block.name}... [{bar}] {done}/{total}"
+            if use_spinner:
+                with _Spinner(f"Running {block.name}...") as spinner:
+                    from iconfucius.cli.concurrent import (
+                        set_progress_callback,
+                        set_status_callback,
                     )
 
-                set_progress_callback(_on_progress)
-                try:
-                    result = execute_tool(block.name, block.input,
-                                          persona_name=persona_key)
-                finally:
-                    set_progress_callback(None)
+                    def _on_progress(done, total):
+                        width = 20
+                        filled = int(width * done / total)
+                        bar = "█" * filled + "░" * (width - filled)
+                        spinner.update(
+                            f"Running {block.name}... [{bar}] {done}/{total}"
+                        )
 
-            # Print large output directly to terminal, strip from AI result
-            terminal_output = result.pop("_terminal_output", None)
-            if terminal_output:
-                print(f"\n{terminal_output}\n")
+                    def _on_status(message):
+                        spinner.update(f"Running {block.name}... {message}")
+
+                    set_progress_callback(_on_progress)
+                    set_status_callback(_on_status)
+                    try:
+                        result = execute_tool(block.name, block.input,
+                                              persona_name=persona_key)
+                    finally:
+                        set_progress_callback(None)
+                        set_status_callback(None)
+            else:
+                result = execute_tool(block.name, block.input,
+                                      persona_name=persona_key)
 
             tool_results.append({
                 "type": "tool_result",
                 "tool_use_id": block.id,
                 "content": json.dumps(result, default=str),
             })
+
+        # Append deferred results for write tools that were blocked
+        for block in response.content:
+            if block.type == "tool_use" and block.id in deferred_ids:
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": block.id,
+                    "content": json.dumps({
+                        "status": "deferred",
+                        "error": "One state-changing operation at a time. "
+                                 "Retry this tool in your next response.",
+                    }),
+                })
 
         messages.append({"role": "user", "content": tool_results})
 
@@ -489,8 +669,9 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False) -> None:
         system += (
             f"\n\nYou manage {len(all_bot_names)} bots: {names_str}. "
             f"Default bot for single-bot operations: '{bot_name}'. "
-            f"Always use all_bots=true for wallet_balance, fund, trade, and withdraw "
-            f"unless the user specifies particular bots."
+            f"When using wallet_balance, use all_bots=true "
+            f"unless the user specifies particular bots. "
+            f"When using fund, trade, or withdraw, ask the user what bots to use."
         )
     else:
         system += f"\n\nYou are trading as bot '{bot_name}'."
@@ -505,7 +686,62 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False) -> None:
         return
 
     print(f"\n{greeting}\n")
-    print("\033[2mexit to quit · Ctrl+C to interrupt\033[0m\n")
+
+    print(f"\033[2mexit to quit · Ctrl+C to interrupt\033[0m")
+    print(f"\033[2mModel: {backend.model} · /model to change\033[0m")
+    if backend.model != DEFAULT_MODEL:
+        print(f"\033[2mNote: recommended model is {DEFAULT_MODEL}\033[0m")
+    print()
+
+    # Show wallet balance at startup (fast — single IC call)
+    if setup.get("wallet_exists"):
+        try:
+            with _Spinner("Checking wallet..."):
+                from iconfucius.cli.balance import run_wallet_balance
+                wallet_data = run_wallet_balance()
+            if wallet_data:
+                wallet_display = wallet_data.get("_display", "")
+                if wallet_display:
+                    print(wallet_display)
+                    print()
+
+                # Offer to show bot holdings (multi-bot only)
+                if len(all_bot_names) > 1:
+                    try:
+                        show = input(
+                            "\033[2mShow bot holdings? [Y/n]\033[0m "
+                        ).strip().lower()
+                        if show not in ("n", "no"):
+                            from iconfucius.cli.concurrent import (
+                                set_progress_callback,
+                                set_status_callback,
+                            )
+                            with _Spinner("Checking bot holdings...") as sp:
+                                def _on_progress(done, total):
+                                    w = 20
+                                    filled = int(w * done / total)
+                                    bar = "█" * filled + "░" * (w - filled)
+                                    sp.update(f"Checking bot holdings... [{bar}] {done}/{total}")
+
+                                def _on_status(msg):
+                                    sp.update(f"Checking bot holdings... {msg}")
+
+                                set_progress_callback(_on_progress)
+                                set_status_callback(_on_status)
+                                try:
+                                    from iconfucius.cli.balance import run_all_balances
+                                    bot_data = run_all_balances(all_bot_names)
+                                finally:
+                                    set_progress_callback(None)
+                                    set_status_callback(None)
+                            if bot_data:
+                                bot_display = bot_data.get("_display", "")
+                                if bot_display:
+                                    print(f"\n{bot_display}\n")
+                    except (KeyboardInterrupt, EOFError):
+                        print()  # user cancelled — continue to chat
+        except Exception:
+            pass  # non-critical — don't block chat startup
 
     tools = get_tools_for_anthropic()
     messages: list[dict] = []
@@ -517,6 +753,17 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False) -> None:
         except (KeyboardInterrupt, EOFError):
             print(f"\n\n{goodbye}")
             break
+
+        if user_input.startswith("/model"):
+            parts = user_input.split(maxsplit=1)
+            if len(parts) == 1:
+                _handle_model_interactive(backend)
+            else:
+                new_model = parts[1].strip()
+                backend.model = new_model
+                _persist_ai_model(new_model)
+                print(f"\n  Model changed to: {new_model}\n")
+            continue
 
         if user_input.lower() in ("exit", "quit", "/exit", "/quit"):
             print(f"\n{goodbye}")

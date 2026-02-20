@@ -19,7 +19,7 @@ from icp_canister import Canister
 from icp_identity import Identity
 from icp_principal import Principal
 
-from iconfucius.config import fmt_sats, get_btc_to_usd_rate
+from iconfucius.config import fmt_sats, fmt_tokens, get_btc_to_usd_rate
 from iconfucius.config import IC_HOST, MIN_TRADE_SATS, ODIN_API_URL, ODIN_TRADING_CANISTER_ID, get_verify_certificates, log, require_wallet, set_verbose
 from iconfucius.siwb import siwb_login, load_session
 
@@ -110,7 +110,7 @@ def run_trade(bot_name: str, action: str, token_id: str, amount: str,
     elif sell_all:
         logger.info("Trade: SELL ALL %s (bot=%s)", token_label, bot_name)
     else:
-        logger.info("Trade: SELL %s %s (bot=%s)", f"{amount_int:,}", token_label, bot_name)
+        logger.info("Trade: SELL %s %s (bot=%s)", fmt_tokens(amount_int, token_id), token_label, bot_name)
 
     # -----------------------------------------------------------------------
     # Step 1: SIWB login
@@ -159,7 +159,7 @@ def run_trade(bot_name: str, action: str, token_id: str, amount: str,
     )
 
     logger.info("Step 2: BTC=%s, %s=%s (bot=%s)",
-                _fmt(btc_before_sats), token_label, f"{token_before:,}", bot_name)
+                _fmt(btc_before_sats), token_label, fmt_tokens(token_before, token_id), bot_name)
 
     # Resolve 'all' to actual token balance
     if sell_all:
@@ -196,7 +196,7 @@ def run_trade(bot_name: str, action: str, token_id: str, amount: str,
             "amount": {"token": amount_int},
             "settings": [],
         }
-        logger.info("Step 3: Sell %s %s (bot=%s)...", f"{amount_int:,}", token_label, bot_name)
+        logger.info("Step 3: Sell %s %s (bot=%s)...", fmt_tokens(amount_int, token_id), token_label, bot_name)
 
     log(f"  Trade request: {trade_request}")
 

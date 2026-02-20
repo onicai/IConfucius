@@ -9,15 +9,27 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from iconfucius.logging_config import get_logger
 
-# Module-level progress callback set by the chat spinner.
-# Signature: on_progress(done: int, total: int)
-_progress_callback = None
+# Module-level callbacks set by the chat spinner.
+_progress_callback = None   # Signature: on_progress(done: int, total: int)
+_status_callback = None     # Signature: on_status(message: str)
 
 
 def set_progress_callback(callback):
     """Set the module-level progress callback (or None to clear)."""
     global _progress_callback
     _progress_callback = callback
+
+
+def set_status_callback(callback):
+    """Set the module-level status callback (or None to clear)."""
+    global _status_callback
+    _status_callback = callback
+
+
+def report_status(message):
+    """Report a status message to the spinner (if a callback is set)."""
+    if _status_callback:
+        _status_callback(message)
 
 
 def run_per_bot(fn, bot_names, max_workers=5):

@@ -410,7 +410,12 @@ def receive(
     print()
     print("Option 1: Send BTC from any Bitcoin wallet")
     print(f"  {btc_address}")
-    print("  Min deposit: 10,000 sats.")
+    from iconfucius.config import fmt_sats, get_btc_to_usd_rate
+    try:
+        _rate = get_btc_to_usd_rate()
+    except Exception:
+        _rate = None
+    print(f"  Min deposit: {fmt_sats(10_000, _rate)}.")
     print("  Requires ~6 confirmations (~1 hour).")
     print("  Run 'iconfucius wallet balance --monitor' to track conversion.")
     print()

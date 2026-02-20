@@ -45,6 +45,14 @@ class AIBackend(ABC):
             f"{type(self).__name__} does not support tool use."
         )
 
+    def list_models(self) -> list[tuple[str, str]]:
+        """Return available models as (model_id, display_name) pairs.
+
+        Returns:
+            List of (model_id, display_name) tuples, or [] on failure.
+        """
+        return []
+
 
 class ClaudeBackend(AIBackend):
     """Claude API backend via anthropic SDK."""
@@ -81,6 +89,16 @@ class ClaudeBackend(AIBackend):
             messages=messages,
             tools=tools,
         )
+
+    def list_models(self) -> list[tuple[str, str]]:
+        try:
+            page = self.client.models.list(limit=100)
+            result = []
+            for m in page.data:
+                result.append((m.id, getattr(m, "display_name", m.id)))
+            return result
+        except Exception:
+            return []
 
 
 def create_backend(persona: Persona) -> AIBackend:

@@ -801,6 +801,10 @@ def run_all_balances(bot_names: list, token_id: str = "29m8",
 
     if not require_wallet():
         return None
+
+    from iconfucius.cli.concurrent import report_status, run_per_bot
+
+    report_status("collecting wallet info...")
     btc_usd_rate = _fetch_btc_usd_rate()
     wallet_data, wallet_lines = _collect_wallet_info(
         btc_usd_rate, ckbtc_minter=ckbtc_minter,
@@ -810,9 +814,8 @@ def run_all_balances(bot_names: list, token_id: str = "29m8",
     wallet_pending = wallet_data["pending_sats"]
     wallet_withdrawal = wallet_data["withdrawal_balance_sats"]
 
+    report_status(f"checking {len(bot_names)} bot(s)...")
     logger.info("Gathering data for %d bot(s)...", len(bot_names))
-
-    from iconfucius.cli.concurrent import run_per_bot
 
     all_data = []
     results = run_per_bot(

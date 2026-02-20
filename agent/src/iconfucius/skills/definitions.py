@@ -65,7 +65,7 @@ TOOLS: list[dict] = [
     {
         "name": "wallet_balance",
         "description": (
-            "Check wallet ckBTC balance and bot holdings on Odin.fun. "
+            "Refresh wallet ckBTC balance and bot holdings from Odin.fun. "
             "Returns wallet balance, bot balances, and token holdings. "
             "By default shows ALL bots. "
             "Use ckbtc_minter=true to also show incoming/outgoing BTC status "
@@ -410,6 +410,7 @@ TOOLS: list[dict] = [
         "description": (
             "Deposit ckBTC from wallet into bot Odin.fun trading accounts. "
             "Minimum deposit: 5,000 sats per bot. "
+            "Provide either amount (sats) or amount_usd (dollars). "
             "Specify bot_names for specific bots or all_bots=true for every bot."
         ),
         "input_schema": {
@@ -418,6 +419,14 @@ TOOLS: list[dict] = [
                 "amount": {
                     "type": "integer",
                     "description": "Amount in sats to deposit per bot.",
+                },
+                "amount_usd": {
+                    "type": "number",
+                    "description": (
+                        "Amount in USD to deposit per bot. "
+                        "Converted to sats automatically. "
+                        "Use this when the user specifies a dollar amount."
+                    ),
                 },
                 "bot_name": {
                     "type": "string",
@@ -536,6 +545,7 @@ TOOLS: list[dict] = [
         "name": "withdraw",
         "description": (
             "Withdraw BTC from bot Odin.fun accounts back to the iconfucius wallet. "
+            "Provide amount (sats), amount_usd (dollars), or 'all'. "
             "Specify bot_names for specific bots or all_bots=true for every bot."
         ),
         "input_schema": {
@@ -545,6 +555,14 @@ TOOLS: list[dict] = [
                     "type": "string",
                     "description": (
                         "Amount in sats to withdraw per bot, or 'all' for entire balance."
+                    ),
+                },
+                "amount_usd": {
+                    "type": "number",
+                    "description": (
+                        "Amount in USD to withdraw per bot. "
+                        "Converted to sats automatically. "
+                        "Use this when the user specifies a dollar amount."
                     ),
                 },
                 "bot_name": {
@@ -569,7 +587,8 @@ TOOLS: list[dict] = [
     {
         "name": "wallet_send",
         "description": (
-            "Send ckBTC from the iconfucius wallet to an external Bitcoin address."
+            "Send ckBTC from the iconfucius wallet to an external Bitcoin address. "
+            "Provide amount (sats), amount_usd (dollars), or 'all'."
         ),
         "input_schema": {
             "type": "object",
@@ -578,6 +597,14 @@ TOOLS: list[dict] = [
                     "type": "string",
                     "description": (
                         "Amount in sats to send, or 'all' for entire balance."
+                    ),
+                },
+                "amount_usd": {
+                    "type": "number",
+                    "description": (
+                        "Amount in USD to send. "
+                        "Converted to sats automatically. "
+                        "Use this when the user specifies a dollar amount."
                     ),
                 },
                 "address": {

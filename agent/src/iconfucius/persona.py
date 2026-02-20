@@ -17,6 +17,9 @@ import tomllib
 from iconfucius.config import _project_root, get_ai_config
 
 
+DEFAULT_MODEL = "claude-opus-4-6"
+
+
 class PersonaNotFoundError(Exception):
     """Raised when a persona cannot be found in any tier."""
 
@@ -152,7 +155,7 @@ def load_persona(name: str) -> Persona:
         budget_limit=defaults_section.get("budget_limit", 0),
         bot=defaults_section.get("bot", "bot-1"),
         ai_backend=ai_section.get("backend", "claude"),
-        ai_model=ai_section.get("model", "claude-sonnet-4-5-20250929"),
+        ai_model=ai_section.get("model", DEFAULT_MODEL),
         system_prompt=system_prompt,
         greeting_prompt=greeting_prompt,
         goodbye_prompt=goodbye_prompt,

@@ -762,14 +762,18 @@ class TestMemoryToolHandlers:
         assert "persona" in result["error"].lower()
 
 
-class TestWalletBalanceDualOutput:
-    """wallet_balance returns _terminal_output + structured JSON."""
+class TestWalletBalanceResult:
+    """wallet_balance returns structured JSON for the AI to summarize."""
 
-    def test_returns_terminal_output_and_json(self):
+    def test_returns_structured_data(self):
         fake_data = {
             "wallet_ckbtc_sats": 1000,
-            "bots": [],
-            "totals": {"portfolio_sats": 1000},
+            "bots": [{"bot_name": "bot-1", "principal": "secret"}],
+            "totals": {
+                "odin_sats": 500,
+                "token_value_sats": 200,
+                "portfolio_sats": 1700,
+            },
             "_display": "table output",
         }
         with patch("iconfucius.cli.balance.run_all_balances",
@@ -779,12 +783,12 @@ class TestWalletBalanceDualOutput:
                             return_value=["bot-1"]):
                     result = execute_tool("wallet_balance", {})
         assert result["status"] == "ok"
-        assert "_terminal_output" in result
-        assert result["_terminal_output"] == "table output"
-        import json
-        parsed = json.loads(result["display"])
-        assert parsed["wallet_ckbtc_sats"] == 1000
-        assert parsed["totals"]["portfolio_sats"] == 1000
+        assert result["wallet_ckbtc_sats"] == 1000
+        assert result["totals"]["odin_sats"] == 500
+        assert result["totals"]["token_value_sats"] == 200
+        assert result["totals"]["portfolio_sats"] == 1700
+        assert result["bots"] == [{"bot_name": "bot-1", "principal": "secret"}]
+        assert "_terminal_output" not in result
 
     def test_none_data_returns_error(self):
         with patch("iconfucius.cli.balance.run_all_balances",

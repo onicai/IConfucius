@@ -14,14 +14,25 @@ from iconfucius.config import (
     PEM_FILE,
     create_default_config,
     find_config,
+    fmt_sats,
     get_bot_names,
     get_bot_persona,
+    get_btc_to_usd_rate,
     get_cksigner_canister_id,
     get_default_persona,
     get_network,
     load_config,
     set_network,
 )
+
+def _fmt_sats(sats) -> str:
+    """Format sats with USD for CLI output. Gracefully degrades."""
+    try:
+        rate = get_btc_to_usd_rate()
+    except Exception:
+        rate = None
+    return fmt_sats(int(sats), rate)
+
 
 # ---------------------------------------------------------------------------
 # Instructions text (shared by --help, no-args, and 'instructions' command)
@@ -343,7 +354,7 @@ def persona_show(
     print(f"Description: {p.description}")
     print(f"Voice:       {p.voice}")
     print(f"Risk:        {p.risk}")
-    print(f"Budget:      {'unlimited' if p.budget_limit == 0 else f'{p.budget_limit:,} sats'}")
+    print(f"Budget:      {'unlimited' if p.budget_limit == 0 else _fmt_sats(p.budget_limit)}")
     print(f"Default bot: {p.bot}")
     print(f"AI backend:  {p.ai_backend}")
     print(f"AI model:    {p.ai_model}")
@@ -438,7 +449,7 @@ def _start_chat():
             print(f"  Balance:         {addr_result['balance_display']}")
             print()
             print("  To start trading, send ckBTC or BTC to the deposit address above.")
-            print("  BTC deposits require min 10,000 sats and ~6 confirmations.")
+            print(f"  BTC deposits require min {_fmt_sats(10_000)} and ~6 confirmations.")
             print()
         setup = execute_tool("setup_status", {})
 
@@ -592,7 +603,7 @@ def _upgrade_config() -> None:
             "# API key is read from .env (ANTHROPIC_API_KEY)\n"
             "# [ai]\n"
             '# backend = "claude"\n'
-            '# model = "claude-sonnet-4-5-20250929"\n'
+            '# model = "claude-sonnet-4-6"\n'
         )
         print("Added [ai] section template (commented out)")
 
@@ -717,7 +728,8 @@ def fund(
     funded = result.get("funded", [])
     failed = result.get("failed", [])
     if funded:
-        print(f"Funded {len(funded)} bot(s) with {amount:,} sats each")
+        suffix = " each" if len(funded) > 1 else ""
+        print(f"Funded {len(funded)} bot(s) with {_fmt_sats(amount)}{suffix}")
     for f in failed:
         print(f"  {f['bot']}: FAILED — {f['error']}")
 
@@ -749,7 +761,7 @@ def withdraw(
         elif isinstance(result, dict):
             status = result.get("status", "")
             if status == "ok":
-                print(f"{bot_name}: withdrawn {result.get('withdrawn_sats', '?'):,} sats")
+                print(f"{bot_name}: withdrawn {_fmt_sats(result.get('withdrawn_sats', 0))}")
             elif status == "error":
                 print(f"{bot_name}: FAILED — {result.get('error', '')}")
             elif status == "partial":
@@ -767,10 +779,17 @@ def _print_trade_result(bot_name: str, result) -> None:
     status = result.get("status", "")
     if status == "ok":
         action = result.get("action", "?")
-        token_label = result.get("token_label", result.get("token_id", "?"))
+        token_id = result.get("token_id", "?")
+        token_label = result.get("token_label", token_id)
         amount = result.get("amount", "?")
-        print(f"{bot_name}: {action} {amount:,} {token_label}" if isinstance(amount, int)
-              else f"{bot_name}: {action} {token_label}")
+        if isinstance(amount, int):
+            if action == "buy":
+                print(f"{bot_name}: {action} {_fmt_sats(amount)} {token_label}")
+            else:
+                from iconfucius.config import fmt_tokens
+                print(f"{bot_name}: {action} {fmt_tokens(amount, token_id)} {token_label}")
+        else:
+            print(f"{bot_name}: {action} {token_label}")
     elif status == "skipped":
         print(f"{bot_name}: skipped — {result.get('reason', '')}")
     elif status == "error":
@@ -892,7 +911,7 @@ def sweep(
         elif isinstance(result, dict):
             status = result.get("status", "")
             if status == "ok":
-                print(f"{bot_name}: withdrawn {result.get('withdrawn_sats', '?'):,} sats")
+                print(f"{bot_name}: withdrawn {_fmt_sats(result.get('withdrawn_sats', 0))}")
             elif status == "error":
                 print(f"{bot_name}: withdraw FAILED — {result.get('error', '')}")
             elif status == "partial":

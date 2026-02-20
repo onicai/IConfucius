@@ -284,11 +284,17 @@ def _handle_wallet_balance(args: dict) -> dict:
         return {"status": "error", "error": "Balance check failed."}
 
     display_text = data.pop("_display", "")
+    totals = data.get("totals", {})
 
     return {
         "status": "ok",
-        "display": json.dumps(data, default=str),
-        "_terminal_output": display_text.strip(),
+        "wallet_ckbtc_sats": data.get("wallet_ckbtc_sats", 0),
+        "bots": data.get("bots", []),
+        "totals": {
+            "odin_sats": totals.get("odin_sats", 0),
+            "token_value_sats": totals.get("token_value_sats", 0),
+            "portfolio_sats": totals.get("portfolio_sats", 0),
+        },
     }
 
 
@@ -695,7 +701,12 @@ def _handle_persona_show(args: dict) -> dict:
     except PersonaNotFoundError:
         return {"status": "error", "error": f"Persona '{name}' not found."}
 
-    budget = "unlimited" if p.budget_limit == 0 else f"{p.budget_limit:,} sats"
+    from iconfucius.config import fmt_sats, get_btc_to_usd_rate
+    try:
+        _rate = get_btc_to_usd_rate()
+    except Exception:
+        _rate = None
+    budget = "unlimited" if p.budget_limit == 0 else fmt_sats(p.budget_limit, _rate)
     display = (
         f"Name:        {p.name}\n"
         f"Description: {p.description}\n"
@@ -885,9 +896,18 @@ def _handle_fund(args: dict) -> dict:
         return {"status": "error", "error": "No wallet found. Run: iconfucius wallet create"}
 
     amount = args.get("amount")
+    amount_usd = args.get("amount_usd")
     bot_names = _resolve_bot_names(args)
+
+    # Convert USD to sats if needed
+    if amount_usd is not None and amount is None:
+        try:
+            amount = _usd_to_sats(amount_usd)
+        except Exception as e:
+            return {"status": "error", "error": f"USD conversion failed: {e}"}
+
     if not amount or not bot_names:
-        return {"status": "error", "error": "'amount' and at least one bot are required."}
+        return {"status": "error", "error": "'amount' (or 'amount_usd') and at least one bot are required."}
 
     from iconfucius.cli.fund import run_fund
 
@@ -901,7 +921,13 @@ def _handle_fund(args: dict) -> dict:
     failed = result.get("failed", [])
     lines = []
     if funded:
-        lines.append(f"Funded {len(funded)} bot(s) with {result['amount']:,} sats each")
+        from iconfucius.config import fmt_sats, get_btc_to_usd_rate
+        try:
+            rate = get_btc_to_usd_rate()
+        except Exception:
+            rate = None
+        suffix = " each" if len(funded) > 1 else ""
+        lines.append(f"Funded {len(funded)} bot(s) with {fmt_sats(result['amount'], rate)}{suffix}")
     for f in failed:
         lines.append(f"  {f['bot']}: FAILED — {f['error']}")
     display = "\n".join(lines) if lines else "No bots funded"
@@ -922,6 +948,9 @@ def _usd_to_sats(amount_usd: float) -> int:
     return int((amount_usd / btc_usd) * 100_000_000)
 
 
+_MAX_RAW_TOKENS = 2**63  # guard against bogus price data
+
+
 def _usd_to_tokens(amount_usd: float, token_id: str) -> int:
     """Convert a USD amount to raw token sub-units using live price data.
 
@@ -938,6 +967,12 @@ def _usd_to_tokens(amount_usd: float, token_id: str) -> int:
     price = data["price"]
     divisibility = data.get("divisibility", 8)
     raw_tokens = int(sats * 1_000_000 * (10 ** divisibility) / price)
+
+    if raw_tokens > _MAX_RAW_TOKENS:
+        raise ValueError(
+            f"Token amount too large ({raw_tokens}). "
+            f"Token price ({price}) may be stale or incorrect."
+        )
     return raw_tokens
 
 
@@ -963,9 +998,10 @@ def _handle_trade_buy(args: dict) -> dict:
     if not all([token_id, amount, bot_names]):
         return {"status": "error", "error": "'token_id', 'amount' (or 'amount_usd'), and at least one bot are required."}
 
-    from iconfucius.cli.concurrent import run_per_bot
+    from iconfucius.cli.concurrent import report_status, run_per_bot
     from iconfucius.cli.trade import run_trade
 
+    report_status(f"buying {token_id} for {len(bot_names)} bot(s)...")
     results = run_per_bot(
         lambda name: run_trade(name, "buy", token_id, str(amount)),
         bot_names,
@@ -995,9 +1031,10 @@ def _handle_trade_sell(args: dict) -> dict:
     if not all([token_id, amount, bot_names]):
         return {"status": "error", "error": "'token_id', 'amount' (or 'amount_usd'), and at least one bot are required."}
 
-    from iconfucius.cli.concurrent import run_per_bot
+    from iconfucius.cli.concurrent import report_status, run_per_bot
     from iconfucius.cli.trade import run_trade
 
+    report_status(f"selling {token_id} for {len(bot_names)} bot(s)...")
     results = run_per_bot(
         lambda name: run_trade(name, "sell", token_id, str(amount)),
         bot_names,
@@ -1048,13 +1085,23 @@ def _handle_withdraw(args: dict) -> dict:
         return {"status": "error", "error": "No wallet found. Run: iconfucius wallet create"}
 
     amount = args.get("amount")
+    amount_usd = args.get("amount_usd")
     bot_names = _resolve_bot_names(args)
-    if not amount or not bot_names:
-        return {"status": "error", "error": "'amount' and at least one bot are required."}
 
-    from iconfucius.cli.concurrent import run_per_bot
+    # Convert USD to sats if needed
+    if amount_usd is not None and amount is None:
+        try:
+            amount = str(_usd_to_sats(amount_usd))
+        except Exception as e:
+            return {"status": "error", "error": f"USD conversion failed: {e}"}
+
+    if not amount or not bot_names:
+        return {"status": "error", "error": "'amount' (or 'amount_usd') and at least one bot are required."}
+
+    from iconfucius.cli.concurrent import report_status, run_per_bot
     from iconfucius.cli.withdraw import run_withdraw
 
+    report_status(f"withdrawing from {len(bot_names)} bot(s)...")
     results = run_per_bot(
         lambda name: run_withdraw(name, str(amount)),
         bot_names,
@@ -1096,9 +1143,18 @@ def _handle_wallet_send(args: dict) -> dict:
         return {"status": "error", "error": "No wallet found. Run: iconfucius wallet create"}
 
     amount = args.get("amount")
+    amount_usd = args.get("amount_usd")
     address = args.get("address")
+
+    # Convert USD to sats if needed
+    if amount_usd is not None and amount is None:
+        try:
+            amount = str(_usd_to_sats(amount_usd))
+        except Exception as e:
+            return {"status": "error", "error": f"USD conversion failed: {e}"}
+
     if not amount or not address:
-        return {"status": "error", "error": "Both 'amount' and 'address' are required."}
+        return {"status": "error", "error": "Both 'amount' (or 'amount_usd') and 'address' are required."}
 
     # wallet send uses typer.Exit for errors, so we need to catch it
     import typer
