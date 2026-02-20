@@ -86,14 +86,6 @@ def collect_balances(bot_name: str, token_id: str = "29m8",
     log("=" * 60)
     auth = load_session(bot_name=bot_name, verbose=verbose)
     if not auth:
-        # Before full SIWB login, check if this bot has a key at all.
-        # If not, it has never been used and has no balances — skip it.
-        from iconfucius.siwb import bot_has_public_key
-        if not bot_has_public_key(bot_name):
-            log(f"  Bot '{bot_name}' has no public key (never used). Skipping.")
-            return BotBalances(
-                bot_name=bot_name, bot_principal="(not initialized)",
-            )
         log("No valid cached session, performing full SIWB login...")
         auth = siwb_login(bot_name=bot_name, verbose=verbose)
     bot_principal_text = auth["bot_principal_text"]

@@ -330,8 +330,7 @@ class TestCollectBalances:
     @patch("iconfucius.cli.balance.Identity")
     @patch("iconfucius.cli.balance.siwb_login")
     @patch("iconfucius.cli.balance.load_session", return_value=None)
-    @patch("iconfucius.siwb.bot_has_public_key", return_value=True)
-    def test_falls_back_to_siwb_login(self, mock_has_key, mock_load,
+    def test_falls_back_to_siwb_login(self, mock_load,
                                        mock_login,
                                        MockId, MockClient, MockAgent,
                                        MockCanister, mock_cffi,

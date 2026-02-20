@@ -122,6 +122,12 @@ class _Spinner:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._stdout = sys.stdout  # real terminal, before any redirect
+        self._lock = threading.Lock()
+
+    def update(self, message: str):
+        """Update the spinner message (thread-safe)."""
+        with self._lock:
+            self._message = message
 
     def __enter__(self):
         self._thread = threading.Thread(target=self._spin, daemon=True)
@@ -139,7 +145,9 @@ class _Spinner:
     def _spin(self):
         frames = itertools.cycle("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
         while not self._stop.is_set():
-            self._stdout.write(f"\r{next(frames)} {self._message}")
+            with self._lock:
+                msg = self._message
+            self._stdout.write(f"\r\033[K{next(frames)} {msg}")
             self._stdout.flush()
             time.sleep(0.08)
 
@@ -371,9 +379,23 @@ def _run_tool_loop(backend, messages: list[dict], system: str,
                 })
                 continue
 
-            with _Spinner(f"Running {block.name}..."):
-                result = execute_tool(block.name, block.input,
-                                      persona_name=persona_key)
+            with _Spinner(f"Running {block.name}...") as spinner:
+                from iconfucius.cli.concurrent import set_progress_callback
+
+                def _on_progress(done, total):
+                    width = 20
+                    filled = int(width * done / total)
+                    bar = "█" * filled + "░" * (width - filled)
+                    spinner.update(
+                        f"Running {block.name}... [{bar}] {done}/{total}"
+                    )
+
+                set_progress_callback(_on_progress)
+                try:
+                    result = execute_tool(block.name, block.input,
+                                          persona_name=persona_key)
+                finally:
+                    set_progress_callback(None)
 
             # Print large output directly to terminal, strip from AI result
             terminal_output = result.pop("_terminal_output", None)
