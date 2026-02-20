@@ -38,6 +38,25 @@ IConfucius | Wisdom for Bitcoin Markets.
 
 ---
 
+## AI Agent Design: Data-Driven, Not Prompt-Driven
+
+Do NOT implement business logic or conversational flow instructions in the
+system prompts. Instead, ensure that the AI at all times receives the correct
+structured data from tool results so it can make the right decision about the
+next step and provide accurate summaries to the user.
+
+- **System prompts** define the persona's voice, risk appetite, and available
+  tools — not step-by-step procedures.
+- **Tool handlers** (in `executor.py`) own all business logic: validation,
+  conversion, error handling, and structured result formatting.
+- **Pre-conversion** (in `chat.py`) normalizes inputs (e.g. USD → sats) before
+  the confirmation prompt, so the user always sees correct values.
+
+If the AI is making a wrong decision, fix the data it receives — don't add
+instructions to the prompt telling it what to do.
+
+---
+
 ## UX Convention: Spinner for Long-Running Tasks
 
 Any long-running operation must be wrapped in `_Spinner` (from `cli/chat.py`)
