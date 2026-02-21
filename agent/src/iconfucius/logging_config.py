@@ -10,12 +10,31 @@ Security properties:
 import logging
 import os
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 
 # JWT pattern: three base64url-encoded segments separated by dots
 _JWT_PATTERN = re.compile(
     r'eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}'
 )
+
+_MAX_SESSION_LOGS = 100
+
+_session_stamp: str | None = None
+
+
+def get_session_stamp() -> str:
+    """Return the session timestamp (YYYYMMDD-HHMMSS), generated once."""
+    global _session_stamp
+    if _session_stamp is None:
+        _session_stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    return _session_stamp
+
+
+def _reset_session_stamp() -> None:
+    """Reset the cached session stamp (for tests only)."""
+    global _session_stamp
+    _session_stamp = None
 
 
 class _JwtScrubFilter(logging.Filter):
@@ -27,6 +46,13 @@ class _JwtScrubFilter(logging.Filter):
         return True
 
 
+def _cleanup_session_logs(conv_dir: Path) -> None:
+    """Delete oldest session logs beyond _MAX_SESSION_LOGS."""
+    files = sorted(conv_dir.glob("*-iconfucius.log"))
+    for old in files[:-_MAX_SESSION_LOGS]:
+        old.unlink()
+
+
 def get_logger() -> logging.Logger:
     """Return the iconfucius logger (file-only, no StreamHandler)."""
     logger = logging.getLogger("iconfucius")
@@ -35,11 +61,14 @@ def get_logger() -> logging.Logger:
 
     logger.setLevel(logging.DEBUG)
 
-    log_dir = Path(os.environ.get("ICONFUCIUS_ROOT", ".")) / ".logs"
-    log_dir.mkdir(exist_ok=True)
-    os.chmod(log_dir, 0o700)
+    conv_dir = (
+        Path(os.environ.get("ICONFUCIUS_ROOT", ".")) / ".logs" / "conversations"
+    )
+    conv_dir.mkdir(parents=True, exist_ok=True)
+    os.chmod(conv_dir, 0o700)
+    os.chmod(conv_dir.parent, 0o700)
 
-    log_path = log_dir / "iconfucius.log"
+    log_path = conv_dir / f"{get_session_stamp()}-iconfucius.log"
     fd = os.open(log_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
     fh = logging.StreamHandler(os.fdopen(fd, "w"))
 
@@ -54,6 +83,9 @@ def get_logger() -> logging.Logger:
     )
     fh.addFilter(_JwtScrubFilter())
     logger.addHandler(fh)
+
+    _cleanup_session_logs(conv_dir)
+
     return logger
 
 

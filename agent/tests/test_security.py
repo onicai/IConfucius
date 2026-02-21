@@ -639,15 +639,15 @@ class TestDescribeToolCallAccuracy:
 class TestWalletBalanceDataLeakage:
     """Verify wallet_balance doesn't leak per-bot details to AI."""
 
-    def test_returns_only_totals(self):
-        """AI receives only aggregated totals, not per-bot breakdowns."""
+    def test_returns_totals_and_safe_bot_fields(self):
+        """AI receives totals + per-bot balances but never secrets like principals."""
         fake_data = {
             "wallet_ckbtc_sats": 50_000,
             "bots": [
-                {"bot_name": "bot-1", "odin_sats": 10_000,
-                 "principal": "secret-principal-1"},
-                {"bot_name": "bot-2", "odin_sats": 20_000,
-                 "principal": "secret-principal-2"},
+                {"name": "bot-1", "odin_sats": 10_000,
+                 "principal": "secret-principal-1", "tokens": []},
+                {"name": "bot-2", "odin_sats": 20_000,
+                 "principal": "secret-principal-2", "tokens": []},
             ],
             "totals": {
                 "odin_sats": 30_000,
@@ -664,12 +664,15 @@ class TestWalletBalanceDataLeakage:
                     result = execute_tool("wallet_balance", {})
 
         assert result["status"] == "ok"
-        # Only totals should be present
+        # Totals should be present
         assert result["wallet_ckbtc_sats"] == 50_000
         assert result["total_odin_sats"] == 30_000
         assert result["portfolio_sats"] == 85_000
-        # Per-bot data should NOT be in the result
-        assert "bots" not in result
+        # Per-bot balances are included (name, odin_sats, tokens only)
+        assert len(result["bots"]) == 2
+        for bot in result["bots"]:
+            assert set(bot.keys()) == {"name", "odin_sats", "tokens"}
+        # Secrets must NOT leak to the AI
         assert "secret-principal" not in str(result)
         # Terminal output is for user, not AI
         assert "_terminal_output" in result

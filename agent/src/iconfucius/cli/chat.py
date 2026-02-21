@@ -7,7 +7,9 @@ import random
 import sys
 import threading
 import time
+from urllib.request import urlopen
 
+from iconfucius import __version__
 from iconfucius.ai import APIKeyMissingError, create_backend
 from iconfucius.memory import read_learnings, read_strategy, read_trades
 from iconfucius.persona import DEFAULT_MODEL, Persona, PersonaNotFoundError, load_persona
@@ -570,6 +572,11 @@ def _run_tool_loop(backend, messages: list[dict], system: str,
                 result = execute_tool(block.name, block.input,
                                       persona_name=persona_key)
 
+            # Print _terminal_output to user and strip from AI context
+            terminal_output = result.pop("_terminal_output", None)
+            if terminal_output:
+                print(f"\n{terminal_output}")
+
             tool_results.append({
                 "type": "tool_result",
                 "tool_use_id": block.id,
@@ -606,6 +613,57 @@ def _block_to_dict(block) -> dict:
     return {"type": block.type}
 
 
+def _check_pypi_version() -> tuple[str | None, str]:
+    """Check PyPI + GitHub for a newer version.
+
+    Returns:
+        (latest_version, release_notes) — version is None when up-to-date.
+    """
+    try:
+        with urlopen("https://pypi.org/pypi/iconfucius/json", timeout=3) as resp:
+            latest = json.loads(resp.read())["info"]["version"]
+        if latest == __version__:
+            return None, ""
+        # Fetch release notes from GitHub (best-effort)
+        notes = ""
+        try:
+            gh_url = f"https://api.github.com/repos/onicai/IConfucius/releases/tags/v{latest}"
+            with urlopen(gh_url, timeout=3) as resp:
+                notes = json.loads(resp.read()).get("body", "") or ""
+        except Exception:
+            pass
+        return latest, notes
+    except Exception:
+        return None, ""
+
+
+def _handle_upgrade() -> None:
+    """Upgrade iconfucius via pip and re-exec the process."""
+    import os
+    import subprocess
+
+    print(f"\n\033[2mUpgrading iconfucius from v{__version__}...\033[0m\n")
+    result = subprocess.run(
+        [sys.executable, "-m", "pip", "install", "--upgrade", "iconfucius"],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        print(f"Upgrade failed:\n{result.stderr.strip()}\n")
+        return
+
+    # Determine the new version from pip output
+    new_version = None
+    try:
+        with urlopen("https://pypi.org/pypi/iconfucius/json", timeout=3) as resp:
+            new_version = json.loads(resp.read())["info"]["version"]
+    except Exception:
+        pass
+
+    label = f"v{new_version}" if new_version else "latest version"
+    print(f"\033[2mUpgraded to {label} — restarting...\033[0m\n")
+    os.execvp(sys.argv[0], sys.argv)
+
+
 def run_chat(persona_name: str, bot_name: str, verbose: bool = False) -> None:
     """Run interactive chat with a trading persona.
 
@@ -628,6 +686,11 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False) -> None:
     except Exception as e:
         print(f"\nError creating AI backend: {e}")
         return
+
+    from iconfucius.ai import LoggingBackend
+    from iconfucius.conversation_log import ConversationLogger
+    conv_logger = ConversationLogger()
+    backend = LoggingBackend(backend, conv_logger)
 
     # Build system prompt with memory context
     system = persona.system_prompt
@@ -688,10 +751,19 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False) -> None:
 
     print(f"\n{greeting}\n")
 
-    print(f"\033[2mexit to quit · Ctrl+C to interrupt\033[0m")
+    print(f"\033[2miconfucius v{__version__} · exit to quit · Ctrl+C to interrupt\033[0m")
     print(f"\033[2mModel: {backend.model} · /model to change\033[0m")
     if backend.model != DEFAULT_MODEL:
         print(f"\033[2mNote: recommended model is {DEFAULT_MODEL}\033[0m")
+
+    # Check PyPI for newer version (non-blocking, best-effort)
+    latest_version, release_notes = _check_pypi_version()
+    if latest_version:
+        print(f"\033[2mUpdate available: v{latest_version} · /upgrade to install\033[0m")
+        # Populate executor cache so check_update tool returns fresh data
+        from iconfucius.skills.executor import _update_cache
+        _update_cache["latest_version"] = latest_version
+        _update_cache["release_notes"] = release_notes
     print()
 
     # Show wallet balance at startup (fast — single IC call)
@@ -702,43 +774,39 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False) -> None:
                 wallet_data = run_wallet_balance()
             if wallet_data:
                 wallet_display = wallet_data.get("_display", "")
-                if wallet_display:
+                if wallet_display and len(all_bot_names) <= 1:
                     print(wallet_display)
                     print()
 
-                # Offer to show bot holdings (multi-bot only)
+                # Show bot holdings at startup (multi-bot only)
                 if len(all_bot_names) > 1:
                     try:
-                        show = input(
-                            "\033[2mShow bot holdings? [y/N]\033[0m "
-                        ).strip().lower()
-                        if show in ("y", "yes"):
-                            from iconfucius.cli.concurrent import (
-                                set_progress_callback,
-                                set_status_callback,
-                            )
-                            with _Spinner("Checking bot holdings...") as sp:
-                                def _on_progress(done, total):
-                                    w = 20
-                                    filled = int(w * done / total)
-                                    bar = "█" * filled + "░" * (w - filled)
-                                    sp.update(f"Checking bot holdings... [{bar}] {done}/{total}")
+                        from iconfucius.cli.concurrent import (
+                            set_progress_callback,
+                            set_status_callback,
+                        )
+                        with _Spinner("Checking bot holdings...") as sp:
+                            def _on_progress(done, total):
+                                w = 20
+                                filled = int(w * done / total)
+                                bar = "█" * filled + "░" * (w - filled)
+                                sp.update(f"Checking bot holdings... [{bar}] {done}/{total}")
 
-                                def _on_status(msg):
-                                    sp.update(f"Checking bot holdings... {msg}")
+                            def _on_status(msg):
+                                sp.update(f"Checking bot holdings... {msg}")
 
-                                set_progress_callback(_on_progress)
-                                set_status_callback(_on_status)
-                                try:
-                                    from iconfucius.cli.balance import run_all_balances
-                                    bot_data = run_all_balances(all_bot_names)
-                                finally:
-                                    set_progress_callback(None)
-                                    set_status_callback(None)
-                            if bot_data:
-                                bot_display = bot_data.get("_display", "")
-                                if bot_display:
-                                    print(f"\n{bot_display}\n")
+                            set_progress_callback(_on_progress)
+                            set_status_callback(_on_status)
+                            try:
+                                from iconfucius.cli.balance import run_all_balances
+                                bot_data = run_all_balances(all_bot_names)
+                            finally:
+                                set_progress_callback(None)
+                                set_status_callback(None)
+                        if bot_data:
+                            bot_display = bot_data.get("_display", "")
+                            if bot_display:
+                                print(f"\n{bot_display}\n")
                     except (KeyboardInterrupt, EOFError):
                         print()  # user cancelled — continue to chat
         except Exception:
@@ -747,10 +815,36 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False) -> None:
     tools = get_tools_for_anthropic()
     messages: list[dict] = []
 
+    # Seed conversation with update data so the AI sees it on its first turn
+    if latest_version:
+        update_result = execute_tool("check_update", {})
+        tool_call_id = "startup_check_update"
+        messages.append({
+            "role": "assistant",
+            "content": [
+                {"type": "tool_use", "id": tool_call_id,
+                 "name": "check_update", "input": {}},
+            ],
+        })
+        messages.append({
+            "role": "user",
+            "content": [
+                {"type": "tool_result", "tool_use_id": tool_call_id,
+                 "content": json.dumps(update_result)},
+            ],
+        })
+
+    def _prompt_banner() -> None:
+        """Print separator lines with optional upgrade notice."""
+        print("\033[2m" + "─" * 60 + "\033[0m")
+        if latest_version:
+            print(f"\033[2mv{latest_version} available · /upgrade to install\033[0m")
+            print("\033[2m" + "─" * 60 + "\033[0m")
+
     while True:
         try:
-            print("\033[2m" + "─" * 60 + "\033[0m")
-            user_input = input("> ").strip()
+            _prompt_banner()
+            user_input = input(f"\033[2mv{__version__}\033[0m > ").strip()
         except (KeyboardInterrupt, EOFError):
             print(f"\n\n{goodbye}")
             break
@@ -764,6 +858,11 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False) -> None:
                 backend.model = new_model
                 _persist_ai_model(new_model)
                 print(f"\n  Model changed to: {new_model}\n")
+            continue
+
+        if user_input.lower() == "/upgrade":
+            _handle_upgrade()
+            # If _handle_upgrade returns, the upgrade failed — continue chatting
             continue
 
         if user_input.lower() in ("exit", "quit", "/exit", "/quit"):

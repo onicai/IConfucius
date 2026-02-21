@@ -47,6 +47,21 @@ TOOLS: list[dict] = [
         "category": "read",
     },
     {
+        "name": "check_update",
+        "description": (
+            "Check if a newer version of iconfucius is available. "
+            "Returns the running version, latest version, and release notes. "
+            "The user can type /upgrade to install the update."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+        "requires_confirmation": False,
+        "category": "read",
+    },
+    {
         "name": "bot_list",
         "description": (
             "List all configured bots (names and count). "
@@ -107,7 +122,8 @@ TOOLS: list[dict] = [
         "description": (
             "Check the ckBTC minter for incoming BTC deposit status and "
             "outgoing BTC withdrawal progress. Shows confirmation count, "
-            "pending amounts, and auto-triggers BTC-to-ckBTC conversion. "
+            "pending amounts, and auto-triggers BTC-to-ckBTC conversion "
+            "when deposits reach ~6 Bitcoin confirmations. "
             "Use when the user sent BTC to their deposit address and wants "
             "to know if it arrived, how many confirmations it has, or when "
             "it will be converted to ckBTC."
@@ -123,8 +139,9 @@ TOOLS: list[dict] = [
     {
         "name": "wallet_receive",
         "description": (
-            "Show the Bitcoin deposit address for funding the iconfucius wallet. "
-            "Users send BTC to this address to get ckBTC."
+            "Show the wallet's receiving addresses for funding. "
+            "Returns both the ckBTC principal (for sending ckBTC on the Internet Computer) "
+            "and the BTC deposit address (for sending BTC, min 10,000 sats, ~6 confirmations)."
         ),
         "input_schema": {
             "type": "object",

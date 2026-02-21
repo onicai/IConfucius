@@ -21,7 +21,7 @@ from iconfucius.config import _project_root
 _CACHE_TTL_SECONDS = 86400
 
 # Maximum tokens to include in prompt (keep system prompt reasonable)
-_MAX_PROMPT_TOKENS = 50
+_MAX_PROMPT_TOKENS = 20
 
 
 def _builtin_toml() -> Path:

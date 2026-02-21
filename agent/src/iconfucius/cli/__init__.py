@@ -215,6 +215,13 @@ def _check_upgrade() -> None:
     print("\nUpgrade complete. Continuing...\n")
 
 
+def _cleanup_obsolete_files() -> None:
+    """Silently remove files that are no longer used by iconfucius."""
+    obsolete = Path(".logs") / "iconfucius.log"
+    if obsolete.exists():
+        obsolete.unlink()
+
+
 # Global state
 class State:
     bot_name: Optional[str] = None  # None = not specified
@@ -293,6 +300,7 @@ def main_callback(
 ):
     """Global options for all commands."""
     _check_upgrade()
+    _cleanup_obsolete_files()
     state.bot_name = bot  # None when --bot not passed
     state.all_bots = all_bots
     state.verbose = verbose
@@ -497,6 +505,7 @@ GITIGNORE_CONTENT = """\
 .wallet/
 .cache/
 .memory/
+.logs/
 """
 
 
@@ -526,7 +535,7 @@ ENV_TEMPLATE = (
 
 
 # Required entries in .gitignore — used by both init and upgrade
-GITIGNORE_ENTRIES = [".env", ".wallet/", ".cache/", ".memory/"]
+GITIGNORE_ENTRIES = [".env", ".wallet/", ".cache/", ".memory/", ".logs/"]
 
 
 def _ensure_env_file() -> None:

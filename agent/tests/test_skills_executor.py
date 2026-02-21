@@ -768,7 +768,12 @@ class TestWalletBalanceResult:
     def test_returns_structured_data(self):
         fake_data = {
             "wallet_ckbtc_sats": 1000,
-            "bots": [{"bot_name": "bot-1", "principal": "secret"}],
+            "bots": [
+                {"name": "bot-1", "odin_sats": 500, "tokens": [
+                    {"ticker": "CONF", "id": "29m8", "balance": 100,
+                     "div": 8, "value_sats": 200},
+                ]},
+            ],
             "totals": {
                 "odin_sats": 500,
                 "token_value_sats": 200,
@@ -784,11 +789,39 @@ class TestWalletBalanceResult:
                     result = execute_tool("wallet_balance", {})
         assert result["status"] == "ok"
         assert result["wallet_ckbtc_sats"] == 1000
-        assert result["totals"]["odin_sats"] == 500
-        assert result["totals"]["token_value_sats"] == 200
-        assert result["totals"]["portfolio_sats"] == 1700
-        assert result["bots"] == [{"bot_name": "bot-1", "principal": "secret"}]
-        assert "_terminal_output" not in result
+        assert result["total_odin_sats"] == 500
+        assert result["total_token_value_sats"] == 200
+        assert result["portfolio_sats"] == 1700
+        # Per-bot data included so AI doesn't need individual balance calls
+        assert "bots" in result
+        assert len(result["bots"]) == 1
+        assert result["bots"][0]["name"] == "bot-1"
+        assert result["bots"][0]["odin_sats"] == 500
+        assert result["bots"][0]["tokens"][0]["ticker"] == "CONF"
+        # Display text goes to terminal, not AI
+        assert result["_terminal_output"] == "table output"
+        # Constraints surfaced for AI decision-making
+        assert result["constraints"]["min_deposit_sats"] == 5000
+        assert result["constraints"]["min_trade_sats"] == 500
+
+    def test_includes_constraints(self):
+        """constraints dict uses config constants so the AI respects minimums."""
+        fake_data = {
+            "wallet_ckbtc_sats": 0,
+            "totals": {"odin_sats": 0, "token_value_sats": 0, "portfolio_sats": 0},
+            "_display": "",
+        }
+        with patch("iconfucius.cli.balance.run_all_balances",
+                    return_value=fake_data):
+            with patch("iconfucius.config.require_wallet", return_value=True):
+                with patch("iconfucius.config.get_bot_names",
+                            return_value=["bot-1"]):
+                    result = execute_tool("wallet_balance", {})
+        assert result["status"] == "ok"
+        assert result["constraints"] == {
+            "min_deposit_sats": 5000,
+            "min_trade_sats": 500,
+        }
 
     def test_none_data_returns_error(self):
         with patch("iconfucius.cli.balance.run_all_balances",
@@ -1142,3 +1175,38 @@ class TestAggregateTradeResults:
         assert r["status"] == "ok"
         assert r["succeeded"] == 0
         assert r["skipped"] == 1
+
+
+class TestCheckUpdate:
+    """Tests for the check_update tool handler."""
+
+    def test_returns_no_update_when_cache_empty(self):
+        from iconfucius.skills.executor import _update_cache
+        _update_cache.clear()
+        result = execute_tool("check_update", {})
+        assert result["status"] == "ok"
+        assert result["update_available"] is False
+        assert result["latest_version"] is None
+        assert result["upgrade_command"] == "/upgrade"
+
+    def test_returns_update_when_cache_populated(self):
+        from iconfucius.skills.executor import _update_cache
+        _update_cache.clear()
+        _update_cache["latest_version"] = "99.0.0"
+        _update_cache["release_notes"] = "- New feature"
+        try:
+            result = execute_tool("check_update", {})
+            assert result["status"] == "ok"
+            assert result["update_available"] is True
+            assert result["latest_version"] == "99.0.0"
+            assert result["release_notes"] == "- New feature"
+            assert result["upgrade_command"] == "/upgrade"
+        finally:
+            _update_cache.clear()
+
+    def test_includes_running_version(self):
+        from iconfucius import __version__
+        from iconfucius.skills.executor import _update_cache
+        _update_cache.clear()
+        result = execute_tool("check_update", {})
+        assert result["running_version"] == __version__

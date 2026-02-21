@@ -10,12 +10,14 @@ from iconfucius.cli import app
 from iconfucius.cli.chat import (
     _block_to_dict,
     _bot_target,
+    _check_pypi_version,
     _describe_tool_call,
     _fmt_sats,
     _generate_startup,
     _get_language_code,
     _format_api_error,
     _handle_model_interactive,
+    _handle_upgrade,
     _persist_ai_model,
     _run_tool_loop,
     _Spinner,
@@ -1538,3 +1540,120 @@ class TestPersistAiModel:
         _persist_ai_model("new-model")
 
         assert cfg._cached_config is None
+
+
+class TestCheckPypiVersion:
+    """Tests for _check_pypi_version — PyPI + GitHub release notes fetching."""
+
+    def test_returns_none_when_up_to_date(self):
+        """No update when PyPI version matches installed."""
+        import iconfucius
+        pypi_json = json.dumps({"info": {"version": iconfucius.__version__}}).encode()
+        fake_resp = MagicMock()
+        fake_resp.read.return_value = pypi_json
+        fake_resp.__enter__ = lambda s: s
+        fake_resp.__exit__ = MagicMock(return_value=False)
+
+        with patch("iconfucius.cli.chat.urlopen", return_value=fake_resp):
+            version, notes = _check_pypi_version()
+        assert version is None
+        assert notes == ""
+
+    def test_returns_latest_version_when_newer(self):
+        """Returns latest version and empty notes when GitHub release missing."""
+        pypi_json = json.dumps({"info": {"version": "99.0.0"}}).encode()
+        fake_pypi = MagicMock()
+        fake_pypi.read.return_value = pypi_json
+        fake_pypi.__enter__ = lambda s: s
+        fake_pypi.__exit__ = MagicMock(return_value=False)
+
+        from urllib.error import URLError
+        def mock_urlopen(url, **kwargs):
+            if "pypi.org" in url:
+                return fake_pypi
+            # GitHub release not found
+            raise URLError("Not Found")
+
+        with patch("iconfucius.cli.chat.urlopen", side_effect=mock_urlopen):
+            version, notes = _check_pypi_version()
+        assert version == "99.0.0"
+        assert notes == ""
+
+    def test_returns_release_notes_from_github(self):
+        """Fetches release notes from GitHub releases API."""
+        pypi_json = json.dumps({"info": {"version": "99.0.0"}}).encode()
+        gh_json = json.dumps({"body": "- Feature A\n- Bug fix B"}).encode()
+
+        def mock_urlopen(url, **kwargs):
+            resp = MagicMock()
+            resp.__enter__ = lambda s: s
+            resp.__exit__ = MagicMock(return_value=False)
+            if "pypi.org" in url:
+                resp.read.return_value = pypi_json
+            else:
+                resp.read.return_value = gh_json
+            return resp
+
+        with patch("iconfucius.cli.chat.urlopen", side_effect=mock_urlopen):
+            version, notes = _check_pypi_version()
+        assert version == "99.0.0"
+        assert "Feature A" in notes
+        assert "Bug fix B" in notes
+
+    def test_returns_none_on_network_error(self):
+        """Gracefully returns None on network failure."""
+        from urllib.error import URLError
+        with patch("iconfucius.cli.chat.urlopen", side_effect=URLError("offline")):
+            version, notes = _check_pypi_version()
+        assert version is None
+        assert notes == ""
+
+
+class TestHandleUpgrade:
+    """Tests for _handle_upgrade — pip upgrade + re-exec flow."""
+
+    def test_prints_error_on_pip_failure(self, capsys):
+        """If pip fails, prints error and returns (no re-exec)."""
+        failed = MagicMock(returncode=1, stderr="Permission denied")
+        with patch("subprocess.run", return_value=failed) as mock_run:
+            with patch("os.execvp") as mock_exec:
+                _handle_upgrade()
+
+        mock_run.assert_called_once()
+        mock_exec.assert_not_called()
+        output = capsys.readouterr().out
+        assert "Upgrade failed" in output
+        assert "Permission denied" in output
+
+    def test_calls_pip_install_upgrade(self):
+        """Calls pip install --upgrade iconfucius."""
+        import sys
+        success = MagicMock(returncode=0)
+
+        pypi_json = json.dumps({"info": {"version": "99.0.0"}}).encode()
+        fake_resp = MagicMock()
+        fake_resp.read.return_value = pypi_json
+        fake_resp.__enter__ = lambda s: s
+        fake_resp.__exit__ = MagicMock(return_value=False)
+
+        with patch("subprocess.run", return_value=success) as mock_run:
+            with patch("os.execvp") as mock_exec:
+                with patch("iconfucius.cli.chat.urlopen", return_value=fake_resp):
+                    _handle_upgrade()
+
+        args = mock_run.call_args[0][0]
+        assert args == [sys.executable, "-m", "pip", "install", "--upgrade", "iconfucius"]
+        mock_exec.assert_called_once()
+
+    def test_reexecs_process_on_success(self):
+        """On successful pip upgrade, re-execs the process via os.execvp."""
+        import sys
+        success = MagicMock(returncode=0)
+
+        from urllib.error import URLError
+        with patch("subprocess.run", return_value=success):
+            with patch("os.execvp") as mock_exec:
+                with patch("iconfucius.cli.chat.urlopen", side_effect=URLError("x")):
+                    _handle_upgrade()
+
+        mock_exec.assert_called_once_with(sys.argv[0], sys.argv)

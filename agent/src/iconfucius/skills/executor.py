@@ -93,6 +93,24 @@ def _handle_setup_status(args: dict) -> dict:
     }
 
 
+def _handle_check_update(args: dict) -> dict:
+    from iconfucius import __version__
+
+    # Result is cached at module level by chat.py at startup
+    return {
+        "status": "ok",
+        "running_version": __version__,
+        "latest_version": _update_cache.get("latest_version"),
+        "release_notes": _update_cache.get("release_notes", ""),
+        "update_available": _update_cache.get("latest_version") is not None,
+        "upgrade_command": "/upgrade",
+    }
+
+
+# Populated by chat.py at startup so the handler doesn't re-fetch
+_update_cache: dict = {}
+
+
 def _handle_init(args: dict) -> dict:
     from typer.testing import CliRunner
     from iconfucius.cli import app as cli_app
@@ -267,7 +285,12 @@ def _handle_bot_list(args: dict) -> dict:
 
 
 def _handle_wallet_balance(args: dict) -> dict:
-    from iconfucius.config import get_bot_names, require_wallet
+    from iconfucius.config import (
+        MIN_DEPOSIT_SATS,
+        MIN_TRADE_SATS,
+        get_bot_names,
+        require_wallet,
+    )
 
     if not require_wallet():
         return {"status": "error", "error": "No wallet found. Run: iconfucius wallet create"}
@@ -286,16 +309,31 @@ def _handle_wallet_balance(args: dict) -> dict:
     display_text = data.pop("_display", "")
     totals = data.get("totals", {})
 
-    return {
+    result = {
         "status": "ok",
         "wallet_ckbtc_sats": data.get("wallet_ckbtc_sats", 0),
-        "bots": data.get("bots", []),
-        "totals": {
-            "odin_sats": totals.get("odin_sats", 0),
-            "token_value_sats": totals.get("token_value_sats", 0),
-            "portfolio_sats": totals.get("portfolio_sats", 0),
+        "total_odin_sats": totals.get("odin_sats", 0),
+        "total_token_value_sats": totals.get("token_value_sats", 0),
+        "portfolio_sats": totals.get("portfolio_sats", 0),
+        "constraints": {
+            "min_deposit_sats": MIN_DEPOSIT_SATS,
+            "min_trade_sats": MIN_TRADE_SATS,
         },
     }
+    # Include per-bot balances so the AI doesn't need individual balance calls
+    bots_list = data.get("bots", [])
+    if bots_list:
+        result["bots"] = [
+            {
+                "name": bot["name"],
+                "odin_sats": bot.get("odin_sats", 0),
+                "tokens": bot.get("tokens", []),
+            }
+            for bot in bots_list
+        ]
+    if display_text:
+        result["_terminal_output"] = display_text
+    return result
 
 
 def _handle_wallet_receive(args: dict) -> dict:
@@ -1367,6 +1405,7 @@ def _handle_memory_update(args: dict, *, persona_name: str = "") -> dict:
 _HANDLERS: dict[str, callable] = {
     "fmt_sats": _handle_fmt_sats,
     "setup_status": _handle_setup_status,
+    "check_update": _handle_check_update,
     "init": _handle_init,
     "set_bot_count": _handle_set_bot_count,
     "bot_list": _handle_bot_list,

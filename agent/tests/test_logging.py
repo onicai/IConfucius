@@ -6,11 +6,31 @@ import stat
 
 import pytest
 
+from iconfucius.logging_config import _MAX_SESSION_LOGS
+
+
+def _find_session_log(tmp_path):
+    """Find the single *-iconfucius.log file under .logs/conversations/."""
+    conv_dir = tmp_path / ".logs" / "conversations"
+    logs = list(conv_dir.glob("*-iconfucius.log"))
+    assert len(logs) == 1, f"Expected 1 session log, found {len(logs)}: {logs}"
+    return logs[0]
+
 
 class TestLogFilePermissions:
     """Log file and directory must be owner-only."""
 
     def test_log_dir_is_0700(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        _reset_logger()
+        from iconfucius.logging_config import get_logger
+        get_logger()
+
+        conv_dir = tmp_path / ".logs" / "conversations"
+        mode = stat.S_IMODE(conv_dir.stat().st_mode)
+        assert mode == 0o700, f"Expected 0700, got {oct(mode)}"
+
+    def test_parent_log_dir_is_0700(self, tmp_path, monkeypatch):
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         _reset_logger()
         from iconfucius.logging_config import get_logger
@@ -29,7 +49,7 @@ class TestLogFilePermissions:
         for h in logger.handlers:
             h.flush()
 
-        log_file = tmp_path / ".logs" / "iconfucius.log"
+        log_file = _find_session_log(tmp_path)
         mode = stat.S_IMODE(log_file.stat().st_mode)
         assert mode == 0o600, f"Expected 0600, got {oct(mode)}"
 
@@ -54,7 +74,7 @@ class TestJwtScrubbing:
         for h in logger.handlers:
             h.flush()
 
-        log_content = (tmp_path / ".logs" / "iconfucius.log").read_text()
+        log_content = _find_session_log(tmp_path).read_text()
         assert "eyJ" not in log_content
         assert "[JWT-REDACTED]" in log_content
 
@@ -68,7 +88,7 @@ class TestJwtScrubbing:
         for h in logger.handlers:
             h.flush()
 
-        log_content = (tmp_path / ".logs" / "iconfucius.log").read_text()
+        log_content = _find_session_log(tmp_path).read_text()
         assert "eyJ" not in log_content
         assert "[JWT-REDACTED]" in log_content
 
@@ -82,7 +102,7 @@ class TestJwtScrubbing:
         for h in logger.handlers:
             h.flush()
 
-        log_content = (tmp_path / ".logs" / "iconfucius.log").read_text()
+        log_content = _find_session_log(tmp_path).read_text()
         assert "abc-123-def" in log_content
 
 
@@ -100,7 +120,7 @@ class TestLogLevelGating:
         for h in logger.handlers:
             h.flush()
 
-        log_content = (tmp_path / ".logs" / "iconfucius.log").read_text()
+        log_content = _find_session_log(tmp_path).read_text()
         assert "secret debug detail" not in log_content
         assert "operational info" in log_content
 
@@ -115,7 +135,7 @@ class TestLogLevelGating:
         for h in logger.handlers:
             h.flush()
 
-        log_content = (tmp_path / ".logs" / "iconfucius.log").read_text()
+        log_content = _find_session_log(tmp_path).read_text()
         assert "now visible" in log_content
 
     def test_set_debug_false_restores_info(self, tmp_path, monkeypatch):
@@ -130,7 +150,7 @@ class TestLogLevelGating:
         for h in logger.handlers:
             h.flush()
 
-        log_content = (tmp_path / ".logs" / "iconfucius.log").read_text()
+        log_content = _find_session_log(tmp_path).read_text()
         assert "should be hidden again" not in log_content
 
     def test_env_var_enables_debug(self, tmp_path, monkeypatch):
@@ -144,8 +164,47 @@ class TestLogLevelGating:
         for h in logger.handlers:
             h.flush()
 
-        log_content = (tmp_path / ".logs" / "iconfucius.log").read_text()
+        log_content = _find_session_log(tmp_path).read_text()
         assert "env debug visible" in log_content
+
+
+class TestSessionLogCleanup:
+    """Old session logs beyond _MAX_SESSION_LOGS are deleted."""
+
+    def test_cleanup_keeps_max_files(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        conv_dir = tmp_path / ".logs" / "conversations"
+        conv_dir.mkdir(parents=True)
+
+        extra = 3
+        for i in range(_MAX_SESSION_LOGS + extra):
+            (conv_dir / f"20260101-{i:06d}-iconfucius.log").write_text("")
+
+        _reset_logger()
+        from iconfucius.logging_config import get_logger
+        get_logger()
+
+        remaining = sorted(conv_dir.glob("*-iconfucius.log"))
+        # _MAX_SESSION_LOGS kept + 1 newly created
+        assert len(remaining) == _MAX_SESSION_LOGS
+        names = {f.name for f in remaining}
+        for i in range(extra):
+            assert f"20260101-{i:06d}-iconfucius.log" not in names
+
+    def test_cleanup_noop_under_limit(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        conv_dir = tmp_path / ".logs" / "conversations"
+        conv_dir.mkdir(parents=True)
+
+        for i in range(5):
+            (conv_dir / f"20260101-{i:06d}-iconfucius.log").write_text("")
+
+        _reset_logger()
+        from iconfucius.logging_config import get_logger
+        get_logger()
+
+        remaining = list(conv_dir.glob("*-iconfucius.log"))
+        assert len(remaining) == 6  # 5 pre-existing + 1 new
 
 
 def _reset_logger():
@@ -154,3 +213,5 @@ def _reset_logger():
     for handler in logger.handlers[:]:
         handler.close()
         logger.removeHandler(handler)
+    from iconfucius.logging_config import _reset_session_stamp
+    _reset_session_stamp()
