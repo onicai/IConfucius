@@ -10,9 +10,9 @@
 [tokens.29m8]
 name = "IConfucius"
 ticker = "ICONFUCIUS"
-marketcap = 116214000000
+marketcap = 112287000000
 marketcap_date = "2026-02-21"
-holder_count = 303
+holder_count = 306
 bonded = true
 twitter_verified = true
 created_time = "2025-03-09T23:49:13.000Z"
@@ -40,7 +40,7 @@ created_time = "2025-02-28T20:23:49.000Z"
 [tokens.28k1]
 name = "Crypto Burger"
 ticker = "CRYPTOBURG"
-marketcap = 360539466000000
+marketcap = 360272451000000
 marketcap_date = "2026-02-21"
 holder_count = 37627
 bonded = true
@@ -60,9 +60,9 @@ created_time = "2025-03-16T18:01:12.000Z"
 [tokens.2bt1]
 name = "Bitcat"
 ticker = "BITCAT"
-marketcap = 16519797000000
+marketcap = 18068022000000
 marketcap_date = "2026-02-21"
-holder_count = 4974
+holder_count = 4978
 bonded = true
 twitter_verified = false
 created_time = "2025-03-19T12:00:09.000Z"
@@ -70,9 +70,9 @@ created_time = "2025-03-19T12:00:09.000Z"
 [tokens.2dyb]
 name = "ForsetiScan"
 ticker = "FORSETISCN"
-marketcap = 19645185000000
+marketcap = 19365990000000
 marketcap_date = "2026-02-21"
-holder_count = 12305
+holder_count = 12298
 bonded = true
 twitter_verified = false
 created_time = "2025-03-31T16:06:48.000Z"
@@ -100,7 +100,7 @@ created_time = "2025-02-25T00:58:59.000Z"
 [tokens.2jj2]
 name = "ODINCAT"
 ticker = "ODINCAT"
-marketcap = 94416000000
+marketcap = 94038000000
 marketcap_date = "2026-02-21"
 holder_count = 1495
 bonded = true
@@ -122,7 +122,7 @@ name = "ODINDOG"
 ticker = "ODINDOG"
 marketcap = 1577226000000
 marketcap_date = "2026-02-21"
-holder_count = 11162
+holder_count = 11163
 bonded = true
 twitter_verified = false
 created_time = "2024-12-28T03:26:40.000Z"
@@ -140,9 +140,9 @@ created_time = "2025-05-24T19:38:25.000Z"
 [tokens.2kd6]
 name = "WBTC"
 ticker = "WBTC"
-marketcap = 43449000000
+marketcap = 44142000000
 marketcap_date = "2026-02-21"
-holder_count = 136561
+holder_count = 136562
 bonded = true
 twitter_verified = false
 created_time = "2025-05-29T06:24:42.000Z"
@@ -150,9 +150,9 @@ created_time = "2025-05-29T06:24:42.000Z"
 [tokens.2ktp]
 name = "Bit Diamond"
 ticker = "BTHACD"
-marketcap = 43667190000000
+marketcap = 46435851000000
 marketcap_date = "2026-02-21"
-holder_count = 5588
+holder_count = 5603
 bonded = true
 twitter_verified = false
 created_time = "2025-06-10T05:21:25.000Z"
@@ -160,9 +160,9 @@ created_time = "2025-06-10T05:21:25.000Z"
 [tokens.2kyg]
 name = "WETH"
 ticker = "WETH"
-marketcap = 73458000000
+marketcap = 75264000000
 marketcap_date = "2026-02-21"
-holder_count = 1033
+holder_count = 1034
 bonded = true
 twitter_verified = false
 created_time = "2025-06-16T15:45:03.000Z"
@@ -180,7 +180,7 @@ created_time = "2025-03-04T16:55:14.000Z"
 [tokens.2n8d]
 name = "𝛑 "
 ticker = "PI"
-marketcap = 4269342000000
+marketcap = 4272051000000
 marketcap_date = "2026-02-21"
 holder_count = 1317
 bonded = true
