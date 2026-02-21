@@ -38,7 +38,6 @@ dependencies = [
     "typer>=0.21.1",
     "requests>=2.31",
     "curl_cffi>=0.7",
-    "bitcoin-utils>=0.7.3",
     "icp-py-core>=2.3.0",
     "filelock>=3.0",
     "anthropic>=0.40",
@@ -51,6 +50,8 @@ dev = [
     "pytest-asyncio>=0.21",
     "build>=1.0",
     "twine>=5.0",
+    "bitcoin-utils>=0.7.3",
+    "coincurve>=20.0",
 ]
 
 [project.urls]
