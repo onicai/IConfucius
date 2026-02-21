@@ -89,6 +89,11 @@ The software and hosted services are provided "as is", without warranty of any k
 - ✅ Memory system: automatic trade recording, per-persona strategy and learnings (`.memory/`)
 - ✅ IC certificate verification (blst) for secure balance checks
 - ✅ CI/CD pipeline across Python 3.11, 3.12, 3.13
+- ✅ Self-upgrade: `/upgrade` command updates and restarts the CLI in-place
+- ✅ Version awareness: shows running version in prompt, notifies when updates are available
+- ✅ Dual conversation logs: `ai-full` (complete API replay) and `ai-cached` (quick reading)
+- ✅ Prompt caching: system prompt and tools cached with Anthropic's ephemeral cache for lower latency and cost
+- ✅ Default AI model: Claude opus-4-6 with `/model` command to switch at runtime
 
 ## Coming Next
 
