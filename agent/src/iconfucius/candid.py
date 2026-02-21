@@ -174,6 +174,13 @@ type SignRecord = record {
     signatureHex : text;
 };
 
+type Bip322SignRecord = record {
+    botName : text;
+    signatureHex : text;
+    witnessB64 : text;
+    address : text;
+};
+
 type Payment = record {
     tokenName : text;
     tokenLedger : principal;
@@ -202,6 +209,7 @@ service : {
     getPublicKeyQuery : (record { botName : text }) -> (variant { Ok : PublicKeyRecord; Err : ApiError }) query;
     getPublicKey : (record { botName : text; payment : opt Payment }) -> (variant { Ok : PublicKeyRecord; Err : ApiError });
     sign : (record { botName : text; message : blob; payment : opt Payment }) -> (variant { Ok : SignRecord; Err : ApiError });
+    signBip322 : (record { botName : text; message : text; payment : opt Payment }) -> (variant { Ok : Bip322SignRecord; Err : ApiError });
     getFeeTokens : () -> (variant { Ok : FeeTokensRecord; Err : ApiError }) query;
 }
 """

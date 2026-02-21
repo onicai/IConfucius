@@ -7,13 +7,11 @@ threshold Schnorr signing (chain fusion).
 Flow:
   1. Get x-only pubkey + P2TR address from onicai ckSigner canister
   2. Call SIWB canister siwb_prepare_login(address)
-  3. Compute BIP322 sighash (via bip322)
-  4. Sign sighash with onicai ckSigner canister sign()
-  5. Encode BIP322 witness (via bip322)
-  6. Generate Ed25519 session key
-  7. Call SIWB canister siwb_login()
-  8. Call SIWB canister siwb_get_delegation()
-  9. Exchange delegation for JWT via REST API
+  3. Sign BIP322 message via onicai ckSigner canister signBip322()
+  4. Generate Ed25519 session key
+  5. Call SIWB canister siwb_login()
+  6. Call SIWB canister siwb_get_delegation()
+  7. Exchange delegation for JWT via REST API
 
 Session caching:
   After login, saves JWT + metadata to secret/session_{bot_name}.json.
@@ -40,8 +38,6 @@ from icp_canister import Canister
 from icp_identity import DelegateIdentity, Identity
 from icp_principal import Principal
 
-# BIP322 helper (pure Python)
-from iconfucius.bip322 import compute_sighash, derive_address, inject_signature_and_extract_witness
 from iconfucius.candid import CKBTC_LEDGER_CANDID, ODIN_SIWB_CANDID, ONICAI_CKSIGNER_CANDID
 from iconfucius.config import (
     CKBTC_LEDGER_CANISTER_ID,
@@ -431,6 +427,28 @@ def sign_with_fee(cksigner, wallet_agent, bot_name, message):
     return sign_result
 
 
+def signBip322_with_fee(cksigner, wallet_agent, bot_name, message):
+    """Sign a BIP322 message via ckSigner canister, handling ICRC-2 fee payment.
+
+    Args:
+        cksigner: ckSigner Canister object (authenticated with wallet_agent)
+        wallet_agent: Agent for the PEM identity (holds ckBTC)
+        bot_name: Bot name for derivation path
+        message: BIP322 message string to sign
+
+    Returns:
+        dict: Unwrapped signBip322 result with "Ok" or "Err" key
+    """
+    with _fee_payment_lock:
+        payment = _approve_fee_if_required(cksigner, wallet_agent)
+        result = unwrap(cksigner.signBip322({
+            "botName": bot_name,
+            "message": message,
+            "payment": payment,
+        }, verify_certificate=get_verify_certificates()))
+    return result
+
+
 # ---------------------------------------------------------------------------
 # SIWB login flow (reusable)
 # ---------------------------------------------------------------------------
@@ -484,15 +502,6 @@ def siwb_login(bot_name: str = None, verbose: bool = True) -> dict:
     pubkey_hex, address = _get_public_key(iconfucius, bot_name, wallet_agent)
     log(f"X-only pubkey: {pubkey_hex}")
 
-    # Silent cross-check: canister address must match local BIP341 derivation
-    _local_address = derive_address(pubkey_hex)
-    if _local_address != address:
-        raise RuntimeError(
-            f"P2TR address mismatch!\n"
-            f"  Canister: {address}\n"
-            f"  Local:    {_local_address}"
-        )
-
     # Step 2: Sign In With Bitcoin (SIWB) prepare login
     log(f"\n--- Step 2: Sign In With Bitcoin (SIWB) prepare login ---")
     log(f"  -> Request a challenge message from SIWB canister to prove Bitcoin address ownership")
@@ -507,37 +516,27 @@ def siwb_login(bot_name: str = None, verbose: bool = True) -> dict:
     message = prepare_result["Ok"]
     log(f"SIWB message:\n{message}")
 
-    # Step 3: Compute BIP322 sighash
-    log(f"\n--- Step 3: Compute BIP322 sighash ---")
-    log(f"  -> Hash the challenge message per BIP322 spec (creates the 32-byte value to sign)")
-    sighash_result = compute_sighash(message, pubkey_hex)
-    sighash_hex = sighash_result["sighash"]
-    assert sighash_result["address"] == address, (
-        f"Address mismatch: {sighash_result['address']} != {address}"
+    # Step 3: Sign BIP322 message (canister computes sighash, signs, encodes witness)
+    log(f"\n--- Step 3: Sign BIP322 message via ckSigner canister ---")
+    log(f"  -> Canister hashes challenge per BIP322, signs with threshold Schnorr (BIP340), encodes witness")
+    bip322_result = signBip322_with_fee(iconfucius, wallet_agent, bot_name, message)
+    if "Err" in bip322_result:
+        raise RuntimeError(f"signBip322 failed: {bip322_result['Err']}")
+    signature_hex = bip322_result["Ok"]["signatureHex"]
+    witness_b64 = bip322_result["Ok"]["witnessB64"]
+    assert bip322_result["Ok"]["address"] == address, (
+        f"Address mismatch: {bip322_result['Ok']['address']} != {address}"
     )
-    # Step 4: Sign sighash with canister (includes fee payment if configured)
-    log(f"\n--- Step 4: Sign sighash with canister ---")
-    log(f"  -> IC canister signs the sighash using threshold Schnorr (BIP340) - proves key ownership")
-    sighash_bytes = bytes.fromhex(sighash_hex)
-    sign_result = sign_with_fee(iconfucius, wallet_agent, bot_name, sighash_bytes)
-    if "Err" in sign_result:
-        raise RuntimeError(f"sign failed: {sign_result['Err']}")
-    signature_hex = sign_result["Ok"]["signatureHex"]
-    # Step 5: Encode BIP322 witness
-    log(f"\n--- Step 5: Encode BIP322 witness ---")
-    log(f"  -> Wrap signature in BIP322 witness format (Bitcoin's standard message signing proof)")
-    witness_result = inject_signature_and_extract_witness(message, pubkey_hex, signature_hex)
-    witness_b64 = witness_result["witness"]
-    # Step 6: Generate Ed25519 session key
-    log(f"\n--- Step 6: Generate Ed25519 session key ---")
+    # Step 4: Generate Ed25519 session key
+    log(f"\n--- Step 4: Generate Ed25519 session key ---")
     log(f"  -> Create ephemeral Ed25519 keypair for IC canister calls (SIWB will delegate to this key)")
     session_identity = Identity(type="ed25519")
     der_pubkey = session_identity.der_pubkey
     session_pubkey_der = bytes.fromhex(der_pubkey) if isinstance(der_pubkey, str) else der_pubkey
     log(f"Session pubkey (DER) length: {len(session_pubkey_der)} bytes")
 
-    # Step 7: SIWB login
-    log(f"\n--- Step 7: SIWB login ---")
+    # Step 5: SIWB login
+    log(f"\n--- Step 5: SIWB login ---")
     log(f"  -> Submit BIP322 proof to SIWB canister - links Bitcoin address to session key")
     login_result = unwrap(siwb.siwb_login(
         witness_b64, address, pubkey_hex, session_pubkey_der,
@@ -556,8 +555,8 @@ def siwb_login(bot_name: str = None, verbose: bool = True) -> dict:
     hours = duration.total_seconds() / 3600
     log(f"Expiration: {expiration} ({exp_dt.strftime('%Y-%m-%d %H:%M:%S')}, {hours:.1f}h from now)")
 
-    # Step 8: Get delegation (with retry)
-    log(f"\n--- Step 8: Get delegation ---")
+    # Step 6: Get delegation (with retry)
+    log(f"\n--- Step 6: Get delegation ---")
     log(f"  -> Fetch signed delegation from SIWB - authorizes session key to act as bot's principal")
     delegation_result = None
     for attempt in range(5):
@@ -596,8 +595,8 @@ def siwb_login(bot_name: str = None, verbose: bool = True) -> dict:
     bot_principal_text = bot_principal.to_str()
     log(f"Bot principal: {bot_principal_text}")
 
-    # Step 9: Exchange delegation for JWT
-    log(f"\n--- Step 9: Exchange delegation for JWT ---")
+    # Step 7: Exchange delegation for JWT
+    log(f"\n--- Step 7: Exchange delegation for JWT ---")
     log(f"  -> Send delegation to Odin.Fun REST API - returns JWT for authenticated API calls")
     timestamp = str(int(time.time() * 1000))
     _der_pubkey, sig_bytes = delegate_identity.sign(timestamp.encode())
