@@ -165,7 +165,8 @@ def collect_balances(bot_name: str, token_id: str = "29m8",
             price = t.get("price", 0)
             # API balance is in milli-subunits; decimals tells us the extra factor
             balance = raw_balance / (10 ** decimals) if decimals > 0 else raw_balance
-            value_microsats = (balance * price) / (10 ** divisibility)
+            # Value uses raw_balance because price is per raw-balance unit
+            value_microsats = (raw_balance * price) / (10 ** divisibility)
             value_sats = value_microsats / 1_000_000
             token_holdings.append({
                 "ticker": ticker,

@@ -393,6 +393,9 @@ class TestCollectBalances:
         # Human-readable: 132482122800.932 / 10^8 ≈ 1324.82
         human = t["balance"] / (10 ** t["divisibility"])
         assert human == pytest.approx(1324.82, rel=0.01)
+        # value_sats uses raw_balance (not decimals-corrected balance)
+        # 132482122800932 * 5709 / 10^8 / 1e6 = 7563.74
+        assert t["value_sats"] == pytest.approx(7563.74, rel=0.01)
 
     @patch("iconfucius.cli.balance.cffi_requests")
     @patch("iconfucius.cli.balance.Canister")
