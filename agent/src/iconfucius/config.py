@@ -76,21 +76,25 @@ def fmt_sats(sats, btc_usd_rate) -> str:
     """
     if btc_usd_rate:
         usd = (sats / 100_000_000) * btc_usd_rate
-        return f"{sats:,} sats (${usd:.2f})"
+        return f"{sats:,} sats (${usd:.3f})"
     return f"{sats:,} sats"
 
 
-def fmt_tokens(count: int, token_id: str) -> str:
-    """Format token count with USD value by fetching current price.
+def fmt_tokens(count, token_id: str) -> str:
+    """Format a human-readable token count with USD value.
 
     Args:
-        count: Raw token count.
+        count: Token count (human-readable, e.g. 1000.0).
         token_id: Odin token ID (e.g. '29m8').
 
     Returns:
-        e.g. '1,000,000 tokens ($5.00)' or '1,000,000 tokens' on failure.
+        e.g. '1,000.00 tokens ($5.00)' or '1,000.00 tokens' on failure.
     """
-    label = f"{count:,} tokens"
+    try:
+        amount = float(count)
+    except (TypeError, ValueError):
+        return f"{count} tokens"
+    label = f"{amount:,.3f} tokens"
     try:
         from curl_cffi import requests as cffi_requests
         resp = cffi_requests.get(
@@ -105,10 +109,11 @@ def fmt_tokens(count: int, token_id: str) -> str:
         price = info.get("price", 0)
         divisibility = info.get("divisibility", 8)
         btc_usd_rate = get_btc_to_usd_rate()
-        value_microsats = (count * price) / (10 ** divisibility)
+        # amount * price gives value in microsats (divisibility cancels out)
+        value_microsats = amount * price
         value_sats = value_microsats / 1_000_000
         usd = (value_sats / 100_000_000) * btc_usd_rate
-        return f"{label} (${usd:,.2f})"
+        return f"{label} (${usd:,.3f})"
     except Exception:
         return label
 

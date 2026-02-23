@@ -89,15 +89,9 @@ def run_withdraw(bot_name: str, amount: str, verbose: bool = False) -> dict:
     log(f"  Bot principal: {bot_principal_text}")
 
     client = Client(url=IC_HOST)
-    anon_agent = Agent(Identity(anonymous=True), client)
     auth_agent = Agent(delegate_identity, client)
 
-    odin_anon = Canister(
-        agent=anon_agent,
-        canister_id=ODIN_TRADING_CANISTER_ID,
-        candid_str=ODIN_TRADING_CANDID,
-    )
-    odin_auth = Canister(
+    odin = Canister(
         agent=auth_agent,
         canister_id=ODIN_TRADING_CANISTER_ID,
         candid_str=ODIN_TRADING_CANDID,
@@ -109,7 +103,7 @@ def run_withdraw(bot_name: str, amount: str, verbose: bool = False) -> dict:
     logger.info("Step 2: Odin.Fun balance (bot=%s)...", bot_name)
 
     odin_btc_msat = unwrap_canister_result(
-        odin_anon.getBalance(bot_principal_text, "btc", "btc",
+        odin.getBalance(bot_principal_text, "btc",
                              verify_certificate=get_verify_certificates())
     )
     odin_btc_sats = odin_btc_msat // MSAT_PER_SAT
@@ -154,7 +148,7 @@ def run_withdraw(bot_name: str, amount: str, verbose: bool = False) -> dict:
 
     try:
         result = unwrap_canister_result(
-            odin_auth.token_withdraw(withdraw_request, verify_certificate=get_verify_certificates())
+            odin.token_withdraw(withdraw_request, verify_certificate=get_verify_certificates())
         )
         log(f"  Result: {result}")
 
@@ -175,8 +169,8 @@ def run_withdraw(bot_name: str, amount: str, verbose: bool = False) -> dict:
     logger.info("Step 5: Verify withdrawal (waiting 5s)...")
     time.sleep(5)
 
-    icrc1_canister__anon = create_icrc1_canister(anon_agent)
-    bot_ckbtc = get_balance(icrc1_canister__anon, bot_principal_text)
+    icrc1_canister = create_icrc1_canister(auth_agent)
+    bot_ckbtc = get_balance(icrc1_canister, bot_principal_text)
     logger.info("Step 5: bot received %s", _fmt(bot_ckbtc))
 
     if bot_ckbtc <= CKBTC_FEE:
@@ -200,11 +194,10 @@ def run_withdraw(bot_name: str, amount: str, verbose: bool = False) -> dict:
     wallet_principal = str(wallet_identity.sender())
 
     # Transfer bot's ckBTC to wallet (minus fee)
-    icrc1_canister__bot = create_icrc1_canister(auth_agent)
     sweep_amount = bot_ckbtc - CKBTC_FEE
 
     log(f"  Transferring {_fmt(sweep_amount)} to wallet...")
-    result = transfer(icrc1_canister__bot, wallet_principal, sweep_amount)
+    result = transfer(icrc1_canister, wallet_principal, sweep_amount)
 
     if isinstance(result, dict) and "Err" in result:
         return {"status": "error", "step": "transfer",
@@ -215,7 +208,7 @@ def run_withdraw(bot_name: str, amount: str, verbose: bool = False) -> dict:
                 _fmt(sweep_amount), tx_index)
 
     # Verify wallet balance
-    wallet_balance = get_balance(icrc1_canister__anon, wallet_principal)
+    wallet_balance = get_balance(icrc1_canister, wallet_principal)
     logger.info("Withdrawal complete. Wallet balance: %s", _fmt(wallet_balance))
 
     return {

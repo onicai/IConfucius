@@ -63,11 +63,9 @@ jobs:
         working-directory: agent
         run: pytest -v
 
-  # Verify the built wheel installs cleanly, all dependencies resolve,
-  # the package imports, and the CLI entry point works.
-  # TODO: once ed25519-blake2b dependency is removed, re-enable
-  # CC=/bin/false CXX=/bin/false to catch C extension deps without
-  # pre-built wheels.
+  # Verify the built wheel installs cleanly without a C compiler.
+  # CC=/bin/false ensures no dependency requires source compilation —
+  # all runtime deps must have pre-built wheels for every platform.
   test-wheel:
     name: Wheel ${{ matrix.python-version }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
@@ -91,12 +89,8 @@ jobs:
           python -m pip install --upgrade pip build
           python -m build
 
-      - name: Install build tools (macOS ARM)
-        if: matrix.os == 'macos-latest'
-        run: brew install automake libtool
-
-      - name: Install wheel
-        run: pip install agent/dist/*.whl
+      - name: Install wheel (no C compiler)
+        run: CC=/bin/false CXX=/bin/false pip install agent/dist/*.whl
 
       - name: Verify package imports
         run: |

@@ -1,0 +1,166 @@
+type VoltTransferRequest = 
+ record {
+   amount: nat;
+   canister: text;
+   fee: opt nat;
+   id: opt nat;
+   memo: opt blob;
+   notify: opt bool;
+   other: opt blob;
+   standard: text;
+   to: text;
+ };
+type VoltAuthorization = 
+ record {
+   binding: bool;
+   expiry: int;
+   receiver: principal;
+   request: VoltTransferRequest;
+   user: principal;
+ };
+type UtxoStatus = 
+ variant {
+   Checked: Utxo;
+   Minted: record {
+             block_index: nat64;
+             minted_amount: nat64;
+             utxo: Utxo;
+           };
+   Tainted: Utxo;
+   ValueTooSmall: Utxo;
+ };
+type Utxo = 
+ record {
+   height: nat32;
+   outpoint: OutPoint;
+   value: nat64;
+ };
+type UpdateBalanceResult = 
+ variant {
+   Err: UpdateBalanceError;
+   Ok: vec UtxoStatus;
+ };
+type UpdateBalanceError = 
+ variant {
+   AlreadyProcessing;
+   GenericError: record {
+                   error_code: nat64;
+                   error_message: text;
+                 };
+   NoNewUtxos:
+    record {
+      current_confirmations: opt nat32;
+      pending_utxos: opt vec PendingUtxo;
+      required_confirmations: nat32;
+    };
+   TemporarilyUnavailable: text;
+ };
+type Subaccount = vec nat8;
+type Result_2 = 
+ variant {
+   err: text;
+   ok: text;
+ };
+type Result_1 = 
+ variant {
+   err: text;
+   ok: UpdateBalanceResult;
+ };
+type Result = 
+ variant {
+   err: text;
+   ok: nat;
+ };
+type Protocol = 
+ variant {
+   btc;
+   ckbtc;
+   volt;
+ };
+type ProcessedUtxo = 
+ record {
+   blockheight: nat;
+   completed: bool;
+   minted: bool;
+   owner: principal;
+   status: text;
+   value: nat64;
+ };
+type PendingUtxo = 
+ record {
+   confirmations: nat32;
+   outpoint: OutPoint;
+   value: nat64;
+ };
+type OutPoint = 
+ record {
+   txid: vec nat8;
+   vout: nat32;
+ };
+type MintRequestLegacy = 
+ record {
+   principal;
+   nat64;
+ };
+type BroadcastedUtxo = 
+ record {
+   owner: text;
+   utxoid: text;
+ };
+type Account = 
+ record {
+   owner: principal;
+   subaccount: opt blob;
+ };
+service : {
+  add_fastbtc_bulk: (password: text, requests:
+   vec record {
+         text;
+         nat64;
+         text;
+       }) -> ();
+  add_fastbtc_bulk_proxy: (requests: vec MintRequestLegacy) -> ();
+  add_fastbtc_proxy: (request: MintRequestLegacy) -> ();
+  admin_balance_fix: (password: text, address: text, amount: nat, protocol:
+   Protocol) -> (Result);
+  admin_broadcast: (password: text, users: vec text) -> ();
+  admin_broadcast_ckbtc: (password: text, user: text, amount: nat64, txid:
+   text) -> (Result_2);
+  admin_broadcast_utxo: (password: text, utxo: BroadcastedUtxo) -> (Result_2);
+  admin_broadcast_utxo_v2: (password: text, utxo: BroadcastedUtxo, amount:
+   nat64) -> (Result_2);
+  admin_claim: (password: text, users: vec text) -> ();
+  admin_manual_process: (password: text, p: text) -> (Result_1);
+  checkUtxo: (utxoid: text) -> (opt ProcessedUtxo) query;
+  ckbtc_deposit: (fromSubAccount: opt Subaccount, amount: nat) -> (Result);
+  console_log: (count: nat) -> (vec text) query;
+  fixUtxos: (password: text, ou: text, nu: text) -> ();
+  icrc10_supported_standards: () ->
+   (vec record {
+          name: text;
+          url: text;
+        }) query;
+  icrc28_trusted_origins: () -> (record {trusted_origins: vec text;}) query;
+  minter_balance_update: (text) -> ();
+  proxy_canisters: () -> (vec text) query;
+  revenue_withdraw: (amount: nat) -> (Result);
+  stats: () -> (vec record {
+                      text;
+                      text;
+                    }) query;
+  test: (password: text) -> ();
+  test_get_account: (address: text) -> (Account) query;
+  test_revenue: (password: text, amount: nat) -> (Result);
+  test_revenue_stats: (password: text) -> (vec record {
+                                                 text;
+                                                 text;
+                                               }) query;
+  volt_authorization_notification: (_aid: nat, auth: VoltAuthorization, data:
+   opt blob) -> (record {
+                   amount: opt nat;
+                   forward: opt text;
+                   keep: opt bool;
+                 });
+  withdraw: (tokenid: text, address: text, amount: nat, protocol:
+   Protocol) -> (Result);
+}

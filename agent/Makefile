@@ -3,6 +3,7 @@
 .PHONY: help install install-dev install-blst build clean publish-test publish test lint \
        e2e-setup e2e-fund-check-ckbtc e2e-fund-check-btc \
        e2e-trade-bot-1 e2e-trade-all-bots \
+       e2e-transfer-bot-1 \
        e2e-wallet-balance-all-bots e2e-withdraw-bot-1 e2e-sweep \
        e2e-send-ckbtc e2e-send-check-ckbtc \
        e2e-send-btc e2e-send-check-btc e2e-clean
@@ -24,8 +25,9 @@ help:
 	@echo "  make e2e-setup               Step 1: init project, create wallet, save return addresses"
 	@echo "  make e2e-fund-check-ckbtc    Step 2a: verify ckBTC funding arrived"
 	@echo "  make e2e-fund-check-btc      Step 2b: verify BTC-to-ckBTC conversion"
-	@echo "  make e2e-trade-bot-1         Step 3a: fund bot-1, buy, sell"
-	@echo "  make e2e-trade-all-bots      Step 3b: fund all bots, buy, sell"
+	@echo "  make e2e-trade-bot-1         Step 3a: sweep, fund bot-1, buy, sell"
+	@echo "  make e2e-trade-all-bots      Step 3b: sweep, fund all bots, buy, sell"
+	@echo "  make e2e-transfer-bot-1      Step 3c: sweep, fund, buy, transfer bot-1 → bot-2"
 	@echo "  make e2e-wallet-balance-all-bots  wallet balance --all-bots"
 	@echo "  make e2e-withdraw-bot-1      Step 4: withdraw from bot-1 back to wallet"
 	@echo "  make e2e-sweep               Step 5: sweep all bots (sell all tokens + withdraw all)"
@@ -113,8 +115,9 @@ lint:
 #   2. (manual) fund wallet with ckBTC (20000 sats) and BTC (20000 sats)
 #   3. make e2e-fund-check-ckbtc    — verify ckBTC arrived
 #      make e2e-fund-check-btc      — verify BTC → ckBTC conversion
-#   4. make e2e-trade-bot-1         — fund bot-1, buy, sell
-#      make e2e-trade-all-bots     — fund all bots, buy, sell
+#   4. make e2e-trade-bot-1         — sweep, fund bot-1, buy, sell
+#      make e2e-trade-all-bots     — sweep, fund all bots, buy, sell
+#      make e2e-transfer-bot-1     — sweep, fund, buy, transfer bot-1 → bot-2
 #   5. make e2e-withdraw-bot-1      — withdraw from bot-1 back to wallet
 #   6. make e2e-sweep               — fund, buy, then sweep
 #   7. make e2e-send-ckbtc          — send ckBTC back to principal
@@ -127,6 +130,7 @@ lint:
 E2E_NETWORK         ?= testing
 E2E_DIR             := e2e-bots-$(E2E_NETWORK)
 E2E_BOT             := bot-1
+E2E_BOT2            := bot-2
 E2E_TOKEN           := 29m8
 E2E_FUND_WALLET_AMT := 20000
 E2E_FUND_BOTS_AMT  := 5000
@@ -207,29 +211,32 @@ e2e-fund-check-btc:
 e2e-trade-bot-1:
 	@test -d $(E2E_DIR) || (echo "ERROR: Run 'make e2e-setup' first"; exit 1)
 	@echo "==========================================="
-	@echo " E2E Trade: bot-1 — fund, buy, sell"
+	@echo " E2E Trade: bot-1 — sweep, fund, buy, sell"
 	@echo " Network:         $(E2E_NETWORK)"
 	@echo " Token:           $(E2E_TOKEN)"
 	@echo " Bot fund amount: $(E2E_FUND_BOTS_AMT) sats"
 	@echo " Trade amount:    $(E2E_TRADE_AMT) sats"
 	@echo "==========================================="
 	@echo ""
-	@echo "--- 1/5: config ---"
+	@echo "--- 1/6: sweep (sell all + withdraw) ---"
+	$(ODIN) sweep --bot $(E2E_BOT)
+	@echo ""
+	@echo "--- 2/6: config ---"
 	$(ODIN) config
 	@echo ""
-	@echo "--- 2/5: fund bot ($(E2E_FUND_BOTS_AMT) sats) ---"
+	@echo "--- 3/6: fund bot ($(E2E_FUND_BOTS_AMT) sats) ---"
 	$(ODIN) fund $(E2E_FUND_BOTS_AMT) --bot $(E2E_BOT)
 	@echo ""
-	@echo "--- 3/5: trade buy $(E2E_TOKEN) $(E2E_TRADE_AMT) sats ---"
+	@echo "--- 4/6: trade buy $(E2E_TOKEN) $(E2E_TRADE_AMT) sats ---"
 	$(ODIN) trade buy $(E2E_TOKEN) $(E2E_TRADE_AMT) --bot $(E2E_BOT)
 	@echo ""
 	@echo "Waiting 10s for query replica to sync..."
 	@sleep 10
 	@echo ""
-	@echo "--- 4/5: trade sell $(E2E_TOKEN) all ---"
+	@echo "--- 5/6: trade sell $(E2E_TOKEN) all ---"
 	$(ODIN) trade sell $(E2E_TOKEN) all --bot $(E2E_BOT)
 	@echo ""
-	@echo "--- 5/5: balance ---"
+	@echo "--- 6/6: balance ---"
 	$(ODIN) wallet balance --bot $(E2E_BOT) --token $(E2E_TOKEN)
 	@echo ""
 	@echo "==========================================="
@@ -246,29 +253,32 @@ e2e-trade-bot-1:
 e2e-trade-all-bots:
 	@test -d $(E2E_DIR) || (echo "ERROR: Run 'make e2e-setup' first"; exit 1)
 	@echo "==========================================="
-	@echo " E2E Trade: all bots — fund, buy, sell"
+	@echo " E2E Trade: all bots — sweep, fund, buy, sell"
 	@echo " Network:         $(E2E_NETWORK)"
 	@echo " Token:           $(E2E_TOKEN)"
 	@echo " Bot fund amount: $(E2E_FUND_BOTS_AMT) sats (per bot)"
 	@echo " Trade amount:    $(E2E_TRADE_AMT) sats (per bot)"
 	@echo "==========================================="
 	@echo ""
-	@echo "--- 1/5: config ---"
+	@echo "--- 1/6: sweep all bots (sell all + withdraw) ---"
+	$(ODIN) sweep --all-bots
+	@echo ""
+	@echo "--- 2/6: config ---"
 	$(ODIN) config
 	@echo ""
-	@echo "--- 2/5: fund all bots ($(E2E_FUND_BOTS_AMT) sats each) ---"
+	@echo "--- 3/6: fund all bots ($(E2E_FUND_BOTS_AMT) sats each) ---"
 	$(ODIN) fund $(E2E_FUND_BOTS_AMT) --all-bots
 	@echo ""
-	@echo "--- 3/5: trade buy $(E2E_TOKEN) $(E2E_TRADE_AMT) sats ---"
+	@echo "--- 4/6: trade buy $(E2E_TOKEN) $(E2E_TRADE_AMT) sats ---"
 	$(ODIN) trade buy $(E2E_TOKEN) $(E2E_TRADE_AMT) --all-bots
 	@echo ""
 	@echo "Waiting 10s for query replica to sync..."
 	@sleep 10
 	@echo ""
-	@echo "--- 4/5: trade sell $(E2E_TOKEN) all ---"
+	@echo "--- 5/6: trade sell $(E2E_TOKEN) all ---"
 	$(ODIN) trade sell $(E2E_TOKEN) all --all-bots
 	@echo ""
-	@echo "--- 5/5: balance ---"
+	@echo "--- 6/6: balance ---"
 	$(ODIN) wallet balance --all-bots
 	@echo ""
 	@echo "==========================================="
@@ -277,6 +287,48 @@ e2e-trade-all-bots:
 	@echo " Next:"
 	@echo "   make e2e-withdraw-bot-1   (withdraw from bot back to wallet)"
 	@echo "   make e2e-sweep      (buy token, then sell all + withdraw all)"
+	@echo "==========================================="
+
+# -- Step 3c: Transfer bot-1 → bot-2 ------------------------------------------
+
+e2e-transfer-bot-1:
+	@test -d $(E2E_DIR) || (echo "ERROR: Run 'make e2e-setup' first"; exit 1)
+	@test -f $(E2E_DIR)/.cache/session_$(E2E_BOT2)_$(E2E_NETWORK).json || \
+		(echo "ERROR: No session cache for $(E2E_BOT2). Run 'make e2e-trade-all-bots' first"; exit 1)
+	$(eval BOT2_PRINCIPAL := $(shell jq -r '.bot_principal_text' $(E2E_DIR)/.cache/session_$(E2E_BOT2)_$(E2E_NETWORK).json))
+	@echo "==========================================="
+	@echo " E2E Transfer: bot-1 → bot-2"
+	@echo " Network:         $(E2E_NETWORK)"
+	@echo " Token:           $(E2E_TOKEN)"
+	@echo " Bot-2 principal: $(BOT2_PRINCIPAL)"
+	@echo "==========================================="
+	@echo ""
+	@echo "--- 1/7: sweep all bots ---"
+	$(ODIN) sweep --all-bots
+	@echo ""
+	@echo "--- 2/7: config ---"
+	$(ODIN) config
+	@echo ""
+	@echo "--- 3/7: fund bot-1 ($(E2E_FUND_BOTS_AMT) sats) ---"
+	$(ODIN) fund $(E2E_FUND_BOTS_AMT) --bot $(E2E_BOT)
+	@echo ""
+	@echo "--- 4/7: buy $(E2E_TOKEN) $(E2E_TRADE_AMT) sats ---"
+	$(ODIN) trade buy $(E2E_TOKEN) $(E2E_TRADE_AMT) --bot $(E2E_BOT)
+	@echo ""
+	@echo "Waiting 10s for query replica to sync..."
+	@sleep 10
+	@echo ""
+	@echo "--- 5/7: transfer all $(E2E_TOKEN) bot-1 → bot-2 ---"
+	$(ODIN) transfer $(E2E_TOKEN) all $(BOT2_PRINCIPAL) --bot $(E2E_BOT) -y
+	@echo ""
+	@echo "--- 6/7: balance bot-1 ---"
+	$(ODIN) wallet balance --bot $(E2E_BOT) --token $(E2E_TOKEN)
+	@echo ""
+	@echo "--- 7/7: balance bot-2 ---"
+	$(ODIN) wallet balance --bot $(E2E_BOT2) --token $(E2E_TOKEN)
+	@echo ""
+	@echo "==========================================="
+	@echo " E2E Transfer bot-1 → bot-2: COMPLETE"
 	@echo "==========================================="
 
 # -- Wallet balance all bots ---------------------------------------------------

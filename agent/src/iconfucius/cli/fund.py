@@ -140,7 +140,7 @@ def _fund_one_bot(bot_name, amount, pem_content, verbose, btc_usd_rate):
             candid_str=ODIN_TRADING_CANDID,
         )
         odin_balance_msat = unwrap_canister_result(
-            odin_anon.getBalance(bot_principal, "btc", "btc",
+            odin_anon.getBalance(bot_principal, "btc",
                                  verify_certificate=get_verify_certificates())
         )
         odin_balance_sats = odin_balance_msat // MSAT_PER_SAT

@@ -613,7 +613,7 @@ class TestDescribeToolCallAccuracy:
     def test_trade_sell_usd_shows_dollar(self):
         desc = _describe_tool_call("trade_sell", {
             "amount_usd": 10.0, "token_id": "29m8", "bot_name": "bot-1"})
-        assert "$10.00" in desc
+        assert "$10.000" in desc
 
     def test_withdraw_shows_amount(self):
         desc = _describe_tool_call("withdraw", {
@@ -640,14 +640,14 @@ class TestWalletBalanceDataLeakage:
     """Verify wallet_balance doesn't leak per-bot details to AI."""
 
     def test_returns_totals_and_safe_bot_fields(self):
-        """AI receives totals + per-bot balances but never secrets like principals."""
+        """AI receives totals + per-bot balances including principals."""
         fake_data = {
             "wallet_ckbtc_sats": 50_000,
             "bots": [
                 {"name": "bot-1", "odin_sats": 10_000,
-                 "principal": "secret-principal-1", "tokens": []},
+                 "principal": "bot-principal-1", "tokens": []},
                 {"name": "bot-2", "odin_sats": 20_000,
-                 "principal": "secret-principal-2", "tokens": []},
+                 "principal": "bot-principal-2", "tokens": []},
             ],
             "totals": {
                 "odin_sats": 30_000,
@@ -668,14 +668,14 @@ class TestWalletBalanceDataLeakage:
         assert result["wallet_ckbtc_sats"] == 50_000
         assert result["total_odin_sats"] == 30_000
         assert result["portfolio_sats"] == 85_000
-        # Per-bot balances are included (name, odin_sats, tokens only)
+        # Per-bot balances with principals exposed for AI to surface
         assert len(result["bots"]) == 2
         for bot in result["bots"]:
-            assert set(bot.keys()) == {"name", "odin_sats", "tokens"}
-        # Secrets must NOT leak to the AI
-        assert "secret-principal" not in str(result)
-        # Terminal output is for user, not AI
-        assert "_terminal_output" in result
+            assert set(bot.keys()) == {"name", "principal", "odin_sats", "tokens", "has_odin_account"}
+        assert result["bots"][0]["principal"] == "bot-principal-1"
+        assert result["bots"][1]["principal"] == "bot-principal-2"
+        # No terminal output — AI summarizes from structured data
+        assert "_terminal_output" not in result
 
     def test_none_data_returns_error(self):
         with patch("iconfucius.cli.balance.run_all_balances",

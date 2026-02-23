@@ -326,13 +326,13 @@ def _handle_wallet_balance(args: dict) -> dict:
         result["bots"] = [
             {
                 "name": bot["name"],
+                "principal": bot.get("principal", ""),
                 "odin_sats": bot.get("odin_sats", 0),
                 "tokens": bot.get("tokens", []),
+                "has_odin_account": bot.get("has_odin_account", False),
             }
             for bot in bots_list
         ]
-    if display_text:
-        result["_terminal_output"] = display_text
     return result
 
 
@@ -714,6 +714,46 @@ def _handle_install_blst(args: dict) -> dict:
     return {"status": "ok", "display": "\n".join(lines)}
 
 
+def _handle_account_lookup(args: dict) -> dict:
+    from iconfucius.accounts import lookup_odin_account
+
+    address = args.get("address", "")
+    if not address:
+        return {"status": "error", "error": "Address is required."}
+
+    account = lookup_odin_account(address)
+    if not account:
+        return {
+            "status": "ok",
+            "found": False,
+            "display": f"No Odin.fun account found for '{address}'.",
+        }
+
+    principal = account.get("principal", "")
+    username = account.get("username") or "(no username)"
+    lines = [
+        f"Odin.fun account: {username}",
+        f"  Principal:          {principal}",
+    ]
+    if account.get("btc_wallet_address"):
+        lines.append(f"  BTC wallet:         {account['btc_wallet_address']}")
+    if account.get("btc_deposit_address"):
+        lines.append(f"  BTC deposit:        {account['btc_deposit_address']}")
+    if account.get("bio"):
+        lines.append(f"  Bio:                {account['bio']}")
+    if account.get("follower_count") is not None:
+        lines.append(f"  Followers:          {account['follower_count']:,}")
+    if account.get("following_count") is not None:
+        lines.append(f"  Following:          {account['following_count']:,}")
+
+    return {
+        "status": "ok",
+        "found": True,
+        "display": "\n".join(lines),
+        **account,
+    }
+
+
 def _handle_persona_list(args: dict) -> dict:
     from iconfucius.config import get_default_persona
     from iconfucius.persona import list_personas
@@ -1034,6 +1074,18 @@ def _usd_to_sats(amount_usd: float) -> int:
 _MAX_RAW_TOKENS = 2**63  # guard against bogus price data
 
 
+def _tokens_to_subunits(amount: float, token_id: str) -> int:
+    """Convert human-readable token count to raw sub-units.
+
+    Example: 1000.0 tokens with divisibility=8 → 100_000_000_000
+    """
+    from iconfucius.tokens import fetch_token_data
+
+    data = fetch_token_data(token_id)
+    divisibility = data.get("divisibility", 8) if data else 8
+    return int(amount * (10 ** divisibility))
+
+
 def _usd_to_tokens(amount_usd: float, token_id: str) -> int:
     """Convert a USD amount to raw token sub-units using live price data.
 
@@ -1103,16 +1155,22 @@ def _handle_trade_sell(args: dict) -> dict:
     amount_usd = args.get("amount_usd")
     bot_names = _resolve_bot_names(args)
 
-    # Convert USD to raw token amount if needed
+    # Convert USD to raw token amount if needed (already returns sub-units)
+    amount_is_subunits = False
     if amount_usd is not None and not amount:
         try:
             amount = _usd_to_tokens(amount_usd, token_id)
+            amount_is_subunits = True
             args["amount"] = amount  # write back for _record_trade
         except Exception as e:
             return {"status": "error", "error": f"USD conversion failed: {e}"}
 
     if not all([token_id, amount, bot_names]):
         return {"status": "error", "error": "'token_id', 'amount' (or 'amount_usd'), and at least one bot are required."}
+
+    # Convert human-readable token count to raw sub-units for the canister
+    if not amount_is_subunits and str(amount).lower() != "all":
+        amount = _tokens_to_subunits(float(amount), token_id)
 
     from iconfucius.cli.concurrent import report_status, run_per_bot
     from iconfucius.cli.trade import run_trade
@@ -1229,6 +1287,63 @@ def _handle_withdraw(args: dict) -> dict:
     }
 
 
+def _handle_token_transfer(args: dict) -> dict:
+    from iconfucius.config import require_wallet
+
+    if not require_wallet():
+        return {"status": "error", "error": "No wallet found. Run: iconfucius wallet create"}
+
+    token_id = args.get("token_id")
+    amount = args.get("amount")
+    to_address = args.get("to_address")
+    bot_names = _resolve_bot_names(args)
+
+    if not all([token_id, amount, to_address, bot_names]):
+        return {
+            "status": "error",
+            "error": "token_id, amount, to_address, and at least one bot are required.",
+        }
+
+    # Convert human-readable token count to raw sub-units for the canister
+    if str(amount).lower() != "all":
+        amount = _tokens_to_subunits(float(amount), token_id)
+
+    from iconfucius.cli.concurrent import report_status, run_per_bot
+    from iconfucius.cli.transfer import run_transfer
+
+    report_status(f"transferring {token_id} from {len(bot_names)} bot(s)...")
+    results = run_per_bot(
+        lambda name: run_transfer(name, token_id, str(amount), to_address),
+        bot_names,
+    )
+
+    succeeded, failed = [], []
+    for bot_name, result in results:
+        if isinstance(result, Exception):
+            failed.append({"bot": bot_name, "error": str(result)})
+        elif isinstance(result, dict) and result.get("status") == "error":
+            failed.append({"bot": bot_name, "error": result.get("error", "")})
+        elif isinstance(result, dict) and result.get("status") == "ok":
+            succeeded.append({"bot": bot_name, **result})
+        else:
+            failed.append({"bot": bot_name, "error": f"Unexpected result: {result}"})
+
+    lines = []
+    if succeeded:
+        lines.append(f"Transferred {token_id} from {len(succeeded)} bot(s)")
+    for f in failed:
+        lines.append(f"  {f['bot']}: FAILED — {f['error']}")
+    display = "\n".join(lines) if lines else "No transfers executed"
+
+    all_ok = not failed
+    return {
+        "status": "ok" if all_ok else "partial",
+        "display": display,
+        "succeeded": len(succeeded),
+        "failed": len(failed),
+    }
+
+
 def _handle_wallet_send(args: dict) -> dict:
     from iconfucius.config import require_wallet
 
@@ -1315,29 +1430,29 @@ def _record_trade(tool_name: str, args: dict, result: dict,
 
     def _fmt_usd(sats: float) -> str:
         if btc_usd:
-            return f"${(sats / 100_000_000) * btc_usd:.2f}"
+            return f"${(sats / 100_000_000) * btc_usd:.3f}"
         return "?"
 
     lines = [f"## {action} — {ts}"]
     lines.append(f"- Token: {token_id} ({ticker})")
 
     is_sell_all = str(amount).lower() == "all"
-    amount_int = 0 if is_sell_all else (int(amount) if str(amount).isdigit() else 0)
     if action == "BUY":
         # amount is sats spent; estimate display tokens received
+        amount_int = 0 if is_sell_all else int(float(amount)) if amount else 0
         lines.append(f"- Spent: {amount_int:,} sats ({_fmt_usd(amount_int)})")
         if price:
             # display_tokens = sats * 10^6 / price (divisibility cancels out)
             display_tokens = amount_int * 1_000_000 / price
-            lines.append(f"- Est. tokens: ~{display_tokens:,.2f}")
+            lines.append(f"- Est. tokens: ~{display_tokens:,.3f}")
     elif is_sell_all:
         lines.append(f"- Sold: ALL tokens")
     else:
-        # amount is raw token sub-units; show display tokens and estimate sats
-        display_tokens = amount_int / (10 ** divisibility)
-        lines.append(f"- Sold: {display_tokens:,.2f} tokens ({amount_int:,} sub-units)")
+        # amount is human-readable token count; estimate sats received
+        display_tokens = float(amount) if amount else 0.0
+        lines.append(f"- Sold: {display_tokens:,.3f} tokens")
         if price:
-            est_sats = (amount_int * price) / (10 ** divisibility) / 1_000_000
+            est_sats = display_tokens * price / 1_000_000
             lines.append(f"- Est. received: ~{est_sats:,.0f} sats ({_fmt_usd(est_sats)})")
 
     if price:
@@ -1416,6 +1531,7 @@ _HANDLERS: dict[str, callable] = {
     "wallet_monitor": _handle_wallet_monitor,
     "security_status": _handle_security_status,
     "install_blst": _handle_install_blst,
+    "account_lookup": _handle_account_lookup,
     "persona_list": _handle_persona_list,
     "persona_show": _handle_persona_show,
     "token_lookup": _handle_token_lookup,
@@ -1425,6 +1541,7 @@ _HANDLERS: dict[str, callable] = {
     "trade_buy": _handle_trade_buy,
     "trade_sell": _handle_trade_sell,
     "withdraw": _handle_withdraw,
+    "token_transfer": _handle_token_transfer,
     "wallet_send": _handle_wallet_send,
     "memory_read_strategy": _handle_memory_read_strategy,
     "memory_read_learnings": _handle_memory_read_learnings,
