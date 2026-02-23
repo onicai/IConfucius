@@ -726,6 +726,9 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False) -> None:
         bot_name: Default bot for trading context.
         verbose: Show verbose output.
     """
+    from iconfucius.config import set_verbose
+    set_verbose(verbose)
+
     try:
         persona = load_persona(persona_name)
     except PersonaNotFoundError as e:
@@ -853,7 +856,7 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False) -> None:
                             set_status_callback(_on_status)
                             try:
                                 from iconfucius.cli.balance import run_all_balances
-                                bot_data = run_all_balances(all_bot_names)
+                                bot_data = run_all_balances(all_bot_names, verbose=verbose)
                             finally:
                                 set_progress_callback(None)
                                 set_status_callback(None)

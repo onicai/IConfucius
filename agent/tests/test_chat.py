@@ -1185,6 +1185,128 @@ class TestChatHintsPlacement:
 
 
 # ---------------------------------------------------------------------------
+# Verbose flag propagation
+# ---------------------------------------------------------------------------
+
+
+class TestVerboseFlag:
+    """Ensure --verbose is wired through run_chat."""
+
+    @patch("iconfucius.cli.chat.read_trades", return_value="")
+    @patch("iconfucius.cli.chat.read_learnings", return_value="")
+    @patch("iconfucius.cli.chat.read_strategy", return_value="")
+    @patch("iconfucius.cli.chat._generate_startup",
+           return_value=("Greeting", "Goodbye!"))
+    @patch("iconfucius.cli.chat.create_backend")
+    @patch("iconfucius.cli.chat.load_persona")
+    @patch("iconfucius.config.set_verbose")
+    def test_set_verbose_called(self, mock_set_verbose, mock_load,
+                                mock_backend_factory, mock_startup,
+                                mock_strategy, mock_learnings, mock_trades,
+                                tmp_path, monkeypatch):
+        """run_chat(verbose=True) calls set_verbose(True)."""
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        (tmp_path / "iconfucius.toml").write_text(
+            '[settings]\n[bots.bot-1]\ndescription = "Bot 1"\n'
+        )
+        cfg._cached_config = None
+        cfg._cached_config_path = None
+
+        persona = _make_persona(name="IConfucius")
+        mock_load.return_value = persona
+        mock_backend_factory.return_value = MagicMock()
+
+        from iconfucius.cli.chat import run_chat
+        with patch("builtins.input", side_effect=EOFError):
+            run_chat("iconfucius", "bot-1", verbose=True)
+
+        mock_set_verbose.assert_called_once_with(True)
+
+    @patch("iconfucius.cli.chat.read_trades", return_value="")
+    @patch("iconfucius.cli.chat.read_learnings", return_value="")
+    @patch("iconfucius.cli.chat.read_strategy", return_value="")
+    @patch("iconfucius.cli.chat._generate_startup",
+           return_value=("Greeting", "Goodbye!"))
+    @patch("iconfucius.cli.chat.create_backend")
+    @patch("iconfucius.cli.chat.load_persona")
+    @patch("iconfucius.config.set_verbose")
+    def test_set_verbose_false_by_default(self, mock_set_verbose, mock_load,
+                                          mock_backend_factory, mock_startup,
+                                          mock_strategy, mock_learnings,
+                                          mock_trades,
+                                          tmp_path, monkeypatch):
+        """run_chat() without verbose calls set_verbose(False)."""
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        (tmp_path / "iconfucius.toml").write_text(
+            '[settings]\n[bots.bot-1]\ndescription = "Bot 1"\n'
+        )
+        cfg._cached_config = None
+        cfg._cached_config_path = None
+
+        persona = _make_persona(name="IConfucius")
+        mock_load.return_value = persona
+        mock_backend_factory.return_value = MagicMock()
+
+        from iconfucius.cli.chat import run_chat
+        with patch("builtins.input", side_effect=EOFError):
+            run_chat("iconfucius", "bot-1")
+
+        mock_set_verbose.assert_called_once_with(False)
+
+    @patch("iconfucius.cli.chat.read_trades", return_value="")
+    @patch("iconfucius.cli.chat.read_learnings", return_value="")
+    @patch("iconfucius.cli.chat.read_strategy", return_value="")
+    @patch("iconfucius.cli.chat._generate_startup",
+           return_value=("Greeting", "Goodbye!"))
+    @patch("iconfucius.cli.chat.create_backend")
+    @patch("iconfucius.cli.chat.load_persona")
+    @patch("iconfucius.cli.chat.execute_tool", return_value={
+        "status": "ok", "config_exists": True, "wallet_exists": True,
+        "env_exists": True, "has_api_key": True, "ready": True,
+    })
+    def test_verbose_passed_to_run_all_balances(self, mock_exec, mock_load,
+                                                 mock_backend_factory,
+                                                 mock_startup, mock_strategy,
+                                                 mock_learnings, mock_trades,
+                                                 tmp_path, monkeypatch,
+                                                 capsys):
+        """run_chat(verbose=True) passes verbose=True to run_all_balances."""
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        (tmp_path / "iconfucius.toml").write_text(
+            '[settings]\n'
+            '[bots.bot-1]\ndescription = "Bot 1"\n'
+            '[bots.bot-2]\ndescription = "Bot 2"\n'
+        )
+        cfg._cached_config = None
+        cfg._cached_config_path = None
+
+        persona = _make_persona(name="IConfucius")
+        mock_load.return_value = persona
+        backend = MagicMock()
+        backend.model = "claude-sonnet-4-6"
+        mock_backend_factory.return_value = backend
+
+        wallet_data = {"_display": "Wallet: 50,000 sats", "balance_sats": 50000}
+
+        with patch("builtins.input", side_effect=["", "hello", EOFError]), \
+             patch("iconfucius.cli.balance.run_wallet_balance",
+                   return_value=wallet_data), \
+             patch("iconfucius.cli.balance.run_all_balances",
+                   return_value={"_display": "Holdings", "bots": []}) \
+                as mock_all_bal, \
+             patch("iconfucius.cli.concurrent.set_progress_callback"), \
+             patch("iconfucius.cli.concurrent.set_status_callback"), \
+             patch("iconfucius.cli.chat._run_tool_loop",
+                   side_effect=EOFError):
+            from iconfucius.cli.chat import run_chat
+            run_chat("iconfucius", "bot-1", verbose=True)
+
+        mock_all_bal.assert_called_once()
+        _, kwargs = mock_all_bal.call_args
+        assert kwargs.get("verbose") is True
+
+
+# ---------------------------------------------------------------------------
 # Bot holdings injection
 # ---------------------------------------------------------------------------
 
