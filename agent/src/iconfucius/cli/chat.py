@@ -456,7 +456,8 @@ def _run_tool_loop(backend, messages: list[dict], system: str,
     Args:
         persona_key: Persona identifier for memory operations (e.g. "iconfucius").
     """
-    for _ in range(_MAX_TOOL_ITERATIONS):
+    unconfirmed_iterations = 0
+    while unconfirmed_iterations < _MAX_TOOL_ITERATIONS:
         with _Spinner(f"{persona_name} is thinking..."):
             response = backend.chat_with_tools(messages, system, tools)
 
@@ -557,6 +558,14 @@ def _run_tool_loop(backend, messages: list[dict], system: str,
                 if answer in ("n", "no"):
                     batch_approved = False
 
+        # User-confirmed operations reset the counter — the user is actively
+        # supervising, so there's no runaway risk.  Unconfirmed iterations
+        # (read-only tools, declined operations) count toward the limit.
+        if confirm_blocks and batch_approved:
+            unconfirmed_iterations = 0
+        else:
+            unconfirmed_iterations += 1
+
         # Execute each tool call
         confirm_ids = {b.id for b in confirm_blocks}
         tool_results = []
@@ -635,6 +644,13 @@ def _run_tool_loop(backend, messages: list[dict], system: str,
                 })
 
         messages.append({"role": "user", "content": tool_results})
+
+    # Loop exhausted without user confirmation — warn about incomplete work
+    print(
+        f"\n\033[33m⚠ Tool loop limit reached ({_MAX_TOOL_ITERATIONS} iterations "
+        f"without confirmation). The operation may be incomplete.\033[0m"
+    )
+    print("\033[2mType 'continue' to resume, or ask a new question.\033[0m\n")
 
 
 def _block_to_dict(block) -> dict:

@@ -831,8 +831,8 @@ class TestRunToolLoop:
         mock_exec.assert_called_once_with("wallet_balance", {},
                                           persona_name="")
 
-    def test_max_iterations_guard(self):
-        """Loop stops after MAX_TOOL_ITERATIONS."""
+    def test_max_iterations_guard(self, capsys):
+        """Loop stops after MAX_TOOL_ITERATIONS and prints warning."""
         backend = MagicMock()
 
         # Always return a tool call
@@ -850,6 +850,53 @@ class TestRunToolLoop:
 
         # Should have called chat_with_tools exactly MAX_TOOL_ITERATIONS times
         assert backend.chat_with_tools.call_count == _MAX_TOOL_ITERATIONS
+
+        # Warning message printed when limit is hit
+        captured = capsys.readouterr().out
+        assert "Tool loop limit reached" in captured
+        assert "continue" in captured
+
+    @patch("iconfucius.cli.chat.execute_tool", return_value={"status": "ok"})
+    @patch("iconfucius.cli.chat.get_tool_metadata",
+           return_value={"requires_confirmation": True})
+    def test_confirmed_iterations_reset_counter(self, mock_meta, mock_exec):
+        """User-confirmed iterations reset the counter, allowing > MAX loops."""
+        backend = MagicMock()
+
+        # Build more iterations than _MAX_TOOL_ITERATIONS, each with a
+        # confirmable tool call.  After 15 confirmed iterations the AI
+        # returns a text-only response to end the loop.
+        total_iterations = _MAX_TOOL_ITERATIONS + 5
+
+        responses = []
+        for i in range(total_iterations):
+            tool_block = MagicMock()
+            tool_block.type = "tool_use"
+            tool_block.id = f"id_confirm_{i}"
+            tool_block.name = "fund"
+            tool_block.input = {"bot_name": f"bot-{i}", "amount": 1000}
+            resp = MagicMock()
+            resp.content = [tool_block]
+            responses.append(resp)
+
+        # Final text-only response
+        text_block = MagicMock()
+        text_block.type = "text"
+        text_block.text = "All transfers complete."
+        final_resp = MagicMock()
+        final_resp.content = [text_block]
+        responses.append(final_resp)
+
+        backend.chat_with_tools.side_effect = responses
+
+        # User confirms every operation (default Y)
+        with patch("builtins.input", return_value=""):
+            messages = []
+            _run_tool_loop(backend, messages, "system", [], "TestBot")
+
+        # All confirmed iterations ran + final text response
+        assert backend.chat_with_tools.call_count == total_iterations + 1
+        assert mock_exec.call_count == total_iterations
 
     @patch("iconfucius.cli.chat.execute_tool", return_value={"status": "ok"})
     def test_tool_call_passes_persona_key(self, mock_exec):

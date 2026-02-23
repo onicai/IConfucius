@@ -760,7 +760,7 @@ class TestMaxIterationsGuard:
     @patch("iconfucius.cli.chat.execute_tool", return_value={"status": "ok"})
     @patch("iconfucius.cli.chat.get_tool_metadata",
            return_value={"requires_confirmation": False})
-    def test_stops_after_max_iterations(self, mock_meta, mock_exec):
+    def test_stops_after_max_iterations(self, mock_meta, mock_exec, capsys):
         """Tool loop stops after _MAX_TOOL_ITERATIONS even if AI keeps calling tools."""
         from iconfucius.cli.chat import _MAX_TOOL_ITERATIONS
 
@@ -780,6 +780,11 @@ class TestMaxIterationsGuard:
 
         # Should have stopped at the max
         assert mock_exec.call_count <= _MAX_TOOL_ITERATIONS
+
+        # Warning message printed when limit is hit
+        captured = capsys.readouterr().out
+        assert "Tool loop limit reached" in captured
+        assert "continue" in captured
 
 
 # ===================================================================
