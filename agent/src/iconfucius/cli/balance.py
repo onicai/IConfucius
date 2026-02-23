@@ -159,9 +159,12 @@ def collect_balances(bot_name: str, token_id: str = "29m8",
         for t in tokens:
             ticker = t.get("ticker", t.get("id", "?"))
             token_id = t.get("id", "?")
-            balance = t.get("balance", 0)
+            raw_balance = t.get("balance", 0)
             divisibility = t.get("divisibility", 8)
+            decimals = t.get("decimals", 0)
             price = t.get("price", 0)
+            # API balance is in milli-subunits; decimals tells us the extra factor
+            balance = raw_balance / (10 ** decimals) if decimals > 0 else raw_balance
             value_microsats = (balance * price) / (10 ** divisibility)
             value_sats = value_microsats / 1_000_000
             token_holdings.append({
@@ -873,13 +876,13 @@ def run_all_balances(bot_names: list, token_id: str = "29m8",
             human_balance = t["balance"] / (10 ** div) if div > 0 else t["balance"]
             bot_tokens.append({
                 "ticker": ticker, "id": token_id_val,
-                "balance": human_balance, "div": div,
+                "balance": human_balance,
                 "value_sats": vs,
             })
             if ticker not in token_totals:
                 token_totals[ticker] = {
                     "id": token_id_val, "balance": 0,
-                    "div": div, "value_sats": 0,
+                    "value_sats": 0,
                 }
             token_totals[ticker]["balance"] += human_balance
             token_totals[ticker]["value_sats"] += vs

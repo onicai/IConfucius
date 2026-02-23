@@ -313,7 +313,8 @@ class TestCollectBalances:
         mock_resp.json.return_value = {
             "data": [
                 {"type": "token", "ticker": "TEST", "id": "t1",
-                 "balance": 100, "divisibility": 8, "price": 1000000}
+                 "balance": 100_000, "divisibility": 8, "decimals": 3,
+                 "price": 1000000}
             ]
         }
         mock_resp.text = '{"data": []}'
@@ -326,6 +327,8 @@ class TestCollectBalances:
         assert result.odin_sats == 5000.0
         assert len(result.token_holdings) == 1
         assert result.token_holdings[0]["ticker"] == "TEST"
+        # balance should be corrected: 100_000 / 10^3 = 100
+        assert result.token_holdings[0]["balance"] == 100
         assert result.has_odin_account is True
 
     @patch("iconfucius.cli.balance.cffi_requests")
@@ -353,6 +356,76 @@ class TestCollectBalances:
         with patch("iconfucius.accounts.resolve_odin_account", return_value="principal-abc"):
             result = collect_balances("bot-1", verbose=False)
         mock_login.assert_called_once()
+
+    @patch("iconfucius.cli.balance.cffi_requests")
+    @patch("iconfucius.cli.balance.Canister")
+    @patch("iconfucius.cli.balance.Agent")
+    @patch("iconfucius.cli.balance.Client")
+    @patch("iconfucius.cli.balance.Identity")
+    @patch("iconfucius.cli.balance.load_session")
+    def test_decimals_correction(self, mock_load, MockId, MockClient,
+                                  MockAgent, MockCanister, mock_cffi,
+                                  mock_siwb_auth):
+        """API balance with decimals=3 should be divided by 1000."""
+        mock_load.return_value = mock_siwb_auth
+
+        mock_odin = MagicMock()
+        mock_odin.getBalance.return_value = [{"value": 0}]
+        MockCanister.return_value = mock_odin
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "data": [
+                {"type": "token", "ticker": "ICONFUCIUS", "id": "29m8",
+                 "balance": 132482122800932, "divisibility": 8,
+                 "decimals": 3, "price": 5709}
+            ]
+        }
+        mock_resp.text = '{"data": []}'
+        mock_cffi.get.return_value = mock_resp
+
+        with patch("iconfucius.accounts.resolve_odin_account", return_value="principal-abc"):
+            result = collect_balances("bot-1", verbose=False)
+        t = result.token_holdings[0]
+        # 132482122800932 / 10^3 = 132482122800.932
+        assert t["balance"] == pytest.approx(132482122800.932)
+        # Human-readable: 132482122800.932 / 10^8 ≈ 1324.82
+        human = t["balance"] / (10 ** t["divisibility"])
+        assert human == pytest.approx(1324.82, rel=0.01)
+
+    @patch("iconfucius.cli.balance.cffi_requests")
+    @patch("iconfucius.cli.balance.Canister")
+    @patch("iconfucius.cli.balance.Agent")
+    @patch("iconfucius.cli.balance.Client")
+    @patch("iconfucius.cli.balance.Identity")
+    @patch("iconfucius.cli.balance.load_session")
+    def test_decimals_zero_no_correction(self, mock_load, MockId, MockClient,
+                                          MockAgent, MockCanister, mock_cffi,
+                                          mock_siwb_auth):
+        """When decimals=0 (or absent), balance is stored unchanged."""
+        mock_load.return_value = mock_siwb_auth
+
+        mock_odin = MagicMock()
+        mock_odin.getBalance.return_value = [{"value": 0}]
+        MockCanister.return_value = mock_odin
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "data": [
+                {"type": "token", "ticker": "TEST", "id": "t1",
+                 "balance": 50_000_000_000, "divisibility": 8,
+                 "price": 1000}
+            ]
+        }
+        mock_resp.text = '{"data": []}'
+        mock_cffi.get.return_value = mock_resp
+
+        with patch("iconfucius.accounts.resolve_odin_account", return_value="principal-abc"):
+            result = collect_balances("bot-1", verbose=False)
+        # No decimals field → no correction
+        assert result.token_holdings[0]["balance"] == 50_000_000_000
 
     @patch("iconfucius.cli.balance.load_session")
     def test_no_odin_account_returns_early(self, mock_load, mock_siwb_auth):
@@ -429,6 +502,40 @@ class TestRunAllBalances:
         assert bots[1]["name"] == "bot-2"
         assert bots[1]["has_odin_account"] is False
         assert bots[1]["odin_sats"] == 0
+
+    @patch("iconfucius.cli.balance._format_holdings_table", return_value="table")
+    @patch("iconfucius.cli.balance._collect_wallet_info")
+    @patch("iconfucius.cli.balance.collect_balances")
+    @patch("iconfucius.cli.balance._fetch_btc_usd_rate", return_value=100_000.0)
+    def test_token_dicts_exclude_div(self, mock_rate, mock_collect,
+                                      mock_wallet, mock_holdings,
+                                      odin_project):
+        """Token dicts in bots and totals must not contain 'div' (backend concern)."""
+        mock_wallet.return_value = (
+            {"principal": "p", "btc_address": "bc1", "balance_sats": 50000,
+             "pending_sats": 0, "withdrawal_balance_sats": 0,
+             "active_withdrawal_count": 0, "address_btc_sats": 0},
+            ["wallet line"],
+        )
+        mock_collect.return_value = BotBalances(
+            "bot-1", "abc", odin_sats=1000.0, has_odin_account=True,
+            token_holdings=[{
+                "ticker": "TEST", "token_id": "t1",
+                "balance": 500_000_000, "divisibility": 8,
+                "value_sats": 1000,
+            }],
+        )
+
+        result = run_all_balances(bot_names=["bot-1"])
+        assert result is not None
+        # Per-bot token dicts must not expose div
+        bot_token = result["bots"][0]["tokens"][0]
+        assert "div" not in bot_token
+        assert bot_token["ticker"] == "TEST"
+        assert bot_token["balance"] == 5.0  # 500_000_000 / 10^8
+        # Totals token dicts must not expose div
+        totals_token = result["totals"]["tokens"]["TEST"]
+        assert "div" not in totals_token
 
     @patch("iconfucius.cli.balance._collect_wallet_info")
     @patch("iconfucius.cli.balance.collect_balances", side_effect=Exception("fail"))
