@@ -16,7 +16,6 @@ import sys
 from curl_cffi import requests as cffi_requests
 from icp_agent import Agent, Client
 from icp_canister import Canister
-from icp_identity import Identity
 from icp_principal import Principal
 
 from iconfucius.config import fmt_sats, fmt_tokens, get_btc_to_usd_rate
@@ -129,15 +128,9 @@ def run_trade(bot_name: str, action: str, token_id: str, amount: str,
     log(f"  Bot principal: {bot_principal_text}")
 
     client = Client(url=IC_HOST)
-    anon_agent = Agent(Identity(anonymous=True), client)
     auth_agent = Agent(delegate_identity, client)
 
-    odin_anon = Canister(
-        agent=anon_agent,
-        canister_id=ODIN_TRADING_CANISTER_ID,
-        candid_str=ODIN_TRADING_CANDID,
-    )
-    odin_auth = Canister(
+    odin = Canister(
         agent=auth_agent,
         canister_id=ODIN_TRADING_CANISTER_ID,
         candid_str=ODIN_TRADING_CANDID,
@@ -149,12 +142,12 @@ def run_trade(bot_name: str, action: str, token_id: str, amount: str,
     logger.info("Step 2: Odin.Fun holdings (bot=%s)...", bot_name)
 
     btc_before_msat = unwrap_canister_result(
-        odin_anon.getBalance(bot_principal_text, "btc", "btc",
+        odin.getBalance(bot_principal_text, "btc",
                              verify_certificate=get_verify_certificates())
     )
     btc_before_sats = btc_before_msat // MSAT_PER_SAT
     token_before = unwrap_canister_result(
-        odin_anon.getBalance(bot_principal_text, token_id, "btc",
+        odin.getBalance(bot_principal_text, token_id,
                              verify_certificate=get_verify_certificates())
     )
 
@@ -213,7 +206,7 @@ def run_trade(bot_name: str, action: str, token_id: str, amount: str,
     log(f"  Trade request: {trade_request}")
 
     result = unwrap_canister_result(
-        odin_auth.token_trade(trade_request, verify_certificate=get_verify_certificates())
+        odin.token_trade(trade_request, verify_certificate=get_verify_certificates())
     )
     log(f"  Result: {result}")
 

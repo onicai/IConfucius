@@ -25,7 +25,7 @@ class TestSatsStr:
     def test_with_usd_rate(self):
         result = fmt_sats(100_000_000, 100_000.0)
         assert "100,000,000 sats" in result
-        assert "$100000.00" in result
+        assert "$100000.000" in result
 
     def test_without_usd_rate(self):
         result = fmt_sats(5000, None)
@@ -34,7 +34,7 @@ class TestSatsStr:
     def test_zero(self):
         result = fmt_sats(0, 100_000.0)
         assert "0 sats" in result
-        assert "$0.00" in result
+        assert "$0.000" in result
 
 
 # ---------------------------------------------------------------------------
@@ -44,9 +44,9 @@ class TestSatsStr:
 class TestFmtTokenAmount:
     def test_divisibility_8_large_balance(self):
         """Regression: raw balance 2_771_411_893_677_396 with div=8 should
-        display as ~27,714,118.94 — NOT as 2,771,411,893,677,396."""
+        display as ~27,714,118.937 — NOT as 2,771,411,893,677,396."""
         result = _fmt_token_amount(2_771_411_893_677_396, 8)
-        assert result == "27,714,118.94"
+        assert result == "27,714,118.937"
         # Must NOT contain the raw 15+ digit number
         assert "2,771,411,893,677,396" not in result
 
@@ -64,7 +64,7 @@ class TestFmtTokenAmount:
 
     def test_divisibility_2(self):
         result = _fmt_token_amount(12345, 2)
-        assert result == "123.45"
+        assert result == "123.450"
 
     def test_tiny_amount_shows_more_decimals(self):
         # 1 / 10^8 = 0.00000001 — less than 0.01, so full precision
@@ -105,14 +105,17 @@ class TestBotBalances:
         data = BotBalances(bot_name="bot-1", bot_principal="abc")
         assert data.odin_sats == 0.0
         assert data.token_holdings == []
+        assert data.has_odin_account is False
 
     def test_with_holdings(self):
         holdings = [{"ticker": "ICONFUCIUS", "token_id": "29m8",
                      "balance": 1000, "divisibility": 8, "value_sats": 50}]
         data = BotBalances(bot_name="bot-1", bot_principal="abc",
-                           odin_sats=5000.0, token_holdings=holdings)
+                           odin_sats=5000.0, token_holdings=holdings,
+                           has_odin_account=True)
         assert data.odin_sats == 5000.0
         assert len(data.token_holdings) == 1
+        assert data.has_odin_account is True
 
 
 # ---------------------------------------------------------------------------
@@ -135,7 +138,7 @@ class TestFormatHoldingsTable:
                             ])]
         output = _format_holdings_table(data, btc_usd_rate=100_000.0)
         assert "TEST (t1)" in output
-        assert "500.00" in output
+        assert "500.000" in output
 
     def test_multi_bot_shows_totals(self):
         data = [
@@ -155,7 +158,7 @@ class TestFormatHoldingsTable:
         output = _format_holdings_table(data, btc_usd_rate=100_000.0)
         assert "TOTAL" in output
         assert "5,000 sats" in output
-        assert "300.00" in output
+        assert "300.000" in output
         assert "Total portfolio value:" in output
 
     def test_no_totals_for_single_bot(self):
@@ -173,7 +176,7 @@ class TestFormatHoldingsTable:
         """Regression: raw balance must be divided by 10^divisibility.
 
         Without the fix, 2_771_411_893_677_396 would display as
-        '2,771,411,893,677,396' instead of '27,714,118.94'.
+        '2,771,411,893,677,396' instead of '27,714,118.937'.
         """
         data = [BotBalances("bot-1", "abc", odin_sats=1000.0,
                             token_holdings=[
@@ -184,7 +187,7 @@ class TestFormatHoldingsTable:
                             ])]
         output = _format_holdings_table(data, btc_usd_rate=100_000.0)
         # Should show the adjusted amount, not the raw integer
-        assert "27,714,118.94" in output
+        assert "27,714,118.937" in output
         # Must NOT contain the raw 16-digit number
         assert "2,771,411,893,677,396" not in output
 
@@ -316,12 +319,14 @@ class TestCollectBalances:
         mock_resp.text = '{"data": []}'
         mock_cffi.get.return_value = mock_resp
 
-        result = collect_balances("bot-1", verbose=False)
+        with patch("iconfucius.accounts.resolve_odin_account", return_value="principal-abc"):
+            result = collect_balances("bot-1", verbose=False)
         assert isinstance(result, BotBalances)
         assert result.bot_name == "bot-1"
         assert result.odin_sats == 5000.0
         assert len(result.token_holdings) == 1
         assert result.token_holdings[0]["ticker"] == "TEST"
+        assert result.has_odin_account is True
 
     @patch("iconfucius.cli.balance.cffi_requests")
     @patch("iconfucius.cli.balance.Canister")
@@ -345,8 +350,22 @@ class TestCollectBalances:
         mock_resp.text = '{"data": []}'
         mock_cffi.get.return_value = mock_resp
 
-        result = collect_balances("bot-1", verbose=False)
+        with patch("iconfucius.accounts.resolve_odin_account", return_value="principal-abc"):
+            result = collect_balances("bot-1", verbose=False)
         mock_login.assert_called_once()
+
+    @patch("iconfucius.cli.balance.load_session")
+    def test_no_odin_account_returns_early(self, mock_load, mock_siwb_auth):
+        """Bot without Odin.fun account returns immediately with has_odin_account=False."""
+        mock_load.return_value = mock_siwb_auth
+
+        with patch("iconfucius.accounts.resolve_odin_account", return_value=None):
+            result = collect_balances("bot-1", verbose=False)
+        assert isinstance(result, BotBalances)
+        assert result.bot_name == "bot-1"
+        assert result.has_odin_account is False
+        assert result.odin_sats == 0.0
+        assert result.token_holdings == []
 
 
 # ---------------------------------------------------------------------------
@@ -370,14 +389,46 @@ class TestRunAllBalances:
              "active_withdrawal_count": 0, "address_btc_sats": 0},
             ["wallet line"],
         )
-        mock_collect.return_value = BotBalances("bot-1", "abc", odin_sats=1000.0)
+        mock_collect.return_value = BotBalances("bot-1", "abc", odin_sats=1000.0,
+                                                has_odin_account=True)
 
         result = run_all_balances(bot_names=["bot-1"])
         assert result is not None
         assert result["wallet_ckbtc_sats"] == 50000
         assert "_display" in result
+        assert result["bots"][0]["has_odin_account"] is True
         mock_wallet.assert_called_once()
         mock_holdings.assert_called_once()
+
+    @patch("iconfucius.cli.balance._format_holdings_table", return_value="table")
+    @patch("iconfucius.cli.balance._collect_wallet_info")
+    @patch("iconfucius.cli.balance.collect_balances")
+    @patch("iconfucius.cli.balance._fetch_btc_usd_rate", return_value=100_000.0)
+    def test_failed_bot_has_no_odin_account(self, mock_rate, mock_collect,
+                                             mock_wallet, mock_holdings,
+                                             odin_project):
+        """A bot that fails balance collection appears with has_odin_account=False."""
+        mock_wallet.return_value = (
+            {"principal": "p", "btc_address": "bc1", "balance_sats": 50000,
+             "pending_sats": 0, "withdrawal_balance_sats": 0,
+             "active_withdrawal_count": 0, "address_btc_sats": 0},
+            ["wallet line"],
+        )
+        # bot-1 succeeds, bot-2 fails
+        mock_collect.side_effect = [
+            BotBalances("bot-1", "abc", odin_sats=1000.0, has_odin_account=True),
+            Exception("SIWB login failed"),
+        ]
+
+        result = run_all_balances(bot_names=["bot-1", "bot-2"])
+        assert result is not None
+        bots = result["bots"]
+        assert len(bots) == 2
+        assert bots[0]["name"] == "bot-1"
+        assert bots[0]["has_odin_account"] is True
+        assert bots[1]["name"] == "bot-2"
+        assert bots[1]["has_odin_account"] is False
+        assert bots[1]["odin_sats"] == 0
 
     @patch("iconfucius.cli.balance._collect_wallet_info")
     @patch("iconfucius.cli.balance.collect_balances", side_effect=Exception("fail"))

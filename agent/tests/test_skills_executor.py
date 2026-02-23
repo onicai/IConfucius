@@ -7,6 +7,7 @@ from iconfucius.skills.executor import (
     execute_tool,
     _enable_verify_certificates,
     _resolve_bot_names,
+    _tokens_to_subunits,
     _usd_to_sats,
     _usd_to_tokens,
 )
@@ -769,8 +770,10 @@ class TestWalletBalanceResult:
         fake_data = {
             "wallet_ckbtc_sats": 1000,
             "bots": [
-                {"name": "bot-1", "odin_sats": 500, "tokens": [
-                    {"ticker": "CONF", "id": "29m8", "balance": 100,
+                {"name": "bot-1", "principal": "bot1-principal-abc",
+                 "odin_sats": 500, "has_odin_account": True,
+                 "tokens": [
+                    {"ticker": "CONF", "id": "29m8", "balance": 0.000001,
                      "div": 8, "value_sats": 200},
                 ]},
             ],
@@ -796,10 +799,12 @@ class TestWalletBalanceResult:
         assert "bots" in result
         assert len(result["bots"]) == 1
         assert result["bots"][0]["name"] == "bot-1"
+        assert result["bots"][0]["principal"] == "bot1-principal-abc"
         assert result["bots"][0]["odin_sats"] == 500
+        assert result["bots"][0]["has_odin_account"] is True
         assert result["bots"][0]["tokens"][0]["ticker"] == "CONF"
-        # Display text goes to terminal, not AI
-        assert result["_terminal_output"] == "table output"
+        # No terminal output — AI summarizes from structured data
+        assert "_terminal_output" not in result
         # Constraints surfaced for AI decision-making
         assert result["constraints"]["min_deposit_sats"] == 5000
         assert result["constraints"]["min_trade_sats"] == 500
@@ -1018,6 +1023,42 @@ class TestTokenPriceExecutor:
         assert "sats" in result["display"]
 
 
+class TestTokensToSubunits:
+    """Tests for human-readable tokens → raw sub-units conversion."""
+
+    @patch("iconfucius.tokens.fetch_token_data",
+           return_value={"divisibility": 8})
+    def test_basic_conversion(self, _mock):
+        # 1000 tokens with div=8 → 100_000_000_000
+        result = _tokens_to_subunits(1000.0, "29m8")
+        assert result == 100_000_000_000
+
+    @patch("iconfucius.tokens.fetch_token_data",
+           return_value={"divisibility": 0})
+    def test_divisibility_zero(self, _mock):
+        # div=0 → tokens are indivisible, 1:1
+        result = _tokens_to_subunits(500.0, "abc")
+        assert result == 500
+
+    @patch("iconfucius.tokens.fetch_token_data",
+           return_value={"divisibility": 2})
+    def test_divisibility_two(self, _mock):
+        result = _tokens_to_subunits(10.5, "xyz")
+        assert result == 1050
+
+    @patch("iconfucius.tokens.fetch_token_data", return_value=None)
+    def test_missing_data_defaults_to_8(self, _mock):
+        result = _tokens_to_subunits(1.0, "unknown")
+        assert result == 100_000_000
+
+    @patch("iconfucius.tokens.fetch_token_data",
+           return_value={"divisibility": 8})
+    def test_fractional_tokens(self, _mock):
+        # 0.5 tokens with div=8 → 50_000_000
+        result = _tokens_to_subunits(0.5, "29m8")
+        assert result == 50_000_000
+
+
 class TestUsdConversion:
     """Tests for USD-to-sats and USD-to-tokens conversion."""
 
@@ -1210,3 +1251,62 @@ class TestCheckUpdate:
         _update_cache.clear()
         result = execute_tool("check_update", {})
         assert result["running_version"] == __version__
+
+
+class TestAccountLookupExecutor:
+    def test_missing_address_returns_error(self):
+        result = execute_tool("account_lookup", {})
+        assert result["status"] == "error"
+        assert "Address is required" in result["error"]
+
+    @patch("iconfucius.accounts.lookup_odin_account", return_value=None)
+    def test_unknown_address_returns_not_found(self, mock_lookup):
+        result = execute_tool("account_lookup", {"address": "zzzzz-zzzzz"})
+        assert result["status"] == "ok"
+        assert result["found"] is False
+        assert "No Odin.fun account found" in result["display"]
+
+    @patch("iconfucius.accounts.lookup_odin_account")
+    def test_found_account_returns_details(self, mock_lookup):
+        mock_lookup.return_value = {
+            "principal": "abc-def-ghi",
+            "username": "trader42",
+            "btc_wallet_address": "bc1qfake",
+            "btc_deposit_address": "bc1qdeposit",
+            "bio": "I trade stuff",
+            "avatar": None,
+            "admin": False,
+            "verified": True,
+            "follower_count": 100,
+            "following_count": 50,
+            "created_at": "2024-01-01",
+        }
+        result = execute_tool("account_lookup", {"address": "abc-def-ghi"})
+        assert result["status"] == "ok"
+        assert result["found"] is True
+        assert result["principal"] == "abc-def-ghi"
+        assert result["username"] == "trader42"
+        assert "trader42" in result["display"]
+        assert "bc1qfake" in result["display"]
+        assert "bc1qdeposit" in result["display"]
+        assert "100" in result["display"]
+
+    @patch("iconfucius.accounts.lookup_odin_account")
+    def test_resolves_btc_address(self, mock_lookup):
+        mock_lookup.return_value = {
+            "principal": "resolved-principal",
+            "username": None,
+            "btc_wallet_address": "bc1qfake",
+            "btc_deposit_address": None,
+            "bio": None,
+            "avatar": None,
+            "admin": False,
+            "verified": False,
+            "follower_count": 0,
+            "following_count": 0,
+            "created_at": None,
+        }
+        result = execute_tool("account_lookup", {"address": "bc1qfake"})
+        assert result["status"] == "ok"
+        assert result["found"] is True
+        assert result["principal"] == "resolved-principal"

@@ -869,6 +869,66 @@ def trade(
 
 
 @app.command()
+def transfer(
+    token_id: str = typer.Argument(..., help="Token ID to transfer (e.g. 29m8)"),
+    amount: str = typer.Argument(
+        ..., help="Amount in raw token sub-units, or 'all' for entire balance"
+    ),
+    to_address: str = typer.Argument(..., help="Destination address (IC principal, BTC deposit, or BTC wallet address of an Odin.fun account)"),
+    bot: Optional[str] = typer.Option(None, "--bot", "-b", help="Bot name to use"),
+    all_bots: bool = typer.Option(False, "--all-bots", help="Transfer from all bots"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
+    network: Optional[str] = typer.Option(
+        None, "--network", help="PoAIW network of ckSigner: prd, testing, development"
+    ),
+):
+    """Transfer tokens to another Odin.Fun account (irreversible)."""
+    _resolve_network(network)
+    from iconfucius.cli.concurrent import run_per_bot
+    from iconfucius.cli.transfer import run_transfer
+
+    bot_names = _resolve_bot_names(bot, all_bots)
+
+    if not yes:
+        print("WARNING: Token transfer is irreversible.\n")
+        print(f"  From:    {', '.join(bot_names)}")
+        print(f"  To:      {to_address}")
+        print(f"  Token:   {token_id}")
+        print(f"  Amount:  {amount}")
+        print(f"  Fee:     100 sats BTC (per bot)\n")
+        try:
+            answer = input("  Proceed? [Y/n] ").strip().lower()
+        except (KeyboardInterrupt, EOFError):
+            print()
+            raise typer.Exit(0)
+        if answer in ("n", "no"):
+            print("Cancelled.")
+            raise typer.Exit(0)
+
+    results = run_per_bot(
+        lambda name: run_transfer(
+            bot_name=name, token_id=token_id, amount=amount,
+            to_address=to_address, verbose=state.verbose,
+        ),
+        bot_names,
+    )
+    for bot_name, result in results:
+        if isinstance(result, Exception):
+            print(f"{bot_name}: FAILED — {result}")
+        elif isinstance(result, dict):
+            status = result.get("status", "")
+            if status == "ok":
+                from iconfucius.config import fmt_tokens
+                print(
+                    f"{bot_name}: transferred "
+                    f"{fmt_tokens(result.get('amount', 0), token_id)} "
+                    f"{result.get('token_label', token_id)} -> {to_address}"
+                )
+            elif status == "error":
+                print(f"{bot_name}: FAILED — {result.get('error', '')}")
+
+
+@app.command()
 def sweep(
     bot: Optional[str] = typer.Option(None, "--bot", "-b", help="Bot name to use"),
     all_bots: bool = typer.Option(False, "--all-bots", help="Sweep all bots"),

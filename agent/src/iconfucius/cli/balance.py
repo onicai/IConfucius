@@ -53,6 +53,7 @@ class BotBalances:
     bot_principal: str
     odin_sats: float = 0.0
     token_holdings: list = field(default_factory=list)
+    has_odin_account: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -91,6 +92,15 @@ def collect_balances(bot_name: str, token_id: str = "29m8",
     bot_principal_text = auth["bot_principal_text"]
     jwt_token = auth["jwt_token"]
 
+    # Check if bot has a registered Odin.fun account
+    from iconfucius.accounts import resolve_odin_account
+    if resolve_odin_account(bot_principal_text) is None:
+        return BotBalances(
+            bot_name=bot_name,
+            bot_principal=bot_principal_text,
+            has_odin_account=False,
+        )
+
     # Create anonymous agent for query calls
     client = Client(url=IC_HOST)
     anon_agent = Agent(Identity(anonymous=True), client)
@@ -108,7 +118,7 @@ def collect_balances(bot_name: str, token_id: str = "29m8",
         candid_str=ODIN_TRADING_CANDID,
     )
 
-    odin_balance_raw = odin.getBalance(bot_principal_text, "btc", "btc",
+    odin_balance_raw = odin.getBalance(bot_principal_text, "btc",
                                        verify_certificate=get_verify_certificates())
     if isinstance(odin_balance_raw, list) and len(odin_balance_raw) > 0:
         item = odin_balance_raw[0]
@@ -169,6 +179,7 @@ def collect_balances(bot_name: str, token_id: str = "29m8",
         bot_principal=bot_principal_text,
         odin_sats=odin_sats,
         token_holdings=token_holdings,
+        has_odin_account=True,
     )
 
 
@@ -196,12 +207,12 @@ def _fmt_token_amount(raw_balance: int, divisibility: int) -> str:
     if divisibility <= 0:
         return f"{raw_balance:,}"
     adjusted = raw_balance / (10 ** divisibility)
-    # Show 2 decimal places; use more if the amount is tiny
+    # Show 3 decimal places; use more if the amount is tiny
     if adjusted == 0:
         return "0"
     if abs(adjusted) < 0.01:
         return f"{adjusted:,.{divisibility}f}".rstrip("0").rstrip(".")
-    return f"{adjusted:,.2f}"
+    return f"{adjusted:,.3f}"
 
 
 def _format_padded_table(headers, rows) -> list[str]:
@@ -718,7 +729,7 @@ def _format_holdings_table(all_data: list, btc_usd_rate: float | None,
                 display_bal = _fmt_token_amount(t["balance"], div)
                 if btc_usd_rate and t.get("value_sats", 0):
                     usd = (t["value_sats"] / 100_000_000) * btc_usd_rate
-                    row.append(f"{display_bal} (${usd:.2f})")
+                    row.append(f"{display_bal} (${usd:.3f})")
                 else:
                     row.append(display_bal)
             else:
@@ -737,7 +748,7 @@ def _format_holdings_table(all_data: list, btc_usd_rate: float | None,
             if btc_usd_rate and vs:
                 usd = (vs / 100_000_000) * btc_usd_rate
                 total_usd += usd
-                total_row.append(f"{display_bal} (${usd:.2f})")
+                total_row.append(f"{display_bal} (${usd:.3f})")
             else:
                 total_row.append(display_bal)
         rows.append(tuple(total_row))
@@ -756,12 +767,12 @@ def _format_holdings_table(all_data: list, btc_usd_rate: float | None,
         notes = []
         if wallet_pending_sats > 0:
             pending_usd = (wallet_pending_sats / 100_000_000) * btc_usd_rate
-            notes.append(f"${pending_usd:,.2f} BTC pending conversion")
+            notes.append(f"${pending_usd:,.3f} BTC pending conversion")
         if wallet_withdrawal_sats > 0:
             withdrawal_usd = (wallet_withdrawal_sats / 100_000_000) * btc_usd_rate
-            notes.append(f"${withdrawal_usd:,.2f} in BTC withdrawal account")
+            notes.append(f"${withdrawal_usd:,.3f} in BTC withdrawal account")
         note_str = f" (includes {', '.join(notes)})" if notes else ""
-        lines.append(f"\nTotal portfolio value: ${total_usd:,.2f}{note_str}")
+        lines.append(f"\nTotal portfolio value: ${total_usd:,.3f}{note_str}")
 
     return "\n".join(lines)
 
@@ -818,6 +829,7 @@ def run_all_balances(bot_names: list, token_id: str = "29m8",
     logger.info("Gathering data for %d bot(s)...", len(bot_names))
 
     all_data = []
+    failed_bots = []
     results = run_per_bot(
         lambda name: collect_balances(name, token_id, verbose=verbose),
         bot_names,
@@ -825,6 +837,7 @@ def run_all_balances(bot_names: list, token_id: str = "29m8",
     for bot_name, result in results:
         if isinstance(result, Exception):
             logger.warning("Failed to get balances for bot '%s': %s", bot_name, result)
+            failed_bots.append(bot_name)
         else:
             all_data.append(result)
     if not all_data:
@@ -856,23 +869,36 @@ def run_all_balances(bot_names: list, token_id: str = "29m8",
             ticker = t["ticker"]
             token_id_val = t["token_id"]
             vs = round(t.get("value_sats", 0))
+            div = t.get("divisibility", 8)
+            human_balance = t["balance"] / (10 ** div) if div > 0 else t["balance"]
             bot_tokens.append({
                 "ticker": ticker, "id": token_id_val,
-                "balance": t["balance"], "div": t.get("divisibility", 8),
+                "balance": human_balance, "div": div,
                 "value_sats": vs,
             })
             if ticker not in token_totals:
                 token_totals[ticker] = {
                     "id": token_id_val, "balance": 0,
-                    "div": t.get("divisibility", 8), "value_sats": 0,
+                    "div": div, "value_sats": 0,
                 }
-            token_totals[ticker]["balance"] += t["balance"]
+            token_totals[ticker]["balance"] += human_balance
             token_totals[ticker]["value_sats"] += vs
 
         bots_data.append({
             "name": d.bot_name,
+            "principal": d.bot_principal,
             "odin_sats": bot_odin,
             "tokens": bot_tokens,
+            "has_odin_account": d.has_odin_account,
+        })
+
+    for name in failed_bots:
+        bots_data.append({
+            "name": name,
+            "principal": "",
+            "odin_sats": 0,
+            "tokens": [],
+            "has_odin_account": False,
         })
 
     wallet_total_sats = wallet_balance + wallet_pending + wallet_withdrawal

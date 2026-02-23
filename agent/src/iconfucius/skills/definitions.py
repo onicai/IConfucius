@@ -287,6 +287,32 @@ TOOLS: list[dict] = [
         "requires_confirmation": False,
         "category": "read",
     },
+    {
+        "name": "account_lookup",
+        "description": (
+            "Look up an Odin.fun account by IC principal, BTC deposit address, "
+            "or BTC wallet address. Returns account details including principal, "
+            "username, BTC addresses, and follower count. "
+            "Use this to verify an address before transferring tokens, "
+            "or to explore another trader's (human or bot) account or trading "
+            "style to anticipate buy or sell predictions on their holdings."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string",
+                    "description": (
+                        "Address to look up — IC principal, BTC deposit address, "
+                        "or BTC wallet address."
+                    ),
+                },
+            },
+            "required": ["address"],
+        },
+        "requires_confirmation": False,
+        "category": "read",
+    },
     # ------------------------------------------------------------------
     # Memory tools
     # ------------------------------------------------------------------
@@ -540,7 +566,7 @@ TOOLS: list[dict] = [
         "name": "trade_sell",
         "description": (
             "Sell tokens on Odin.fun. "
-            "Provide amount (raw tokens), amount_usd (dollars), or 'all'. "
+            "Provide amount (token count), amount_usd (dollars), or 'all'. "
             "Minimum trade value: 500 sats. "
             "Specify bot_names for specific bots or all_bots=true for every bot."
         ),
@@ -554,7 +580,7 @@ TOOLS: list[dict] = [
                 "amount": {
                     "type": "string",
                     "description": (
-                        "Amount of raw tokens to sell, or 'all' for entire position."
+                        "Number of tokens to sell (e.g. '1000' for 1,000 tokens), or 'all'."
                     ),
                 },
                 "amount_usd": {
@@ -623,6 +649,61 @@ TOOLS: list[dict] = [
                 },
             },
             "required": ["amount"],
+        },
+        "requires_confirmation": True,
+        "category": "write",
+    },
+    {
+        "name": "token_transfer",
+        "description": (
+            "Transfer tokens from a bot's Odin.fun account to another Odin.fun account. "
+            "This is an internal transfer within the platform — no selling/buying involved. "
+            "The destination must be a registered Odin.fun user (IC principal). "
+            "A 100 sats BTC fee is deducted from the sender's Odin.fun BTC balance. "
+            "If the bot has insufficient BTC, the tool returns options — present them "
+            "to the user and let them choose. Do NOT pre-fund bots before calling "
+            "token_transfer. "
+            "WARNING: Transfers are irreversible. Sending to a wrong address means "
+            "permanent loss of tokens. Always verify the destination address. "
+            "Provide amount as token count (e.g. '1000'), or 'all' for the entire balance."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "token_id": {
+                    "type": "string",
+                    "description": "Token ID to transfer (e.g. '29m8').",
+                },
+                "amount": {
+                    "type": "string",
+                    "description": (
+                        "Number of tokens to transfer (e.g. '1000'), "
+                        "or 'all' for entire position."
+                    ),
+                },
+                "to_address": {
+                    "type": "string",
+                    "description": (
+                        "Destination address — IC principal, BTC deposit address, "
+                        "or BTC wallet address of a bot's Odin.fun account. "
+                        "Resolved to the account's IC principal via the Odin.fun API."
+                    ),
+                },
+                "bot_name": {
+                    "type": "string",
+                    "description": "Source bot name (e.g. 'bot-1').",
+                },
+                "bot_names": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of source bot names.",
+                },
+                "all_bots": {
+                    "type": "boolean",
+                    "description": "Transfer from all configured bots.",
+                },
+            },
+            "required": ["token_id", "amount", "to_address"],
         },
         "requires_confirmation": True,
         "category": "write",

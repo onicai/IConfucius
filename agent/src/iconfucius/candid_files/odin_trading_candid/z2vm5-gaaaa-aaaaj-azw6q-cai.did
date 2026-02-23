@@ -1,0 +1,328 @@
+type WithdrawResponse = 
+ variant {
+   err: text;
+   ok: bool;
+ };
+type WithdrawRequest = 
+ record {
+   address: text;
+   amount: TokenAmount;
+   protocol: WithdrawProtocol;
+   tokenid: TokenID;
+ };
+type WithdrawProtocol = 
+ variant {
+   btc;
+   ckbtc;
+   volt;
+ };
+type TransferResponse = 
+ variant {
+   err: text;
+   ok;
+ };
+type TransferRequest = 
+ record {
+   amount: TokenAmount;
+   to: text;
+   tokenid: TokenID;
+ };
+type TradeType = 
+ variant {
+   buy;
+   sell;
+ };
+type TradeSettings = record {slippage: opt record {
+                                             TokenAmount;
+                                             nat;
+                                           };};
+type TradeResponse = 
+ variant {
+   err: text;
+   ok;
+ };
+type TradeRequest = 
+ record {
+   amount: TradeAmount;
+   settings: opt TradeSettings;
+   tokenid: TokenID;
+   typeof: TradeType;
+ };
+type TradeAmount = 
+ variant {
+   btc: TokenAmount;
+   token: TokenAmount;
+ };
+type TokenID = text;
+type TokenDeltas = 
+ vec
+  record {
+    delta:
+     variant {
+       add: TokenAmount;
+       amount: TokenAmount;
+       "bool": bool;
+       sub: TokenAmount;
+       "text": text;
+     };
+    field: text;
+  };
+type TokenAmount = nat;
+type Token = 
+ record {
+   bonded_btc: TokenAmount;
+   bonding_curve: opt BondingCurveSettings;
+   bonding_threshold: TokenAmount;
+   bonding_threshold_fee: TokenAmount;
+   bonding_threshold_reward: TokenAmount;
+   creator: principal;
+   icrc_canister: opt principal;
+   lp_supply: TokenAmount;
+   max_supply: TokenAmount;
+   pool: LiquidityPool;
+   rune: opt Rune;
+   supply: TokenAmount;
+ };
+type Time = int;
+type SwapResponse = 
+ variant {
+   err: text;
+   ok;
+ };
+type SwapRequest = 
+ record {
+   amount_from: TokenAmount;
+   settings: opt TradeSettings;
+   tokenid_from: TokenID;
+   tokenid_to: TokenID;
+ };
+type Rune = 
+ record {
+   id: text;
+   name: text;
+   ticker: text;
+ };
+type Result = 
+ variant {
+   err: text;
+   ok;
+ };
+type OperationType = 
+ variant {
+   access: record {user: text;};
+   mint: record {
+           data: Metadata;
+           tokenid: TokenID;
+         };
+   other: record {
+            data: Metadata;
+            name: text;
+          };
+   token: record {
+            deltas: TokenDeltas;
+            tokenid: TokenID;
+          };
+   trade:
+    record {
+      amount_btc: TokenAmount;
+      amount_token: TokenAmount;
+      bonded: bool;
+      price: TokenAmount;
+      tokenid: TokenID;
+      typeof: TradeType;
+      user: text;
+    };
+   transaction:
+    record {
+      amount: TokenAmount;
+      balance: TokenAmount;
+      description: text;
+      metadata: Metadata;
+      tokenid: TokenID;
+      typeof: variant {
+                add;
+                sub;
+              };
+      user: text;
+    };
+ };
+type OperationAndId = 
+ record {
+   id: nat;
+   operation: Operation;
+ };
+type Operation = 
+ record {
+   time: Time;
+   typeof: OperationType;
+ };
+type MintResponse = 
+ variant {
+   err: text;
+   ok;
+ };
+type MintRequest = 
+ record {
+   code: opt text;
+   metadata: Metadata;
+   prebuy_amount: opt TokenAmount;
+ };
+type MetadataRecord = 
+ record {
+   text;
+   variant {
+     "blob": blob;
+     "bool": bool;
+     hex: text;
+     "int": int;
+     "nat": nat;
+     "nat8": nat8;
+     "principal": principal;
+     "text": text;
+   };
+ };
+type Metadata = vec MetadataRecord;
+type ListResponse = 
+ variant {
+   err: text;
+   ok: TokenAmount;
+ };
+type ListRequest = record {rune_id: text;};
+type LiquidityType = 
+ variant {
+   add;
+   remove;
+ };
+type LiquiditySwap = 
+ record {
+   btc: TokenAmount;
+   token: TokenAmount;
+ };
+type LiquidityResponse = 
+ variant {
+   err: text;
+   ok;
+ };
+type LiquidityRequest = 
+ record {
+   amount: TokenAmount;
+   tokenid: TokenID;
+   typeof: LiquidityType;
+ };
+type LiquidityPool = 
+ record {
+   current: LiquiditySwap;
+   locked: LiquiditySwap;
+ };
+type ExternalToken = 
+ record {
+   divisibility: nat;
+   liquidity_threshold: TokenAmount;
+   liquidity_threshold_reached: bool;
+   price: TokenAmount;
+ };
+type ExternalRuneMintRequest = 
+ record {
+   amount: nat64;
+   tokenid: text;
+   txid: text;
+   user: principal;
+ };
+type ExternalMintRequest = 
+ record {
+   amount: nat64;
+   txid: text;
+   user: principal;
+ };
+type EtchResponse = 
+ variant {
+   err: text;
+   ok;
+ };
+type EtchRequest = 
+ record {
+   icrc_ledger: text;
+   rune: text;
+   rune_id: text;
+   tokenid: TokenID;
+ };
+type BondingCurveSettings = 
+ record {
+   a: float64;
+   b: float64;
+   c: float64;
+   name: text;
+ };
+type AddResponse = 
+ variant {
+   err: text;
+   ok: text;
+ };
+type AddRequest = 
+ record {
+   divisibility: nat;
+   icrc_canister: principal;
+   liquidity_threshold: TokenAmount;
+   metadata: Metadata;
+   price: TokenAmount;
+   rune: Rune;
+   supply: TokenAmount;
+ };
+service : {
+  add_fastbtc: (user: principal, amount: nat64) -> ();
+  add_fastbtc_bulk: (batch: vec record {
+                                  principal;
+                                  nat64;
+                                }) -> ();
+  add_fastbtc_bulk_v2: (batch: vec ExternalMintRequest) -> ();
+  add_fastbtc_v2: (m: ExternalMintRequest) -> ();
+  add_fastrunes: (m: ExternalRuneMintRequest) -> ();
+  add_fastrunes_bulk: (batch: vec ExternalRuneMintRequest) -> ();
+  admin_blacklist_user: (user: principal, add: bool) -> ();
+  admin_change_user: (user: principal, add: bool) -> ();
+  admin_shutdown: (status: bool) -> ();
+  admin_unlock: (tokenid: TokenID) -> ();
+  admin_update_threshold: (tokenid: TokenID, liquidity_threshold:
+   TokenAmount) -> (Result);
+  admin_whitelist_user: (user: principal, add: bool) -> ();
+  checkBlacklist: (user: principal) -> (bool) query;
+  getAdvancedStats: () -> (vec record {
+                                 text;
+                                 text;
+                               });
+  getBalance: (user: text, tokenid: TokenID) -> (TokenAmount) query;
+  getBlacklist: () -> (vec principal) query;
+  getExternalToken: (tokenid: TokenID) -> (opt ExternalToken) query;
+  getExternalTokens: () -> (vec record {
+                                  TokenID;
+                                  ExternalToken;
+                                }) query;
+  getOperation: (id: nat) -> (opt Operation) query;
+  getOperations: (start: nat, count: nat) -> (vec OperationAndId) query;
+  getReferrer: (user: text) -> (opt principal) query;
+  getStats: () -> (vec record {
+                         text;
+                         text;
+                       }) query;
+  getToken: (id: TokenID) -> (opt Token) query;
+  getWhitelist: () -> (vec principal) query;
+  icrc10_supported_standards: () ->
+   (vec record {
+          name: text;
+          url: text;
+        }) query;
+  icrc28_trusted_origins: () -> (record {trusted_origins: vec text;}) query;
+  register_referrer: (user: principal, referrer: principal) -> ();
+  token_add: (addRequest: AddRequest) -> (AddResponse);
+  token_etch: (etchRequest: EtchRequest) -> (EtchResponse);
+  token_liquidity: (liquidityRequest: LiquidityRequest) ->
+   (LiquidityResponse);
+  token_list: (listRequest: ListRequest) -> (ListResponse);
+  token_mint: (mintRequest: MintRequest) -> (MintResponse);
+  token_swap: (swapRequest: SwapRequest) -> (SwapResponse);
+  token_trade: (tradeRequest: TradeRequest) -> (TradeResponse);
+  token_transfer: (transferRequest: TransferRequest) -> (TransferResponse);
+  token_withdraw: (withdrawRequest: WithdrawRequest) -> (WithdrawResponse);
+  user_claim: () -> (TokenAmount);
+  withdraw_shutdown: (status: bool) -> ();
+}

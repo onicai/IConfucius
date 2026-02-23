@@ -341,7 +341,7 @@ def _fmt_tokens(amount, token_id: str) -> str:
     """Format a token amount with USD value, safe for None."""
     try:
         from iconfucius.config import fmt_tokens
-        return fmt_tokens(int(amount), token_id)
+        return fmt_tokens(float(amount), token_id)
     except Exception:
         return f"{amount} tokens"
 
@@ -354,6 +354,30 @@ def _bot_target(tool_input: dict) -> str:
     if names:
         return ", ".join(names)
     return tool_input.get("bot_name", "?")
+
+
+def _resolve_principal_to_bot_name(principal: str) -> str:
+    """If *principal* matches a bot's session cache, return 'bot-N (principal)'."""
+    import json as _json
+    import os
+
+    try:
+        from iconfucius.config import get_bot_names
+        from iconfucius.siwb import _session_path
+
+        for bot_name in get_bot_names():
+            path = _session_path(bot_name)
+            if os.path.exists(path):
+                try:
+                    with open(path) as f:
+                        session = _json.load(f)
+                    if session.get("bot_principal_text") == principal:
+                        return f"{bot_name} ({principal})"
+                except Exception:
+                    continue
+    except Exception:
+        pass
+    return principal
 
 
 def _describe_tool_call(name: str, tool_input: dict) -> str:
@@ -375,7 +399,7 @@ def _describe_tool_call(name: str, tool_input: dict) -> str:
     if name == "trade_sell":
         token_id = tool_input.get("token_id", "?")
         if tool_input.get("amount_usd") is not None:
-            amt = f"${tool_input['amount_usd']:.2f} worth"
+            amt = f"${tool_input['amount_usd']:.3f} worth"
         elif str(tool_input.get("amount", "")).lower() == "all":
             amt = "all"
         else:
@@ -401,6 +425,19 @@ def _describe_tool_call(name: str, tool_input: dict) -> str:
         if force:
             desc += " (skip holdings check)"
         return desc
+    if name == "token_transfer":
+        token_id = tool_input.get("token_id", "?")
+        amt = tool_input.get("amount", "?")
+        if str(amt).lower() == "all":
+            amt_str = "all"
+        else:
+            amt_str = _fmt_tokens(amt, token_id)
+        to_addr = tool_input.get("to_address", "?")
+        to_display = _resolve_principal_to_bot_name(to_addr)
+        return (
+            f"Transfer {amt_str} of {token_id} from "
+            f"{_bot_target(tool_input)} to {to_display}"
+        )
     if name == "install_blst":
         return "Install blst library for IC certificate verification"
     return f"{name}({json.dumps(tool_input)})"
@@ -539,7 +576,8 @@ def _run_tool_loop(backend, messages: list[dict], system: str,
             use_spinner = meta.get("category") == "write" or block.name in (
                 "wallet_balance", "wallet_receive", "wallet_monitor",
                 "wallet_info", "token_lookup", "token_price",
-                "token_discover", "security_status", "install_blst",
+                "token_discover", "account_lookup", "security_status",
+                "install_blst",
             )
 
             if use_spinner:

@@ -100,6 +100,13 @@ type TradeRequest = record {
 };
 type TradeResponse = variant { ok; err : text };
 
+type TransferResponse = variant { ok; err : text };
+type TransferRequest = record {
+    amount   : nat;
+    to       : text;
+    tokenid  : text;
+};
+
 type WithdrawProtocol = variant { btc; ckbtc; volt };
 type WithdrawRequest = record {
     protocol : WithdrawProtocol;
@@ -110,8 +117,9 @@ type WithdrawRequest = record {
 type WithdrawResponse = variant { ok : bool; err : text };
 
 service : {
-    getBalance : (text, text, text) -> (nat) query;
+    getBalance : (text, text) -> (nat) query;
     token_trade : (TradeRequest) -> (TradeResponse);
+    token_transfer : (TransferRequest) -> (TransferResponse);
     token_withdraw : (WithdrawRequest) -> (WithdrawResponse);
 }
 """

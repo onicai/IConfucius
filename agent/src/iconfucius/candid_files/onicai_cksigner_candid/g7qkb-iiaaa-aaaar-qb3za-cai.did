@@ -1,0 +1,121 @@
+type TreasuryResult = 
+ variant {
+   Err: ApiError;
+   Ok: Treasury;
+ };
+type Treasury = 
+ record {
+   treasuryName: text;
+   treasuryPrincipal: principal;
+ };
+type StatusCodeRecordResult = 
+ variant {
+   Err: ApiError;
+   Ok: StatusCodeRecord;
+ };
+type StatusCodeRecord = record {status_code: StatusCode;};
+type StatusCode = nat16;
+type SignResult = 
+ variant {
+   Err: ApiError;
+   Ok: SignRecord;
+ };
+type SignRecord = 
+ record {
+   botName: text;
+   signatureHex: text;
+ };
+type SignInput = 
+ record {
+   botName: text;
+   message: blob;
+   payment: opt Payment;
+ };
+type SignBip322Input = 
+ record {
+   botName: text;
+   message: text;
+   payment: opt Payment;
+ };
+type RemoveFeeTokenInput = record {tokenLedger: principal;};
+type PublicKeyResult = 
+ variant {
+   Err: ApiError;
+   Ok: PublicKeyRecord;
+ };
+type PublicKeyRecord = 
+ record {
+   address: text;
+   botName: text;
+   publicKeyHex: text;
+ };
+type Payment = 
+ record {
+   amount: nat;
+   tokenLedger: principal;
+   tokenName: text;
+ };
+type GetPublicKeyInput = 
+ record {
+   botName: text;
+   payment: opt Payment;
+ };
+type FeeTokensResult = 
+ variant {
+   Err: ApiError;
+   Ok: FeeTokensRecord;
+ };
+type FeeTokensRecord = 
+ record {
+   canisterId: principal;
+   feeTokens: vec FeeToken;
+   treasury: Treasury;
+   usage: text;
+ };
+type FeeToken = 
+ record {
+   fee: nat;
+   tokenLedger: principal;
+   tokenName: text;
+ };
+type Bip322SignResult = 
+ variant {
+   Err: ApiError;
+   Ok: Bip322SignRecord;
+ };
+type Bip322SignRecord = 
+ record {
+   address: text;
+   botName: text;
+   signatureHex: text;
+   witnessB64: text;
+ };
+type ApiError = 
+ variant {
+   FailedOperation;
+   InsuffientCycles: nat;
+   InvalidId;
+   Other: text;
+   StatusCode: StatusCode;
+   Unauthorized;
+   ZeroAddress;
+ };
+type AddFeeTokenInput = 
+ record {
+   fee: nat;
+   tokenLedger: principal;
+   tokenName: text;
+ };
+service : {
+  addFeeToken: (input: AddFeeTokenInput) -> (StatusCodeRecordResult);
+  amiController: () -> (StatusCodeRecordResult) query;
+  getFeeTokens: () -> (FeeTokensResult) query;
+  getPublicKey: (input: GetPublicKeyInput) -> (PublicKeyResult);
+  getPublicKeyQuery: (input: GetPublicKeyInput) -> (PublicKeyResult) query;
+  getTreasury: () -> (TreasuryResult) query;
+  health: () -> (StatusCodeRecordResult) query;
+  removeFeeToken: (input: RemoveFeeTokenInput) -> (StatusCodeRecordResult);
+  setTreasury: (input: Treasury) -> (StatusCodeRecordResult);
+  sign: (input: SignInput) -> (SignResult);
+  signBip322: (input: SignBip322Input) -> (Bip322SignResult);
+}

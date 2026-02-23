@@ -19,6 +19,7 @@ from iconfucius.cli.chat import (
     _handle_model_interactive,
     _handle_upgrade,
     _persist_ai_model,
+    _resolve_principal_to_bot_name,
     _run_tool_loop,
     _Spinner,
     _MAX_TOOL_ITERATIONS,
@@ -324,7 +325,7 @@ class TestDescribeToolCall:
             "trade_sell",
             {"token_id": "29m8", "amount_usd": 5.0, "bot_name": "bot-1"},
         )
-        assert "$5.00" in desc
+        assert "$5.000" in desc
         assert "29m8" in desc
 
     def test_trade_sell_tokens(self):
@@ -332,7 +333,7 @@ class TestDescribeToolCall:
             "trade_sell",
             {"token_id": "29m8", "amount": "5000000", "bot_name": "bot-1"},
         )
-        assert "5,000,000 tokens" in desc
+        assert "5,000,000.000 tokens" in desc
 
     def test_withdraw(self):
         desc = _describe_tool_call(
@@ -405,6 +406,82 @@ class TestDescribeToolCall:
         )
         assert "14,832" in desc
         assert "bc1qtest" in desc
+
+    def test_token_transfer(self):
+        desc = _describe_tool_call(
+            "token_transfer",
+            {"token_id": "29m8", "amount": "5000000000", "bot_name": "bot-1",
+             "to_address": "dest-principal-xyz"},
+        )
+        assert "29m8" in desc
+        assert "bot-1" in desc
+        assert "dest-principal-xyz" in desc
+
+    def test_token_transfer_all(self):
+        desc = _describe_tool_call(
+            "token_transfer",
+            {"token_id": "29m8", "amount": "all", "bot_name": "bot-1",
+             "to_address": "bot-2"},
+        )
+        assert "all" in desc
+        assert "29m8" in desc
+        assert "bot-2" in desc
+
+    def test_token_transfer_all_bots(self):
+        desc = _describe_tool_call(
+            "token_transfer",
+            {"token_id": "29m8", "amount": "1000", "all_bots": True,
+             "to_address": "dest-principal-xyz"},
+        )
+        assert "all bots" in desc
+        assert "dest-principal-xyz" in desc
+
+    def test_token_transfer_shows_bot_name(self):
+        """When to_address is a principal matching a bot, show bot name."""
+        with patch("iconfucius.cli.chat._resolve_principal_to_bot_name",
+                   return_value="bot-3 (kfjfo-xyz)"):
+            desc = _describe_tool_call(
+                "token_transfer",
+                {"token_id": "29m8", "amount": "all", "bot_name": "bot-1",
+                 "to_address": "kfjfo-xyz"},
+            )
+        assert "bot-3 (kfjfo-xyz)" in desc
+        assert "bot-1" in desc
+
+
+class TestResolvePrincipalToBotName:
+    """Test principal-to-bot-name resolution for transfer confirmation."""
+
+    def test_resolves_known_principal(self, tmp_path):
+        """Principal matching a bot's session cache returns 'bot-N (principal)'."""
+        cache_dir = tmp_path / ".cache"
+        cache_dir.mkdir()
+        (cache_dir / "session_bot-3.json").write_text(
+            json.dumps({"bot_principal_text": "kfjfo-3squy-bcwy5-xyz"})
+        )
+
+        with patch("iconfucius.config.get_bot_names",
+                   return_value=["bot-1", "bot-3"]), \
+             patch("iconfucius.siwb._session_path",
+                   side_effect=lambda name: str(cache_dir / f"session_{name}.json")):
+            result = _resolve_principal_to_bot_name("kfjfo-3squy-bcwy5-xyz")
+        assert result == "bot-3 (kfjfo-3squy-bcwy5-xyz)"
+
+    def test_unknown_principal_returns_as_is(self, tmp_path):
+        """Principal not matching any bot returns unchanged."""
+        with patch("iconfucius.config.get_bot_names",
+                   return_value=["bot-1"]), \
+             patch("iconfucius.siwb._session_path",
+                   return_value=str(tmp_path / "nonexistent.json")):
+            result = _resolve_principal_to_bot_name("unknown-principal-xyz")
+        assert result == "unknown-principal-xyz"
+
+    def test_no_config_returns_as_is(self):
+        """When config is missing, returns principal unchanged."""
+        with patch("iconfucius.config.get_bot_names",
+                   side_effect=Exception("no config")):
+            result = _resolve_principal_to_bot_name("some-principal")
+        assert result == "some-principal"
 
 
 class TestAmountUsdPreConversion:
@@ -1106,7 +1183,7 @@ class TestBotHoldingsDisplay:
                 {
                     "name": "bot-1", "odin_sats": 10000,
                     "tokens": [
-                        {"ticker": "RUNE", "id": "29m8", "balance": 500000000,
+                        {"ticker": "RUNE", "id": "29m8", "balance": 5.0,
                          "div": 8, "value_sats": 3000},
                     ],
                 },
