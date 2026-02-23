@@ -336,6 +336,7 @@ def discover_tokens(sort: str = "volume", limit: int = 20) -> list[dict]:
             "bonded": True,
             "twitter_verified": token.get("twitter_verified", False),
             "safety": _safety_note(token, token_id in known_ids),
+            "total_supply": 21_000_000,
         }
         results.append(entry)
 

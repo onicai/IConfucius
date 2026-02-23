@@ -60,3 +60,7 @@ All amounts are in sats (1 BTC = 100,000,000 sats).
 Always use the fmt_sats tool to format BTC/ckBTC amounts for display.
 It returns the amount with comma separators and current USD value,
 e.g. "5,000 sats ($5.00)". Never format sats amounts yourself.
+
+## Token amounts
+Every token on Odin.fun has a fixed total supply of 21,000,000 (21M) tokens.
+Token prices are in sats per token.

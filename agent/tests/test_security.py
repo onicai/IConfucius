@@ -677,6 +677,36 @@ class TestWalletBalanceDataLeakage:
         # No terminal output — AI summarizes from structured data
         assert "_terminal_output" not in result
 
+    def test_bot_token_dicts_exclude_div(self):
+        """AI must not see 'div' in per-bot token dicts — it's a backend concern."""
+        fake_data = {
+            "wallet_ckbtc_sats": 50_000,
+            "bots": [
+                {"name": "bot-1", "odin_sats": 10_000,
+                 "principal": "bot-principal-1",
+                 "tokens": [{"ticker": "TEST", "id": "t1",
+                              "balance": 5.0, "value_sats": 1000}]},
+            ],
+            "totals": {
+                "odin_sats": 10_000,
+                "token_value_sats": 1_000,
+                "portfolio_sats": 61_000,
+            },
+            "_display": "table",
+        }
+        with patch("iconfucius.cli.balance.run_all_balances",
+                    return_value=fake_data):
+            with patch("iconfucius.config.require_wallet", return_value=True):
+                with patch("iconfucius.config.get_bot_names",
+                            return_value=["bot-1"]):
+                    result = execute_tool("wallet_balance", {})
+
+        assert result["status"] == "ok"
+        token = result["bots"][0]["tokens"][0]
+        assert "div" not in token
+        assert token["ticker"] == "TEST"
+        assert token["balance"] == 5.0
+
     def test_none_data_returns_error(self):
         with patch("iconfucius.cli.balance.run_all_balances",
                     return_value=None):
@@ -688,7 +718,42 @@ class TestWalletBalanceDataLeakage:
 
 
 # ===================================================================
-# 9. Terminal output handling — print to user, don't send to AI
+# 9. Token tools include total_supply for AI context
+# ===================================================================
+
+class TestTokenToolsTotalSupply:
+    """Verify token tools include total_supply so AI knows supply is 21M."""
+
+    @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100_000.0)
+    @patch("iconfucius.tokens.fetch_token_data",
+           return_value={"price": 1500, "price_1h": 1400,
+                         "price_6h": 1300, "price_1d": 1200,
+                         "marketcap": 31_500_000_000, "volume_24": 5_000_000,
+                         "holder_count": 42, "btc_liquidity": 1_000_000})
+    @patch("iconfucius.tokens.lookup_token_with_fallback",
+           return_value={"id": "29m8", "name": "IConfucius", "ticker": "ICONFUCIUS"})
+    def test_token_price_includes_total_supply(self, _lookup, _fetch, _rate):
+        result = execute_tool("token_price", {"query": "ICONFUCIUS"})
+        assert result["status"] == "ok"
+        assert result["total_supply"] == 21_000_000
+        assert "21,000,000" in result["display"]
+
+    @patch("iconfucius.tokens.discover_tokens")
+    def test_token_discover_includes_total_supply(self, mock_discover):
+        mock_discover.return_value = [
+            {"id": "t1", "name": "Token1", "ticker": "TK1",
+             "price_sats": 1.5, "marketcap_sats": 31_500_000,
+             "volume_24h_sats": 5_000, "holder_count": 10,
+             "bonded": True, "twitter_verified": False,
+             "safety": "Known token", "total_supply": 21_000_000},
+        ]
+        result = execute_tool("token_discover", {})
+        assert result["status"] == "ok"
+        assert result["tokens"][0]["total_supply"] == 21_000_000
+
+
+# ===================================================================
+# 10. Terminal output handling — print to user, don't send to AI
 # ===================================================================
 
 class TestTerminalOutputSecurity:
@@ -731,7 +796,7 @@ class TestTerminalOutputSecurity:
 
 
 # ===================================================================
-# 10. Fund low-level — zero & negative amounts
+# 11. Fund low-level — zero & negative amounts
 # ===================================================================
 
 class TestFundLowLevelAmounts:
@@ -751,7 +816,7 @@ class TestFundLowLevelAmounts:
 
 
 # ===================================================================
-# 11. Max iterations guard — prevent infinite tool loops
+# 12. Max iterations guard — prevent infinite tool loops
 # ===================================================================
 
 class TestMaxIterationsGuard:
@@ -788,7 +853,7 @@ class TestMaxIterationsGuard:
 
 
 # ===================================================================
-# 12. Multi-tool batch — all-or-nothing confirmation
+# 13. Multi-tool batch — all-or-nothing confirmation
 # ===================================================================
 
 class TestBatchConfirmationSecurity:

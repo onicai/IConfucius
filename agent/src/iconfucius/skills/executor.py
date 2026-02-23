@@ -973,6 +973,7 @@ def _handle_token_price(args: dict) -> dict:
         f"24h volume:   {fmt_sats(volume_24_sats, btc_usd)}",
         f"Liquidity:    {fmt_sats(btc_liquidity_sats, btc_usd)}",
         f"Holders:      {holder_count:,}",
+        f"Supply:       21,000,000 (21M)",
     ]
 
     return {
@@ -989,6 +990,7 @@ def _handle_token_price(args: dict) -> dict:
         "marketcap_sats": marketcap_sats,
         "volume_24h_sats": volume_24_sats,
         "holder_count": holder_count,
+        "total_supply": 21_000_000,
     }
 
 
