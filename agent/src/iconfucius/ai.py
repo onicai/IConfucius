@@ -73,7 +73,8 @@ class AIBackend(ABC):
 class ClaudeBackend(AIBackend):
     """Claude API backend via anthropic SDK."""
 
-    def __init__(self, model: str, api_key: str | None = None):
+    def __init__(self, model: str, api_key: str | None = None,
+                 timeout: int = 600):
         import anthropic
 
         key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
@@ -84,7 +85,7 @@ class ClaudeBackend(AIBackend):
                 "Then add it to .env:\n"
                 "  ANTHROPIC_API_KEY=sk-ant-..."
             )
-        self.client = anthropic.Anthropic(api_key=key)
+        self.client = anthropic.Anthropic(api_key=key, timeout=timeout)
         self.model = model
 
     @staticmethod
@@ -118,6 +119,68 @@ class ClaudeBackend(AIBackend):
             for m in page.data:
                 result.append((m.id, getattr(m, "display_name", m.id)))
             return result
+        except Exception:
+            return []
+
+
+class LlamaCppBackend(AIBackend):
+    """Backend for llama.cpp via its OpenAI-compatible API."""
+
+    def __init__(self, model: str, base_url: str = "http://localhost:55128",
+                 timeout: int = 600):
+        import requests as _requests
+        self._requests = _requests
+        self.model = model
+        self.base_url = base_url.rstrip("/")
+        self.timeout = timeout
+
+    def _post(self, payload: dict) -> dict:
+        """POST to /v1/chat/completions and return parsed JSON."""
+        url = f"{self.base_url}/v1/chat/completions"
+        resp = self._requests.post(url, json=payload, timeout=self.timeout)
+        resp.raise_for_status()
+        return resp.json()
+
+    def chat(self, messages: list[dict], system: str) -> str:
+        from iconfucius.openai_compat import (
+            anthropic_messages_to_openai,
+            openai_response_to_anthropic,
+        )
+        oai_messages = anthropic_messages_to_openai(messages, system)
+        data = self._post({
+            "model": self.model,
+            "messages": oai_messages,
+            "max_tokens": 4096,
+        })
+        response = openai_response_to_anthropic(data)
+        return "".join(
+            b.text for b in response.content if b.type == "text"
+        )
+
+    def chat_with_tools(self, messages: list[dict], system: str,
+                        tools: list[dict]):
+        from iconfucius.openai_compat import (
+            anthropic_messages_to_openai,
+            anthropic_tools_to_openai,
+            openai_response_to_anthropic,
+        )
+        oai_messages = anthropic_messages_to_openai(messages, system)
+        oai_tools = anthropic_tools_to_openai(tools)
+        data = self._post({
+            "model": self.model,
+            "messages": oai_messages,
+            "tools": oai_tools,
+            "max_tokens": 4096,
+        })
+        return openai_response_to_anthropic(data)
+
+    def list_models(self) -> list[tuple[str, str]]:
+        try:
+            url = f"{self.base_url}/v1/models"
+            resp = self._requests.get(url, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+            return [(m["id"], m["id"]) for m in data.get("data", [])]
         except Exception:
             return []
 
@@ -201,9 +264,16 @@ def create_backend(persona: Persona) -> AIBackend:
     Raises:
         ValueError: If the AI backend is not supported.
     """
+    from iconfucius.config import get_ai_timeout
+    timeout = get_ai_timeout()
     if persona.ai_backend == "claude":
-        return ClaudeBackend(model=persona.ai_model)
+        return ClaudeBackend(model=persona.ai_model, timeout=timeout)
+    if persona.ai_backend == "llamacpp":
+        from iconfucius.config import get_llamacpp_url
+        return LlamaCppBackend(model=persona.ai_model,
+                               base_url=get_llamacpp_url(),
+                               timeout=timeout)
     raise ValueError(
         f"Unsupported AI backend: '{persona.ai_backend}'. "
-        f"Currently supported: claude"
+        f"Currently supported: claude, llamacpp"
     )

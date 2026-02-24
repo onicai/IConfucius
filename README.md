@@ -45,6 +45,62 @@ That's it. The onboarding wizard runs automatically on first launch:
 Everything is stored in the current directory — run `iconfucius`
 from the same folder next time.
 
+## How to run with llama.cpp server
+
+You can run iconfucius with a fully local AI — no API key, no cloud.
+
+### 1. Install & start the server
+
+```bash
+# macOS
+brew install llama.cpp
+
+# Ubuntu / Debian — build from source
+sudo apt-get install -y build-essential cmake libcurl4-openssl-dev
+git clone https://github.com/ggerganov/llama.cpp && cd llama.cpp
+cmake -B build && cmake --build build --config Release -j
+sudo cmake --install build
+
+# Start with the recommended model (~4.7GB download on first run)
+# Port 55128 = Confucius' birthday (September 28, 551 BC)
+llama-server --jinja --port 55128 -hf bartowski/Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M
+```
+
+Leave that terminal running.
+
+Pick a different model if you have less (or more) RAM:
+
+| Size   | Model            | `-hf` flag                                                    |
+| ------ | ---------------- | ------------------------------------------------------------- |
+| ~0.7GB | LFM2.5-1.2B     | `LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M`                |
+| ~2.2GB | Ministral-3-3B   | `mistralai/Ministral-3-3B-Instruct-2512-GGUF:Q4_K_M`        |
+| ~2.5GB | Phi-4-mini       | `bartowski/microsoft_Phi-4-mini-instruct-GGUF:Q4_K_M`       |
+| ~4.7GB | Qwen2.5-Coder-7B | `bartowski/Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M`          |
+| ~7.5GB | Mistral-NeMo-12B | `bartowski/Mistral-Nemo-Instruct-2407-GGUF:Q4_K_M`          |
+
+All models use Q4_K_M quantization and support llama.cpp's native tool calling.
+
+### 2. Configure iconfucius
+
+Add (or uncomment) the `[ai]` section in your `iconfucius.toml`:
+
+```toml
+[ai]
+backend = "llamacpp"
+model = "Qwen2.5-Coder-7B-Instruct"
+```
+
+The server URL defaults to `http://localhost:55128` — override with
+`llamacpp_url` if needed.
+
+### 3. Chat
+
+In a second terminal:
+
+```bash
+iconfucius
+```
+
 ## Project Layout
 
 ```

@@ -54,6 +54,14 @@ MIN_TRADE_SATS = 500      # minimum BTC-equivalent for buy/sell on Odin.Fun
 MIN_BTC_WITHDRAWAL_SATS = 50_000  # minimum BTC withdrawal via ckBTC minter
 
 # ---------------------------------------------------------------------------
+# llama.cpp server defaults
+# ---------------------------------------------------------------------------
+
+# Port 55128: Confucius was born 551 BC, September 28 -> 551 + 28 = 55128
+LLAMACPP_URL_DEFAULT = "http://localhost:55128"
+AI_TIMEOUT_DEFAULT = 600  # seconds
+
+# ---------------------------------------------------------------------------
 # BTC/USD rate & sats formatting
 # ---------------------------------------------------------------------------
 
@@ -336,6 +344,38 @@ def get_ai_config() -> dict:
     return config.get("ai", {})
 
 
+def get_llamacpp_url() -> str:
+    """Return llama.cpp server URL from env var, config, or default.
+
+    Resolution order:
+    1. LLAMACPP_URL environment variable
+    2. ``llamacpp_url`` in [ai] section of iconfucius.toml
+    3. LLAMACPP_URL_DEFAULT (http://localhost:55128)
+    """
+    env = os.environ.get("LLAMACPP_URL")
+    if env:
+        return env
+    config = load_config()
+    url = config.get("ai", {}).get("llamacpp_url")
+    if url:
+        return url
+    return LLAMACPP_URL_DEFAULT
+
+
+def get_ai_timeout() -> int:
+    """Return AI request timeout in seconds from config or default.
+
+    Resolution order:
+    1. ``timeout`` in [ai] section of iconfucius.toml
+    2. AI_TIMEOUT_DEFAULT (600)
+    """
+    config = load_config()
+    val = config.get("ai", {}).get("timeout")
+    if val is not None:
+        return int(val)
+    return AI_TIMEOUT_DEFAULT
+
+
 def get_bot_persona(bot_name: str) -> str:
     """Return the persona assigned to a bot, or default persona."""
     config = load_config()
@@ -367,6 +407,22 @@ default_persona = "iconfucius"
 # [ai]
 # backend = "claude"
 # model = "claude-sonnet-4-6"
+# timeout = 600  # optional, seconds (default: 600)
+#
+# For local llama.cpp (no API key needed):
+# [ai]
+# backend = "llamacpp"
+# model = "Qwen2.5-Coder-7B-Instruct"
+# llamacpp_url = "http://localhost:55128"  # optional, this is the default
+# timeout = 600  # optional, seconds (default: 600)
+# Start server: llama-server --jinja --port 55128 -hf bartowski/Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M
+#
+# Recommended models for CPU laptops (Q4_K_M quantization):
+#   ~4.7GB  Qwen2.5-Coder-7B    bartowski/Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M
+#   ~2.2GB  Ministral-3-3B       mistralai/Ministral-3-3B-Instruct-2512-GGUF:Q4_K_M
+#   ~2.5GB  Phi-4-mini           bartowski/microsoft_Phi-4-mini-instruct-GGUF:Q4_K_M
+#   ~0.7GB  LFM2.5-1.2B         LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M
+#   ~7.5GB  Mistral-NeMo-12B    bartowski/Mistral-Nemo-Instruct-2407-GGUF:Q4_K_M
 
 # Bot definitions
 # Each bot gets its own trading identity on Odin.Fun.
