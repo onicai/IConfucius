@@ -13,7 +13,7 @@ S = "iconfucius.siwb"
 
 
 def _make_mock_auth(bot_principal="bot-principal-abc"):
-    """Create a mock  auth for testing."""
+    """Create a mock auth for testing."""
     delegate = MagicMock()
     delegate.der_pubkey = b"\x30" * 44
     return {

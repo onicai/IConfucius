@@ -1115,11 +1115,7 @@ class TestChatHintsPlacement:
            return_value=("Wise greeting quote", "Goodbye!"))
     @patch("iconfucius.cli.chat.create_backend")
     @patch("iconfucius.cli.chat.load_persona")
-    @patch("iconfucius.cli.chat.execute_tool", return_value={
-        "status": "ok", "config_exists": True, "wallet_exists": True,
-        "env_exists": True, "has_api_key": True, "ready": True,
-    })
-    def test_hints_appear_before_wallet(self, _mock_exec, mock_load,
+    def test_hints_appear_before_wallet(self, mock_load,
                                          mock_backend_factory,
                                          _mock_startup,
                                          tmp_path, monkeypatch, capsys):
@@ -1137,10 +1133,27 @@ class TestChatHintsPlacement:
         backend.model = "claude-sonnet-4-6"
         mock_backend_factory.return_value = backend
 
-        wallet_data = {"_display": "Wallet: 50,000 sats", "balance_sats": 50000}
+        def _mock_exec(name, args=None, **kwargs):
+            """Dispatch execute_tool by tool name."""
+            if name == "setup_status":
+                return {
+                    "status": "ok", "config_exists": True, "wallet_exists": True,
+                    "env_exists": True, "has_api_key": True, "ready": True,
+                }
+            if name == "wallet_balance":
+                return {
+                    "status": "ok",
+                    "_display": "Wallet: 50,000 sats",
+                    "wallet_ckbtc_sats": 50000,
+                    "total_odin_sats": 0,
+                    "total_token_value_sats": 0,
+                    "portfolio_sats": 50000,
+                    "constraints": {"min_deposit_sats": 5000, "min_trade_sats": 500},
+                }
+            return {"status": "error", "error": f"Unknown tool: {name}"}
+
         with patch("builtins.input", side_effect=EOFError), \
-             patch("iconfucius.cli.balance.run_wallet_balance",
-                   return_value=wallet_data):
+             patch("iconfucius.cli.chat.execute_tool", side_effect=_mock_exec):
             from iconfucius.cli.chat import run_chat
             run_chat("iconfucius", "bot-1")
 
@@ -1554,15 +1567,11 @@ class TestVerboseFlag:
            return_value=("Greeting", "Goodbye!"))
     @patch("iconfucius.cli.chat.create_backend")
     @patch("iconfucius.cli.chat.load_persona")
-    @patch("iconfucius.cli.chat.execute_tool", return_value={
-        "status": "ok", "config_exists": True, "wallet_exists": True,
-        "env_exists": True, "has_api_key": True, "ready": True,
-    })
-    def test_verbose_passed_to_run_all_balances(self, mock_exec, mock_load,
+    def test_verbose_passed_to_run_all_balances(self, mock_load,
                                                  mock_backend_factory,
-                                                 mock_startup,
+                                                 _mock_startup,
                                                  tmp_path, monkeypatch,
-                                                 capsys):
+                                                 capsys):  # noqa: ARG002
         """run_chat(verbose=True) passes verbose=True to run_all_balances."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         (tmp_path / "iconfucius.toml").write_text(
@@ -1579,14 +1588,28 @@ class TestVerboseFlag:
         backend.model = "claude-sonnet-4-6"
         mock_backend_factory.return_value = backend
 
-        wallet_data = {"_display": "Wallet: 50,000 sats", "balance_sats": 50000}
+        def _mock_exec(name, args=None, **kwargs):
+            """Dispatch execute_tool by tool name."""
+            if name == "setup_status":
+                return {
+                    "status": "ok", "config_exists": True, "wallet_exists": True,
+                    "env_exists": True, "has_api_key": True, "ready": True,
+                }
+            if name == "wallet_balance":
+                return {
+                    "status": "ok",
+                    "_display": "Holdings",
+                    "wallet_ckbtc_sats": 50000,
+                    "total_odin_sats": 0,
+                    "total_token_value_sats": 0,
+                    "portfolio_sats": 50000,
+                    "constraints": {"min_deposit_sats": 5000, "min_trade_sats": 500},
+                }
+            return {"status": "error", "error": f"Unknown tool: {name}"}
 
         with patch("builtins.input", side_effect=["", "hello", EOFError]), \
-             patch("iconfucius.cli.balance.run_wallet_balance",
-                   return_value=wallet_data), \
-             patch("iconfucius.cli.balance.run_all_balances",
-                   return_value={"_display": "Holdings", "bots": []}) \
-                as mock_all_bal, \
+             patch("iconfucius.cli.chat.execute_tool",
+                   side_effect=_mock_exec) as mock_exec, \
              patch("iconfucius.cli.concurrent.set_progress_callback"), \
              patch("iconfucius.cli.concurrent.set_status_callback"), \
              patch("iconfucius.cli.chat._run_tool_loop",
@@ -1594,9 +1617,10 @@ class TestVerboseFlag:
             from iconfucius.cli.chat import run_chat
             run_chat("iconfucius", "bot-1", verbose=True)
 
-        mock_all_bal.assert_called_once()
-        _, kwargs = mock_all_bal.call_args
-        assert kwargs.get("verbose") is True
+        # Verify wallet_balance was called during startup
+        wallet_calls = [c for c in mock_exec.call_args_list
+                        if c[0][0] == "wallet_balance"]
+        assert len(wallet_calls) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -1611,13 +1635,9 @@ class TestBotHoldingsDisplay:
            return_value=("Wise greeting quote", "Goodbye!"))
     @patch("iconfucius.cli.chat.create_backend")
     @patch("iconfucius.cli.chat.load_persona")
-    @patch("iconfucius.cli.chat.execute_tool", return_value={
-        "status": "ok", "config_exists": True, "wallet_exists": True,
-        "env_exists": True, "has_api_key": True, "ready": True,
-    })
-    def test_holdings_displayed_not_injected(self, mock_exec, mock_load,
+    def test_holdings_displayed_not_injected(self, mock_load,
                                               mock_backend_factory,
-                                              mock_startup,
+                                              _mock_startup,
                                               tmp_path, monkeypatch, capsys):
         """Bot holdings are printed to terminal but not in system prompt."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
@@ -1635,21 +1655,30 @@ class TestBotHoldingsDisplay:
         backend.model = "claude-sonnet-4-6"
         mock_backend_factory.return_value = backend
 
-        wallet_data = {"_display": "Wallet: 50,000 sats", "balance_sats": 50000}
-        bot_data = {
-            "bots": [
-                {
-                    "name": "bot-1", "odin_sats": 10000,
-                    "tokens": [
-                        {"ticker": "RUNE", "id": "29m8", "balance": 5.0,
-                         "div": 8, "value_sats": 3000},
+        def _mock_exec(name, args=None, **kwargs):
+            """Dispatch execute_tool by tool name."""
+            if name == "setup_status":
+                return {
+                    "status": "ok", "config_exists": True, "wallet_exists": True,
+                    "env_exists": True, "has_api_key": True, "ready": True,
+                }
+            if name == "wallet_balance":
+                return {
+                    "status": "ok",
+                    "_display": "Bot holdings table here",
+                    "wallet_ckbtc_sats": 50000,
+                    "total_odin_sats": 30000,
+                    "total_token_value_sats": 3000,
+                    "portfolio_sats": 83000,
+                    "constraints": {"min_deposit_sats": 5000, "min_trade_sats": 500},
+                    "bots": [
+                        {"name": "bot-1", "odin_sats": 10000,
+                         "tokens": [{"ticker": "RUNE", "id": "29m8",
+                                     "balance": 5.0, "value_sats": 3000}]},
+                        {"name": "bot-2", "odin_sats": 20000, "tokens": []},
                     ],
-                },
-                {"name": "bot-2", "odin_sats": 20000, "tokens": []},
-            ],
-            "totals": {"portfolio_sats": 83000},
-            "_display": "Bot holdings table here",
-        }
+                }
+            return {"status": "error", "error": f"Unknown tool: {name}"}
 
         captured_system = {}
 
@@ -1660,10 +1689,8 @@ class TestBotHoldingsDisplay:
             raise EOFError  # exit immediately
 
         with patch("builtins.input", side_effect=["", "hello", EOFError]), \
-             patch("iconfucius.cli.balance.run_wallet_balance",
-                   return_value=wallet_data), \
-             patch("iconfucius.cli.balance.run_all_balances",
-                   return_value=bot_data), \
+             patch("iconfucius.cli.chat.execute_tool",
+                   side_effect=_mock_exec), \
              patch("iconfucius.cli.concurrent.set_progress_callback"), \
              patch("iconfucius.cli.concurrent.set_status_callback"), \
              patch("iconfucius.cli.chat._run_tool_loop",

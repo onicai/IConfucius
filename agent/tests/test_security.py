@@ -736,9 +736,11 @@ class TestWalletBalanceDataLeakage:
             "wallet_ckbtc_sats": 50_000,
             "bots": [
                 {"name": "bot-1", "odin_sats": 10_000,
-                 "principal": "bot-principal-1", "tokens": []},
+                 "principal": "bot-principal-1", "tokens": [],
+                 "has_odin_account": True},
                 {"name": "bot-2", "odin_sats": 20_000,
-                 "principal": "bot-principal-2", "tokens": []},
+                 "principal": "bot-principal-2", "tokens": [],
+                 "has_odin_account": True},
             ],
             "totals": {
                 "odin_sats": 30_000,

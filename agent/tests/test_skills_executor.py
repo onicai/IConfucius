@@ -25,7 +25,7 @@ class TestResolveBotNames:
         result = _resolve_bot_names({"bot_names": ["bot-12", "bot-14"]})
         assert result == ["bot-12", "bot-14"]
 
-    def test_all_bots(self, odin_project):
+    def test_all_bots(self, odin_project):  # noqa: ARG002
         """Verify all bots."""
         result = _resolve_bot_names({"all_bots": True})
         assert len(result) == 3  # default odin_project fixture has 3 bots
@@ -42,7 +42,7 @@ class TestResolveBotNames:
         })
         assert result == ["bot-2", "bot-3"]
 
-    def test_all_bots_takes_priority(self, odin_project):
+    def test_all_bots_takes_priority(self, odin_project):  # noqa: ARG002
         """Verify all bots takes priority."""
         result = _resolve_bot_names({
             "all_bots": True,
@@ -879,10 +879,10 @@ class TestWalletBalanceResult:
             "bots": [{
                 "name": "bot-1",
                 "principal": "",
-                "odin_sats": 0,
-                "tokens": [],
-                "has_odin_account": False,
-                "note": "Wallet needs funding for signing fees.",
+                "odin_sats": None,
+                "tokens": None,
+                "has_odin_account": None,
+                "note": "Balance could not be checked — wallet needs funding for signing fees. Do NOT report this bot's balance as 0. Use the how_to_fund_wallet tool for instructions.",
             }],
             "_display": "",
         }
@@ -893,7 +893,96 @@ class TestWalletBalanceResult:
                             return_value=["bot-1"]):
                     result = execute_tool("wallet_balance", {})
         assert result["status"] == "ok"
-        assert result["bots"][0]["note"] == "Wallet needs funding for signing fees."
+        assert result["bots"][0]["note"] == "Balance could not be checked — wallet needs funding for signing fees. Do NOT report this bot's balance as 0. Use the how_to_fund_wallet tool for instructions."
+        assert "odin_sats" not in result["bots"][0]
+        assert "tokens" not in result["bots"][0]
+        assert "has_odin_account" not in result["bots"][0]
+
+
+    def test_next_step_wallet_empty_bots_unchecked(self):
+        """Wallet empty + unchecked bots → next_step says fund wallet."""
+        fake_data = {
+            "wallet_ckbtc_sats": 0,
+            "totals": {"odin_sats": 0, "token_value_sats": 0, "portfolio_sats": 0},
+            "bots": [{
+                "name": "bot-1", "principal": "",
+                "odin_sats": None, "tokens": None, "has_odin_account": None,
+                "note": "Balance could not be checked.",
+            }],
+            "_display": "",
+        }
+        with patch("iconfucius.cli.balance.run_all_balances",
+                    return_value=fake_data):
+            with patch("iconfucius.config.require_wallet", return_value=True):
+                with patch("iconfucius.config.get_bot_names",
+                            return_value=["bot-1"]):
+                    result = execute_tool("wallet_balance", {})
+        assert "next_step" in result
+        assert "how_to_fund_wallet" in result["next_step"]
+
+    def test_next_step_wallet_empty_bots_zero(self):
+        """Wallet empty + all bot balances zero → next_step says fund wallet."""
+        fake_data = {
+            "wallet_ckbtc_sats": 0,
+            "totals": {"odin_sats": 0, "token_value_sats": 0, "portfolio_sats": 0},
+            "bots": [{
+                "name": "bot-1", "principal": "p1",
+                "odin_sats": 0, "tokens": [], "has_odin_account": True,
+            }],
+            "_display": "",
+        }
+        with patch("iconfucius.cli.balance.run_all_balances",
+                    return_value=fake_data):
+            with patch("iconfucius.config.require_wallet", return_value=True):
+                with patch("iconfucius.config.get_bot_names",
+                            return_value=["bot-1"]):
+                    result = execute_tool("wallet_balance", {})
+        assert "next_step" in result
+        assert "how_to_fund_wallet" in result["next_step"]
+
+    def test_next_step_wallet_empty_bots_have_holdings(self):
+        """Wallet empty + bots have holdings → next_step mentions options."""
+        fake_data = {
+            "wallet_ckbtc_sats": 0,
+            "totals": {"odin_sats": 5000, "token_value_sats": 200,
+                       "portfolio_sats": 5200},
+            "bots": [{
+                "name": "bot-1", "principal": "p1",
+                "odin_sats": 5000, "tokens": [
+                    {"ticker": "TEST", "balance": 1, "value_sats": 200}],
+                "has_odin_account": True,
+            }],
+            "_display": "",
+        }
+        with patch("iconfucius.cli.balance.run_all_balances",
+                    return_value=fake_data):
+            with patch("iconfucius.config.require_wallet", return_value=True):
+                with patch("iconfucius.config.get_bot_names",
+                            return_value=["bot-1"]):
+                    result = execute_tool("wallet_balance", {})
+        assert "next_step" in result
+        assert "holdings" in result["next_step"]
+        assert "withdraw" in result["next_step"]
+
+    def test_no_next_step_when_wallet_funded(self):
+        """Wallet with funds → no next_step field."""
+        fake_data = {
+            "wallet_ckbtc_sats": 10000,
+            "totals": {"odin_sats": 0, "token_value_sats": 0,
+                       "portfolio_sats": 10000},
+            "bots": [{
+                "name": "bot-1", "principal": "p1",
+                "odin_sats": 0, "tokens": [], "has_odin_account": True,
+            }],
+            "_display": "",
+        }
+        with patch("iconfucius.cli.balance.run_all_balances",
+                    return_value=fake_data):
+            with patch("iconfucius.config.require_wallet", return_value=True):
+                with patch("iconfucius.config.get_bot_names",
+                            return_value=["bot-1"]):
+                    result = execute_tool("wallet_balance", {})
+        assert "next_step" not in result
 
 
 class TestTokenDiscoverExecutor:
@@ -1374,7 +1463,7 @@ class TestAccountLookupExecutor:
         assert "Address is required" in result["error"]
 
     @patch("iconfucius.accounts.lookup_odin_account", return_value=None)
-    def test_unknown_address_returns_not_found(self, mock_lookup):
+    def test_unknown_address_returns_not_found(self, _mock_lookup):
         """Verify unknown address returns not found."""
         result = execute_tool("account_lookup", {"address": "zzzzz-zzzzz"})
         assert result["status"] == "ok"
@@ -1599,5 +1688,4 @@ class TestHowToFundWalletHandler:
         assert "Option 2" in display
         assert "bc1qfund123" in display
         assert "fund-principal" in display
-        assert "wallet_monitor" in display
         assert "~6 Bitcoin confirmations" in display

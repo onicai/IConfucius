@@ -112,11 +112,11 @@ class TestFormatPaddedTable:
 
 class TestBotBalances:
     def test_defaults(self):
-        """BotBalances defaults to zero sats, no holdings, and no account."""
+        """BotBalances defaults to None for all balance fields (unchecked)."""
         data = BotBalances(bot_name="bot-1", bot_principal="abc")
-        assert data.odin_sats == 0.0
-        assert data.token_holdings == []
-        assert data.has_odin_account is False
+        assert data.odin_sats is None
+        assert data.token_holdings is None
+        assert data.has_odin_account is None
 
     def test_with_holdings(self):
         """BotBalances stores provided odin_sats, holdings, and account flag."""
@@ -137,7 +137,7 @@ class TestBotBalances:
 class TestFormatHoldingsTable:
     def test_single_bot_no_tokens(self):
         """Single bot with no token holdings shows only ODIN sats."""
-        data = [BotBalances("bot-1", "abc", odin_sats=1000.0)]
+        data = [BotBalances("bot-1", "abc", odin_sats=1000.0, token_holdings=[])]
         output = _format_holdings_table(data, btc_usd_rate=100_000.0)
         assert "bot-1" in output
         assert "1,000 sats" in output
@@ -178,13 +178,13 @@ class TestFormatHoldingsTable:
 
     def test_no_totals_for_single_bot(self):
         """Single-bot output omits the TOTAL row."""
-        data = [BotBalances("bot-1", "abc", odin_sats=1000.0)]
+        data = [BotBalances("bot-1", "abc", odin_sats=1000.0, token_holdings=[])]
         output = _format_holdings_table(data, btc_usd_rate=100_000.0)
         assert "TOTAL" not in output
 
     def test_no_usd_rate(self):
         """Verify no usd rate."""
-        data = [BotBalances("bot-1", "abc", odin_sats=1000.0)]
+        data = [BotBalances("bot-1", "abc", odin_sats=1000.0, token_holdings=[])]
         output = _format_holdings_table(data, btc_usd_rate=None)
         assert "1,000 sats" in output
         assert "$" not in output
@@ -359,9 +359,9 @@ class TestCollectBalances:
     @patch("iconfucius.cli.balance.siwb_login")
     @patch("iconfucius.cli.balance.bot_has_public_key", return_value=True)
     @patch("iconfucius.cli.balance.load_session", return_value=None)
-    def test_falls_back_to_siwb_login(self, mock_load, mock_has_key,
+    def test_falls_back_to_siwb_login(self, _mock_load, _mock_has_key,
                                        mock_login,
-                                       MockId, MockClient, MockAgent,
+                                       _MockId, _MockClient, _MockAgent,
                                        MockCanister, mock_cffi,
                                        mock_siwb_auth):
         """Verify falls back to siwb login."""
@@ -462,24 +462,25 @@ class TestCollectBalances:
         assert isinstance(result, BotBalances)
         assert result.bot_name == "bot-1"
         assert result.has_odin_account is False
-        assert result.odin_sats == 0.0
-        assert result.token_holdings == []
+        assert result.odin_sats is None
+        assert result.token_holdings is None
 
     @patch("iconfucius.cli.balance.bot_has_public_key", return_value=False)
     @patch("iconfucius.cli.balance.load_session", return_value=None)
-    def test_no_public_key_returns_note(self, mock_load, mock_has_key):
+    def test_no_public_key_returns_note(self, _mock_load, _mock_has_key):
         """Bot with no cached public key returns BotBalances with funding note."""
         result = collect_balances("bot-1", verbose=False)
         assert isinstance(result, BotBalances)
         assert result.bot_name == "bot-1"
         assert result.bot_principal == ""
+        assert result.odin_sats is None
         assert "funding" in result.note.lower() or "fund" in result.note.lower()
         assert "how_to_fund_wallet" in result.note
 
     @patch("iconfucius.cli.balance.siwb_login")
     @patch("iconfucius.cli.balance.bot_has_public_key", return_value=True)
     @patch("iconfucius.cli.balance.load_session", return_value=None)
-    def test_insufficient_funds_returns_note(self, mock_load, mock_has_key,
+    def test_insufficient_funds_returns_note(self, _mock_load, _mock_has_key,
                                               mock_login):
         """InsufficientFunds during siwb_login returns BotBalances with funding note."""
         mock_login.side_effect = RuntimeError(
@@ -489,12 +490,13 @@ class TestCollectBalances:
         assert isinstance(result, BotBalances)
         assert result.bot_name == "bot-1"
         assert result.bot_principal == ""
+        assert result.odin_sats is None
         assert "how_to_fund_wallet" in result.note
 
     @patch("iconfucius.cli.balance.siwb_login")
     @patch("iconfucius.cli.balance.bot_has_public_key", return_value=True)
     @patch("iconfucius.cli.balance.load_session", return_value=None)
-    def test_other_runtime_errors_propagate(self, mock_load, mock_has_key,
+    def test_other_runtime_errors_propagate(self, _mock_load, _mock_has_key,
                                              mock_login):
         """RuntimeErrors not related to InsufficientFunds still propagate."""
         mock_login.side_effect = RuntimeError("signBip322 failed: timeout")
@@ -507,7 +509,7 @@ class TestCollectBalances:
 # ---------------------------------------------------------------------------
 
 class TestRunAllBalances:
-    def test_no_wallet(self, odin_project_no_wallet):
+    def test_no_wallet(self, odin_project_no_wallet):  # noqa: ARG002
         """Verify no wallet."""
         result = run_all_balances(bot_names=["bot-1"])
         assert result is None
@@ -526,6 +528,7 @@ class TestRunAllBalances:
             ["wallet line"],
         )
         mock_collect.return_value = BotBalances("bot-1", "abc", odin_sats=1000.0,
+                                                token_holdings=[],
                                                 has_odin_account=True)
 
         result = run_all_balances(bot_names=["bot-1"])
@@ -540,10 +543,10 @@ class TestRunAllBalances:
     @patch("iconfucius.cli.balance._collect_wallet_info")
     @patch("iconfucius.cli.balance.collect_balances")
     @patch("iconfucius.cli.balance._fetch_btc_usd_rate", return_value=100_000.0)
-    def test_failed_bot_has_no_odin_account(self, mock_rate, mock_collect,
-                                             mock_wallet, mock_holdings,
-                                             odin_project):
-        """A bot that fails balance collection appears with has_odin_account=False."""
+    def test_failed_bot_has_unknown_odin_account(self, mock_rate, mock_collect,
+                                                  mock_wallet, mock_holdings,
+                                                  odin_project):
+        """A bot that fails balance collection appears with has_odin_account=None."""
         mock_wallet.return_value = (
             {"principal": "p", "btc_address": "bc1", "balance_sats": 50000,
              "pending_sats": 0, "withdrawal_balance_sats": 0,
@@ -552,7 +555,8 @@ class TestRunAllBalances:
         )
         # bot-1 succeeds, bot-2 fails
         mock_collect.side_effect = [
-            BotBalances("bot-1", "abc", odin_sats=1000.0, has_odin_account=True),
+            BotBalances("bot-1", "abc", odin_sats=1000.0, token_holdings=[],
+                        has_odin_account=True),
             Exception("SIWB login failed"),
         ]
 
@@ -562,9 +566,11 @@ class TestRunAllBalances:
         assert len(bots) == 2
         assert bots[0]["name"] == "bot-1"
         assert bots[0]["has_odin_account"] is True
+        assert bots[0]["tokens"] == []
         assert bots[1]["name"] == "bot-2"
-        assert bots[1]["has_odin_account"] is False
-        assert bots[1]["odin_sats"] == 0
+        assert bots[1]["has_odin_account"] is None
+        assert bots[1]["odin_sats"] is None
+        assert bots[1]["tokens"] is None
 
     @patch("iconfucius.cli.balance._format_holdings_table", return_value="table")
     @patch("iconfucius.cli.balance._collect_wallet_info")
