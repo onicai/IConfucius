@@ -37,7 +37,7 @@ from iconfucius.config import (
     require_wallet,
     set_verbose,
 )
-from iconfucius.siwb import siwb_login, load_session, save_session
+from iconfucius.siwb import bot_has_public_key, siwb_login, load_session, save_session
 
 from iconfucius.candid import ODIN_TRADING_CANDID
 
@@ -54,6 +54,7 @@ class BotBalances:
     odin_sats: float = 0.0
     token_holdings: list = field(default_factory=list)
     has_odin_account: bool = False
+    note: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -85,10 +86,34 @@ def collect_balances(bot_name: str, token_id: str = "29m8",
     log("=" * 60)
     log(f"Step 1: Authenticate (bot={bot_name})")
     log("=" * 60)
+    _needs_funding_note = (
+        "Wallet needs funding for signing fees. "
+        "Use the how_to_fund_wallet tool for instructions."
+    )
     auth = load_session(bot_name=bot_name, verbose=verbose)
     if not auth:
+        # Layer 1: cheap query — if bot has no cached key, the wallet must
+        # pay a fee to register one, so an unfunded wallet cannot proceed.
+        if not bot_has_public_key(bot_name):
+            log("Bot has no public key and wallet needs funds for signing fees.")
+            return BotBalances(
+                bot_name=bot_name,
+                bot_principal="",
+                note=_needs_funding_note,
+            )
         log("No valid cached session, performing full SIWB login...")
-        auth = siwb_login(bot_name=bot_name, verbose=verbose)
+        try:
+            auth = siwb_login(bot_name=bot_name, verbose=verbose)
+        except RuntimeError as exc:
+            # Layer 2: catch InsufficientFunds from fee approval
+            if "InsufficientFunds" in str(exc):
+                log(f"SIWB login failed (insufficient funds): {exc}")
+                return BotBalances(
+                    bot_name=bot_name,
+                    bot_principal="",
+                    note=_needs_funding_note,
+                )
+            raise
     bot_principal_text = auth["bot_principal_text"]
     jwt_token = auth["jwt_token"]
 
@@ -885,13 +910,16 @@ def run_all_balances(bot_names: list, token_id: str = "29m8",
             token_totals[ticker]["balance"] += human_balance
             token_totals[ticker]["value_sats"] += vs
 
-        bots_data.append({
+        bot_entry = {
             "name": d.bot_name,
             "principal": d.bot_principal,
             "odin_sats": bot_odin,
             "tokens": bot_tokens,
             "has_odin_account": d.has_odin_account,
-        })
+        }
+        if d.note:
+            bot_entry["note"] = d.note
+        bots_data.append(bot_entry)
 
     for name in failed_bots:
         bots_data.append({
@@ -900,6 +928,7 @@ def run_all_balances(bot_names: list, token_id: str = "29m8",
             "odin_sats": 0,
             "tokens": [],
             "has_odin_account": False,
+            "note": "Balance check failed for this bot.",
         })
 
     wallet_total_sats = wallet_balance + wallet_pending + wallet_withdrawal

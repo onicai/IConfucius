@@ -328,7 +328,13 @@ def _handle_wallet_balance(args: dict) -> dict:
     data = run_all_balances(names, ckbtc_minter=ckbtc_minter)
 
     if data is None:
-        return {"status": "error", "error": "Balance check failed."}
+        return {
+            "status": "error",
+            "error": (
+                "Balance check failed. The wallet may need funding for "
+                "signing fees. Use the how_to_fund_wallet tool for instructions."
+            ),
+        }
 
     display_text = data.pop("_display", "")
     totals = data.get("totals", {})
@@ -347,16 +353,18 @@ def _handle_wallet_balance(args: dict) -> dict:
     # Include per-bot balances so the AI doesn't need individual balance calls
     bots_list = data.get("bots", [])
     if bots_list:
-        result["bots"] = [
-            {
+        result["bots"] = []
+        for bot in bots_list:
+            entry = {
                 "name": bot["name"],
                 "principal": bot.get("principal", ""),
                 "odin_sats": bot.get("odin_sats", 0),
                 "tokens": bot.get("tokens", []),
                 "has_odin_account": bot.get("has_odin_account", False),
             }
-            for bot in bots_list
-        ]
+            if bot.get("note"):
+                entry["note"] = bot["note"]
+            result["bots"].append(entry)
     return result
 
 
