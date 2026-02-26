@@ -12,6 +12,8 @@ from iconfucius.skills.executor import (
     _usd_to_tokens,
 )
 
+_FAKE_PEM = "fake.pem"
+
 
 class TestResolveBotNames:
     def test_single_bot_name(self):
@@ -1385,7 +1387,7 @@ class TestWalletSendDefinition:
 class TestWalletSendMonitorHintStripped:
     """Verify wallet_send strips the CLI-specific monitor command."""
 
-    @patch("iconfucius.config.require_wallet", return_value="/tmp/fake.pem")
+    @patch("iconfucius.config.require_wallet", return_value=_FAKE_PEM)
     def test_cli_monitor_hint_removed(self, mock_wallet):
         # Simulate CLI output that includes the monitor hint
         mock_result = MagicMock()
@@ -1408,7 +1410,7 @@ class TestWalletSendMonitorHintStripped:
         assert "BTC withdrawal initiated" in result["display"]
         assert result["hint"] == "Use wallet_monitor to check withdrawal progress."
 
-    @patch("iconfucius.config.require_wallet", return_value="/tmp/fake.pem")
+    @patch("iconfucius.config.require_wallet", return_value=_FAKE_PEM)
     def test_ckbtc_send_no_hint(self, mock_wallet):
         """ckBTC sends (no BTC withdrawal) should not get a hint."""
         mock_result = MagicMock()

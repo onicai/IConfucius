@@ -180,6 +180,12 @@ def _prompt_increase_timeout() -> str:
     return f"Timeout updated to {new_timeout}s."
 
 
+def _toml_quote(value: str) -> str:
+    """Escape a string for use as a TOML basic-string value (with quotes)."""
+    import json
+    return json.dumps(value)
+
+
 def _persist_ai_timeout(timeout: int) -> None:
     """Add or update the timeout key in the [ai] section of iconfucius.toml.
 
@@ -204,11 +210,11 @@ def _persist_ai_timeout(timeout: int) -> None:
     model = ai.get("model", "")
     base_url = ai.get("base_url", "")
     if api_type and api_type != "claude":
-        lines.append(f'api_type = "{api_type}"')
+        lines.append(f"api_type = {_toml_quote(api_type)}")
     if model and model not in (DEFAULT_MODEL, "default"):
-        lines.append(f'model = "{model}"')
+        lines.append(f"model = {_toml_quote(model)}")
     if base_url:
-        lines.append(f'base_url = "{base_url}"')
+        lines.append(f"base_url = {_toml_quote(base_url)}")
     if timeout != AI_TIMEOUT_DEFAULT:
         lines.append(f"timeout = {timeout}")
     new_section = "\n".join(lines) + "\n" if len(lines) > 1 else ""
@@ -331,11 +337,11 @@ def _persist_ai_config(api_type: str = "", model: str = "",
     # Build the new [ai] section content
     lines = ["[ai]"]
     if api_type and api_type != "claude":
-        lines.append(f'api_type = "{api_type}"')
+        lines.append(f"api_type = {_toml_quote(api_type)}")
     if model and model not in (DEFAULT_MODEL, "default"):
-        lines.append(f'model = "{model}"')
+        lines.append(f"model = {_toml_quote(model)}")
     if base_url:
-        lines.append(f'base_url = "{base_url}"')
+        lines.append(f"base_url = {_toml_quote(base_url)}")
     if existing_timeout is not None:
         lines.append(f'timeout = {existing_timeout}')
 
@@ -1266,11 +1272,17 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False,
         if user_input.startswith("/model"):
             parts = user_input.split(maxsplit=1)
             if len(parts) == 1:
+                old_model = backend.model
                 _handle_model_interactive(backend)
+                if backend.model != old_model:
+                    persona.ai_model = backend.model
+                    non_default = _is_non_default_ai(persona)
             else:
                 new_model = parts[1].strip()
                 backend.model = new_model
+                persona.ai_model = new_model
                 _persist_ai_model(new_model)
+                non_default = _is_non_default_ai(persona)
                 print(f"\n  Model changed to: {new_model}\n")
             continue
 

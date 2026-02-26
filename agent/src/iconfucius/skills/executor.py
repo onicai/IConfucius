@@ -5,12 +5,11 @@ and builds the response for the AI agent.
 """
 
 import json
+import logging
 import os
 from pathlib import Path
 
-from iconfucius.logging_config import get_logger
-
-_log = get_logger()
+_log = logging.getLogger(__name__)
 
 
 # Session-level flag for experimental features (set by enable_experimental tool)
@@ -1576,7 +1575,10 @@ def _handle_memory_read_trades(args: dict, *, persona_name: str = "") -> dict:
 
     if not persona_name:
         return {"status": "error", "error": "No persona context available."}
-    last_n = args.get("last_n", 5)
+    try:
+        last_n = max(1, int(args.get("last_n", 5)))
+    except (TypeError, ValueError):
+        last_n = 5
     trades = read_trades(persona_name, last_n=last_n)
     if not trades:
         return {"status": "ok", "display": "No trades recorded yet.", "trades": [], "count": 0}
@@ -1588,7 +1590,10 @@ def _handle_memory_read_balances(args: dict, *, persona_name: str = "") -> dict:
 
     if not persona_name:
         return {"status": "error", "error": "No persona context available."}
-    last_n = args.get("last_n", 50)
+    try:
+        last_n = max(1, int(args.get("last_n", 50)))
+    except (TypeError, ValueError):
+        last_n = 50
     snapshots = read_balance_snapshots(persona_name, last_n=last_n)
     if not snapshots:
         return {"status": "ok", "display": "No balance snapshots recorded yet.", "snapshots": []}
@@ -1600,7 +1605,10 @@ def _handle_memory_archive_balances(args: dict, *, persona_name: str = "") -> di
 
     if not persona_name:
         return {"status": "error", "error": "No persona context available."}
-    keep_days = args.get("keep_days", 90)
+    try:
+        keep_days = max(1, int(args.get("keep_days", 90)))
+    except (TypeError, ValueError):
+        keep_days = 90
     count = archive_balance_snapshots(persona_name, keep_days=keep_days)
     if count == 0:
         return {"status": "ok", "display": "No old snapshots to archive.", "archived": 0}

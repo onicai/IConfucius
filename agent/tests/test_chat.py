@@ -1032,7 +1032,7 @@ class TestChatHintsPlacement:
     @patch("iconfucius.cli.chat.create_backend")
     @patch("iconfucius.cli.chat.load_persona")
     def test_hints_appear_after_greeting(self, mock_load, mock_backend_factory,
-                                          mock_startup,
+                                          _mock_startup,
                                           tmp_path, monkeypatch, capsys):
         """exit/model hints are printed immediately after the greeting."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
@@ -1072,9 +1072,9 @@ class TestChatHintsPlacement:
         "status": "ok", "config_exists": True, "wallet_exists": True,
         "env_exists": True, "has_api_key": True, "ready": True,
     })
-    def test_hints_appear_before_wallet(self, mock_exec, mock_load,
+    def test_hints_appear_before_wallet(self, _mock_exec, mock_load,
                                          mock_backend_factory,
-                                         mock_startup,
+                                         _mock_startup,
                                          tmp_path, monkeypatch, capsys):
         """Hints appear before wallet balance output."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
@@ -1117,7 +1117,7 @@ class TestExperimentalWarning:
     @patch("iconfucius.cli.chat.load_persona")
     def test_experimental_flag_shows_warning(self, mock_load,
                                               mock_backend_factory,
-                                              mock_startup,
+                                              _mock_startup,
                                               tmp_path, monkeypatch, capsys):
         """--experimental prints the experimental warning after AI config."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
@@ -1231,7 +1231,7 @@ class TestAiHotSwap:
     @patch("iconfucius.cli.chat.create_backend")
     @patch("iconfucius.cli.chat.load_persona")
     def test_ai_endpoint_hotswap(self, mock_load, mock_backend_factory,
-                                  mock_startup, mock_persist,
+                                  _mock_startup, _mock_persist,
                                   tmp_path, monkeypatch, capsys):
         """/ai interactive endpoint change creates a new backend."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
