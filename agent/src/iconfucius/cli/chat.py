@@ -182,7 +182,6 @@ def _prompt_increase_timeout() -> str:
 
 def _toml_quote(value: str) -> str:
     """Escape a string for use as a TOML basic-string value (with quotes)."""
-    import json
     return json.dumps(value)
 
 
