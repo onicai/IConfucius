@@ -61,6 +61,7 @@ class TestUsdToSatsEdgeCases:
 
     @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100_000.0)
     def test_zero_usd_returns_zero(self, _mock):
+        """Verify zero usd returns zero."""
         assert _usd_to_sats(0.0) == 0
 
     @patch("iconfucius.config.get_btc_to_usd_rate", return_value=0.0)
@@ -97,6 +98,7 @@ class TestUsdToSatsEdgeCases:
     @patch("iconfucius.config.get_btc_to_usd_rate",
            side_effect=Exception("API offline"))
     def test_rate_api_offline_raises(self, _mock):
+        """Verify rate api offline raises."""
         with pytest.raises(Exception, match="API offline"):
             _usd_to_sats(10.0)
 
@@ -119,6 +121,7 @@ class TestUsdToTokensEdgeCases:
     @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100_000.0)
     @patch("iconfucius.tokens.fetch_token_data", return_value=None)
     def test_missing_token_data_raises(self, _mock_fetch, _mock_rate):
+        """Verify missing token data raises."""
         with pytest.raises(ValueError, match="Could not fetch price"):
             _usd_to_tokens(10.0, "nonexistent")
 
@@ -201,6 +204,7 @@ class TestFundHandlerValidation:
         assert "USD conversion failed" in result["error"]
 
     def test_no_wallet_returns_error(self):
+        """Verify no wallet returns error."""
         with patch("iconfucius.config.require_wallet", return_value=False):
             result = execute_tool("fund", {
                 "bot_name": "bot-1", "amount": 5000,
@@ -226,12 +230,14 @@ class TestWithdrawHandlerValidation:
     """Test _handle_withdraw validates inputs before moving money."""
 
     def test_missing_amount_and_usd(self):
+        """Verify missing amount and usd."""
         with patch("iconfucius.config.require_wallet", return_value=True):
             result = execute_tool("withdraw", {"bot_name": "bot-1"})
         assert result["status"] == "error"
         assert "amount" in result["error"].lower()
 
     def test_missing_bot(self):
+        """Verify missing bot."""
         with patch("iconfucius.config.require_wallet", return_value=True):
             result = execute_tool("withdraw", {"amount": "5000"})
         assert result["status"] == "error"
@@ -239,6 +245,7 @@ class TestWithdrawHandlerValidation:
     @patch("iconfucius.config.get_btc_to_usd_rate",
            side_effect=Exception("offline"))
     def test_usd_conversion_failure(self, _mock):
+        """Verify usd conversion failure."""
         with patch("iconfucius.config.require_wallet", return_value=True):
             result = execute_tool("withdraw", {
                 "bot_name": "bot-1", "amount_usd": 10.0,
@@ -247,6 +254,7 @@ class TestWithdrawHandlerValidation:
         assert "USD conversion failed" in result["error"]
 
     def test_no_wallet(self):
+        """Verify no wallet."""
         with patch("iconfucius.config.require_wallet", return_value=False):
             result = execute_tool("withdraw", {
                 "bot_name": "bot-1", "amount": "5000",
@@ -258,23 +266,27 @@ class TestWalletSendHandlerValidation:
     """Test _handle_wallet_send validates inputs before moving money."""
 
     def test_missing_amount_and_address(self):
+        """Verify missing amount and address."""
         with patch("iconfucius.config.require_wallet", return_value=True):
             result = execute_tool("wallet_send", {})
         assert result["status"] == "error"
 
     def test_missing_address(self):
+        """Verify missing address."""
         with patch("iconfucius.config.require_wallet", return_value=True):
             result = execute_tool("wallet_send", {"amount": "5000"})
         assert result["status"] == "error"
         assert "address" in result["error"].lower()
 
     def test_missing_amount(self):
+        """Verify missing amount."""
         with patch("iconfucius.config.require_wallet", return_value=True):
             result = execute_tool("wallet_send", {"address": "bc1qtest"})
         assert result["status"] == "error"
         assert "amount" in result["error"].lower()
 
     def test_empty_address(self):
+        """Verify empty address."""
         with patch("iconfucius.config.require_wallet", return_value=True):
             result = execute_tool("wallet_send", {
                 "amount": "5000", "address": "",
@@ -284,6 +296,7 @@ class TestWalletSendHandlerValidation:
     @patch("iconfucius.config.get_btc_to_usd_rate",
            side_effect=Exception("offline"))
     def test_usd_conversion_failure(self, _mock):
+        """Verify usd conversion failure."""
         with patch("iconfucius.config.require_wallet", return_value=True):
             result = execute_tool("wallet_send", {
                 "amount_usd": 10.0, "address": "bc1qtest",
@@ -292,6 +305,7 @@ class TestWalletSendHandlerValidation:
         assert "USD conversion failed" in result["error"]
 
     def test_no_wallet(self):
+        """Verify no wallet."""
         with patch("iconfucius.config.require_wallet", return_value=False):
             result = execute_tool("wallet_send", {
                 "amount": "5000", "address": "bc1qtest",
@@ -355,6 +369,7 @@ class TestTradeBuyHandlerValidation:
     """Test _handle_trade_buy validates all required params."""
 
     def test_missing_token_id(self):
+        """Verify missing token id."""
         with patch("iconfucius.config.require_wallet", return_value=True):
             result = execute_tool("trade_buy", {
                 "amount": 5000, "bot_name": "bot-1",
@@ -363,6 +378,7 @@ class TestTradeBuyHandlerValidation:
         assert "token_id" in result["error"]
 
     def test_missing_amount(self):
+        """Verify missing amount."""
         with patch("iconfucius.config.require_wallet", return_value=True):
             result = execute_tool("trade_buy", {
                 "token_id": "29m8", "bot_name": "bot-1",
@@ -370,6 +386,7 @@ class TestTradeBuyHandlerValidation:
         assert result["status"] == "error"
 
     def test_missing_bot(self):
+        """Verify missing bot."""
         with patch("iconfucius.config.require_wallet", return_value=True):
             result = execute_tool("trade_buy", {
                 "token_id": "29m8", "amount": 5000,
@@ -379,6 +396,7 @@ class TestTradeBuyHandlerValidation:
     @patch("iconfucius.config.get_btc_to_usd_rate",
            side_effect=Exception("offline"))
     def test_usd_conversion_failure(self, _mock):
+        """Verify usd conversion failure."""
         with patch("iconfucius.config.require_wallet", return_value=True):
             result = execute_tool("trade_buy", {
                 "token_id": "29m8", "amount_usd": 10.0, "bot_name": "bot-1",
@@ -391,6 +409,7 @@ class TestTradeSellHandlerValidation:
     """Test _handle_trade_sell validates all required params."""
 
     def test_missing_token_id(self):
+        """Verify missing token id."""
         with patch("iconfucius.config.require_wallet", return_value=True):
             result = execute_tool("trade_sell", {
                 "amount": 5000, "bot_name": "bot-1",
@@ -398,6 +417,7 @@ class TestTradeSellHandlerValidation:
         assert result["status"] == "error"
 
     def test_missing_amount(self):
+        """Verify missing amount."""
         with patch("iconfucius.config.require_wallet", return_value=True):
             result = execute_tool("trade_sell", {
                 "token_id": "29m8", "bot_name": "bot-1",
@@ -408,6 +428,7 @@ class TestTradeSellHandlerValidation:
     @patch("iconfucius.tokens.fetch_token_data",
            side_effect=Exception("API down"))
     def test_usd_conversion_with_token_api_failure(self, _f, _r):
+        """Verify usd conversion with token api failure."""
         with patch("iconfucius.config.require_wallet", return_value=True):
             result = execute_tool("trade_sell", {
                 "token_id": "29m8", "amount_usd": 10.0, "bot_name": "bot-1",
@@ -526,28 +547,34 @@ class TestBotResolutionSecurity:
     """Verify bots are resolved correctly — no accidental all-bots."""
 
     def test_empty_args_no_bots(self):
+        """Verify empty args no bots."""
         from iconfucius.skills.executor import _resolve_bot_names
         assert _resolve_bot_names({}) == []
 
     def test_bot_name_none_no_bots(self):
+        """Verify bot name none no bots."""
         from iconfucius.skills.executor import _resolve_bot_names
         assert _resolve_bot_names({"bot_name": None}) == []
 
     def test_bot_names_empty_list_no_bots(self):
+        """Verify bot names empty list no bots."""
         from iconfucius.skills.executor import _resolve_bot_names
         assert _resolve_bot_names({"bot_names": []}) == []
 
     def test_all_bots_false_ignored(self):
+        """Verify all bots false ignored."""
         from iconfucius.skills.executor import _resolve_bot_names
         assert _resolve_bot_names({"all_bots": False}) == []
 
     def test_all_bots_true_resolves_all(self, odin_project):
+        """Verify all bots true resolves all."""
         from iconfucius.skills.executor import _resolve_bot_names
         result = _resolve_bot_names({"all_bots": True})
         assert len(result) == 3
         assert "bot-1" in result
 
     def test_bot_names_preserved_in_order(self):
+        """Verify bot names preserved in order."""
         from iconfucius.skills.executor import _resolve_bot_names
         result = _resolve_bot_names({"bot_names": ["bot-3", "bot-1", "bot-2"]})
         assert result == ["bot-3", "bot-1", "bot-2"]
@@ -646,42 +673,50 @@ class TestDescribeToolCallAccuracy:
     """Verify the confirmation prompt shows correct amounts."""
 
     def test_fund_shows_sats(self):
+        """Verify fund shows sats."""
         desc = _describe_tool_call("fund", {"amount": 5000, "bot_name": "bot-1"})
         assert "5,000" in desc
         assert "bot-1" in desc
 
     def test_fund_all_bots_shows_each(self):
+        """Verify fund all bots shows each."""
         desc = _describe_tool_call("fund", {"amount": 5000, "all_bots": True})
         assert "all bots" in desc.lower()
         assert "each" in desc.lower()
 
     def test_trade_buy_shows_amount_and_token(self):
+        """Verify trade buy shows amount and token."""
         desc = _describe_tool_call("trade_buy", {
             "amount": 5000, "token_id": "29m8", "bot_name": "bot-1"})
         assert "5,000" in desc
         assert "29m8" in desc
 
     def test_trade_sell_all_shows_all(self):
+        """Verify trade sell all shows all."""
         desc = _describe_tool_call("trade_sell", {
             "amount": "all", "token_id": "29m8", "bot_name": "bot-1"})
         assert "all" in desc.lower()
 
     def test_trade_sell_usd_shows_dollar(self):
+        """Verify trade sell usd shows dollar."""
         desc = _describe_tool_call("trade_sell", {
             "amount_usd": 10.0, "token_id": "29m8", "bot_name": "bot-1"})
         assert "$10.000" in desc
 
     def test_withdraw_shows_amount(self):
+        """Verify withdraw shows amount."""
         desc = _describe_tool_call("withdraw", {
             "amount": "5000", "bot_name": "bot-1"})
         assert "5,000" in desc or "5000" in desc
 
     def test_wallet_send_shows_address(self):
+        """Verify wallet send shows address."""
         desc = _describe_tool_call("wallet_send", {
             "amount": "5000", "address": "bc1qtestaddr123"})
         assert "bc1qtestaddr123" in desc
 
     def test_wallet_send_shows_principal(self):
+        """Verify wallet send shows principal."""
         principal = "y7paa-3ewsi-2iqfz-xlcd7-jpcvq-ibor6-brggk-t7xyl-fv4hy-6ze7d-pqe"
         desc = _describe_tool_call("wallet_send", {
             "amount": "5000", "address": principal})
@@ -764,6 +799,7 @@ class TestWalletBalanceDataLeakage:
         assert token["balance"] == 5.0
 
     def test_none_data_returns_error(self):
+        """Verify none data returns error."""
         with patch("iconfucius.cli.balance.run_all_balances",
                     return_value=None):
             with patch("iconfucius.config.require_wallet", return_value=True):
@@ -789,6 +825,7 @@ class TestTokenToolsTotalSupply:
     @patch("iconfucius.tokens.lookup_token_with_fallback",
            return_value={"id": "29m8", "name": "IConfucius", "ticker": "ICONFUCIUS"})
     def test_token_price_includes_total_supply(self, _lookup, _fetch, _rate):
+        """Verify token price includes total supply."""
         result = execute_tool("token_price", {"query": "ICONFUCIUS"})
         assert result["status"] == "ok"
         assert result["total_supply"] == 21_000_000
@@ -796,6 +833,7 @@ class TestTokenToolsTotalSupply:
 
     @patch("iconfucius.tokens.discover_tokens")
     def test_token_discover_includes_total_supply(self, mock_discover):
+        """Verify token discover includes total supply."""
         mock_discover.return_value = [
             {"id": "t1", "name": "Token1", "ticker": "TK1",
              "price_sats": 1.5, "marketcap_sats": 31_500_000,
@@ -859,12 +897,14 @@ class TestFundLowLevelAmounts:
     """Test run_fund with edge-case amounts."""
 
     def test_zero_amount(self, odin_project):
+        """Verify zero amount."""
         from iconfucius.cli.fund import run_fund
         result = run_fund(bot_names=["bot-1"], amount=0)
         assert result["status"] == "error"
         assert "positive" in result["error"].lower()
 
     def test_negative_amount(self, odin_project):
+        """Verify negative amount."""
         from iconfucius.cli.fund import run_fund
         result = run_fund(bot_names=["bot-1"], amount=-5000)
         assert result["status"] == "error"

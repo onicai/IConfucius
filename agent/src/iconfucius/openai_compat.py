@@ -38,6 +38,7 @@ class OpenAICompatResponse:
     content: list  # list of TextBlock | ToolUseBlock
 
     def model_dump(self, mode=None) -> dict:
+        """Serialize the response content blocks to a plain dictionary."""
         return {"content": [asdict(b) for b in self.content]}
 
 

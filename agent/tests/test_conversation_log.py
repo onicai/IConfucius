@@ -29,6 +29,7 @@ def _fresh_session_stamp():
 class TestConversationLogger:
 
     def test_creates_dir_with_0700(self, tmp_path):
+        """Verify creates dir with 0700."""
         logger = ConversationLogger(base_dir=tmp_path)
         conv_dir = tmp_path / ".logs" / "conversations"
         mode = stat.S_IMODE(conv_dir.stat().st_mode)
@@ -36,12 +37,14 @@ class TestConversationLogger:
         logger.close()
 
     def test_creates_file_with_0600(self, tmp_path):
+        """Verify creates file with 0600."""
         logger = ConversationLogger(base_dir=tmp_path)
         mode = stat.S_IMODE(logger.path_cached.stat().st_mode)
         assert mode == 0o600
         logger.close()
 
     def test_writes_valid_jsonl(self, tmp_path):
+        """Verify writes valid jsonl."""
         logger = ConversationLogger(base_dir=tmp_path)
         logger.log_interaction(
             call_type="chat",
@@ -72,6 +75,7 @@ class TestConversationLogger:
             assert "call_type" in data
 
     def test_jwt_scrubbed(self, tmp_path):
+        """Verify jwt scrubbed."""
         logger = ConversationLogger(base_dir=tmp_path)
         logger.log_interaction(
             call_type="chat",
@@ -89,6 +93,7 @@ class TestConversationLogger:
         assert "[JWT-REDACTED]" in content
 
     def test_sequence_increments(self, tmp_path):
+        """Verify sequence increments."""
         logger = ConversationLogger(base_dir=tmp_path)
         for _ in range(3):
             logger.log_interaction(
@@ -107,6 +112,7 @@ class TestConversationLogger:
         assert seqs == [1, 2, 3]
 
     def test_tools_omitted_for_chat(self, tmp_path):
+        """Verify tools omitted for chat."""
         logger = ConversationLogger(base_dir=tmp_path)
         logger.log_interaction(
             call_type="chat",
@@ -123,6 +129,7 @@ class TestConversationLogger:
         assert "tools" not in data
 
     def test_cleanup_keeps_max_files(self, tmp_path):
+        """Verify cleanup keeps max files."""
         conv_dir = tmp_path / ".logs" / "conversations"
         conv_dir.mkdir(parents=True)
         extra = 3
@@ -142,6 +149,7 @@ class TestConversationLogger:
             assert f"20260101-{i:06d}-ai-cached.jsonl" not in names
 
     def test_cleanup_noop_under_limit(self, tmp_path):
+        """Verify cleanup noop under limit."""
         conv_dir = tmp_path / ".logs" / "conversations"
         conv_dir.mkdir(parents=True)
         for i in range(5):
@@ -154,6 +162,7 @@ class TestConversationLogger:
         assert len(remaining) == 6  # 5 pre-existing + 1 new
 
     def test_tools_included_for_chat_with_tools(self, tmp_path):
+        """Verify tools included for chat with tools."""
         logger = ConversationLogger(base_dir=tmp_path)
         logger.log_interaction(
             call_type="chat_with_tools",
@@ -230,23 +239,28 @@ class TestConversationLogger:
 
 class _FakeBackend(AIBackend):
     def __init__(self):
+        """Initialize the instance."""
         self.model = "fake-model"
 
     def chat(self, messages, system):
+        """Send a chat message and return the response."""
         return "fake response"
 
     def chat_with_tools(self, messages, system, tools):
+        """Send a chat message with tool definitions and return the response."""
         resp = MagicMock()
         resp.model_dump.return_value = {"id": "msg_test", "content": []}
         return resp
 
     def list_models(self):
+        """List available models from the backend."""
         return [("fake-model", "Fake Model")]
 
 
 class TestLoggingBackend:
 
     def test_chat_delegates_and_logs(self, tmp_path):
+        """Verify chat delegates and logs."""
         logger = ConversationLogger(base_dir=tmp_path)
         backend = LoggingBackend(_FakeBackend(), logger)
 
@@ -263,6 +277,7 @@ class TestLoggingBackend:
         assert data["duration_ms"] >= 0
 
     def test_chat_with_tools_delegates_and_logs(self, tmp_path):
+        """Verify chat with tools delegates and logs."""
         logger = ConversationLogger(base_dir=tmp_path)
         backend = LoggingBackend(_FakeBackend(), logger)
 
@@ -281,11 +296,13 @@ class TestLoggingBackend:
         assert "tools" in data
 
     def test_logs_errors_and_reraises(self, tmp_path):
+        """Verify logs errors and reraises."""
         logger = ConversationLogger(base_dir=tmp_path)
 
         class _FailBackend(AIBackend):
             model = "fail-model"
             def chat(self, messages, system):
+                """Send a chat message and return the response."""
                 raise RuntimeError("API down")
 
         backend = LoggingBackend(_FailBackend(), logger)
@@ -299,6 +316,7 @@ class TestLoggingBackend:
         assert data["response"] is None
 
     def test_proxies_model_property(self, tmp_path):
+        """Verify proxies model property."""
         logger = ConversationLogger(base_dir=tmp_path)
         backend = LoggingBackend(_FakeBackend(), logger)
 
@@ -308,6 +326,7 @@ class TestLoggingBackend:
         logger.close()
 
     def test_list_models_delegates(self, tmp_path):
+        """Verify list models delegates."""
         logger = ConversationLogger(base_dir=tmp_path)
         backend = LoggingBackend(_FakeBackend(), logger)
 
@@ -319,6 +338,7 @@ class TestLoggingBackend:
 class TestPromptCaching:
 
     def test_cached_system_returns_content_block_with_cache_control(self):
+        """Verify cached system returns content block with cache control."""
         result = ClaudeBackend._cached_system("You are helpful.")
         assert isinstance(result, list)
         assert len(result) == 1
@@ -351,6 +371,7 @@ class TestCachedLogFile:
     """Tests for the ai-cached file's cache-detection behaviour."""
 
     def test_first_call_writes_full_system_and_tools(self, tmp_path):
+        """Verify first call writes full system and tools."""
         logger = ConversationLogger(base_dir=tmp_path)
         system = cached_system("You are wise.")
         tools = [{"name": "t1"}, {"name": "t2"}]
@@ -372,6 +393,7 @@ class TestCachedLogFile:
         assert data["tools"] == tools
 
     def test_second_identical_call_uses_cached_placeholder(self, tmp_path):
+        """Verify second identical call uses cached placeholder."""
         logger = ConversationLogger(base_dir=tmp_path)
         system = cached_system("You are wise.")
         tools = [{"name": "t1"}]
@@ -402,6 +424,7 @@ class TestCachedLogFile:
         assert second["tools"] == "[cached]"
 
     def test_changed_system_resets_cache(self, tmp_path):
+        """Verify changed system resets cache."""
         logger = ConversationLogger(base_dir=tmp_path)
         tools = [{"name": "t1"}]
 
@@ -467,6 +490,7 @@ class TestCachedMessages:
     """Tests for message deduplication in the cached log file."""
 
     def test_first_call_logs_all_messages(self, tmp_path):
+        """Verify first call logs all messages."""
         logger = ConversationLogger(base_dir=tmp_path)
         msgs = [{"role": "user", "content": "hello"}]
         logger.log_interaction(
@@ -479,6 +503,7 @@ class TestCachedMessages:
         assert data["messages"] == msgs
 
     def test_second_call_caches_prior_messages(self, tmp_path):
+        """Verify second call caches prior messages."""
         logger = ConversationLogger(base_dir=tmp_path)
 
         msgs1 = [{"role": "user", "content": "hello"}]

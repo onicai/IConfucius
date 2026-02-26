@@ -52,16 +52,19 @@ class TestVarintEncoding:
     """Test Bitcoin varint encoding."""
 
     def test_single_byte(self):
+        """Verify single byte."""
         assert encode_varint(0) == b"\x00"
         assert encode_varint(1) == b"\x01"
         assert encode_varint(252) == b"\xfc"
 
     def test_two_byte(self):
+        """Verify two byte."""
         assert encode_varint(253) == b"\xfd\xfd\x00"
         assert encode_varint(0xFF) == b"\xfd\xff\x00"
         assert encode_varint(0xFFFF) == b"\xfd\xff\xff"
 
     def test_four_byte(self):
+        """Verify four byte."""
         assert encode_varint(0x10000) == b"\xfe\x00\x00\x01\x00"
 
 
@@ -69,12 +72,15 @@ class TestVarStringEncoding:
     """Test varint-prefixed byte string encoding."""
 
     def test_empty(self):
+        """Verify empty."""
         assert encode_var_string(b"") == b"\x00"
 
     def test_short(self):
+        """Verify short."""
         assert encode_var_string(b"abc") == b"\x03abc"
 
     def test_64_bytes(self):
+        """Verify 64 bytes."""
         sig = bytes.fromhex(TEST_SIGNATURE)
         result = encode_var_string(sig)
         assert result[0] == 64  # length prefix
@@ -88,6 +94,7 @@ class TestBip0322Hash:
 
     def test_empty_message(self):
         # BIP322 test vector: empty message
+        """Verify empty message."""
         result = bip0322_hash("")
         # The hash should be 64 hex chars (32 bytes)
         assert len(result) == 64
@@ -96,12 +103,14 @@ class TestBip0322Hash:
 
     def test_hello_world(self):
         # BIP322 test vector: "Hello World"
+        """Verify hello world."""
         result = bip0322_hash("Hello World")
         assert len(result) == 64
         assert result == "f0eb03b1a75ac6d9847f55c624a99169b5dccba2a31f5b23bea77ba270de0a7a"
 
     def test_deterministic(self):
         # Same message should always produce same hash
+        """Verify deterministic."""
         msg = "test message"
         assert bip0322_hash(msg) == bip0322_hash(msg)
 
@@ -112,16 +121,19 @@ class TestDeriveAddress:
     """Test P2TR address derivation from x-only public key."""
 
     def test_valid_pubkey(self):
+        """Verify valid pubkey."""
         address = derive_address(TEST_PUBKEY)
         assert address.startswith("bc1p")
         assert len(address) == 62  # bech32m P2TR address length
         assert address == TEST_ADDRESS
 
     def test_invalid_pubkey_length(self):
+        """Verify invalid pubkey length."""
         with pytest.raises(Exception):
             derive_address("abcd")  # Too short
 
     def test_invalid_hex(self):
+        """Verify invalid hex."""
         with pytest.raises(Exception):
             derive_address("zz" * 32)  # Invalid hex
 
@@ -132,6 +144,7 @@ class TestEncodeWitness:
     """Test BIP322 witness encoding."""
 
     def test_valid_signature(self):
+        """Verify valid signature."""
         witness = encode_witness(TEST_SIGNATURE)
         # Should be base64 encoded
         decoded = base64.b64decode(witness)
@@ -141,6 +154,7 @@ class TestEncodeWitness:
         assert decoded[2:] == bytes.fromhex(TEST_SIGNATURE)
 
     def test_invalid_signature_length(self):
+        """Verify invalid signature length."""
         with pytest.raises(ValueError, match="Expected 64-byte"):
             encode_witness("aa" * 32)  # Only 32 bytes
 
@@ -150,6 +164,7 @@ class TestInjectSignatureAndExtractWitness:
 
     def test_produces_same_as_simple_encode(self):
         # For P2TR key-path spend, the full and simple methods should match
+        """Verify produces same as simple encode."""
         result1 = inject_signature_and_extract_witness(
             TEST_MESSAGE, TEST_PUBKEY, TEST_SIGNATURE
         )
@@ -163,6 +178,7 @@ class TestComputeSighash:
     """Test BIP341 sighash computation for BIP322 signing."""
 
     def test_returns_sighash_and_address(self):
+        """Verify returns sighash and address."""
         result = compute_sighash(TEST_MESSAGE, TEST_PUBKEY)
         assert "sighash" in result
         assert "address" in result
@@ -171,11 +187,13 @@ class TestComputeSighash:
 
     def test_deterministic(self):
         # Same inputs should produce same sighash
+        """Verify deterministic."""
         result1 = compute_sighash(TEST_MESSAGE, TEST_PUBKEY)
         result2 = compute_sighash(TEST_MESSAGE, TEST_PUBKEY)
         assert result1["sighash"] == result2["sighash"]
 
     def test_different_message_different_sighash(self):
+        """Verify different message different sighash."""
         result1 = compute_sighash("message 1", TEST_PUBKEY)
         result2 = compute_sighash("message 2", TEST_PUBKEY)
         assert result1["sighash"] != result2["sighash"]
@@ -188,6 +206,7 @@ class TestCLIInterface:
 
     @pytest.fixture
     def script_path(self):
+        """Return the path to the BIP322 CLI script."""
         return Path(__file__).parent.parent / "src" / "iconfucius" / "bip322.py"
 
     def _call_cli(self, script_path: Path, request: dict) -> dict:
@@ -202,6 +221,7 @@ class TestCLIInterface:
         return json.loads(result.stdout.strip())
 
     def test_address_action(self, script_path):
+        """Verify address action."""
         response = self._call_cli(script_path, {
             "action": "address",
             "pubkey": TEST_PUBKEY,
@@ -209,6 +229,7 @@ class TestCLIInterface:
         assert response["address"] == TEST_ADDRESS
 
     def test_sighash_action(self, script_path):
+        """Verify sighash action."""
         response = self._call_cli(script_path, {
             "action": "sighash",
             "message": TEST_MESSAGE,
@@ -219,6 +240,7 @@ class TestCLIInterface:
         assert len(response["sighash"]) == 64
 
     def test_witness_action_simple(self, script_path):
+        """Verify witness action simple."""
         response = self._call_cli(script_path, {
             "action": "witness",
             "signature": TEST_SIGNATURE,
@@ -228,6 +250,7 @@ class TestCLIInterface:
         base64.b64decode(response["witness"])
 
     def test_witness_action_full(self, script_path):
+        """Verify witness action full."""
         response = self._call_cli(script_path, {
             "action": "witness",
             "message": TEST_MESSAGE,
@@ -237,12 +260,14 @@ class TestCLIInterface:
         assert "witness" in response
 
     def test_unknown_action(self, script_path):
+        """Verify unknown action."""
         response = self._call_cli(script_path, {
             "action": "unknown",
         })
         assert "error" in response
 
     def test_missing_required_field(self, script_path):
+        """Verify missing required field."""
         response = self._call_cli(script_path, {
             "action": "address",
             # missing pubkey

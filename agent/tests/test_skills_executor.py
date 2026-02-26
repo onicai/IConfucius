@@ -17,20 +17,25 @@ _FAKE_PEM = "fake.pem"
 
 class TestResolveBotNames:
     def test_single_bot_name(self):
+        """Verify single bot name."""
         assert _resolve_bot_names({"bot_name": "bot-1"}) == ["bot-1"]
 
     def test_bot_names_list(self):
+        """Verify bot names list."""
         result = _resolve_bot_names({"bot_names": ["bot-12", "bot-14"]})
         assert result == ["bot-12", "bot-14"]
 
     def test_all_bots(self, odin_project):
+        """Verify all bots."""
         result = _resolve_bot_names({"all_bots": True})
         assert len(result) == 3  # default odin_project fixture has 3 bots
 
     def test_empty_returns_empty(self):
+        """Verify empty returns empty."""
         assert _resolve_bot_names({}) == []
 
     def test_bot_names_takes_priority_over_bot_name(self):
+        """Verify bot names takes priority over bot name."""
         result = _resolve_bot_names({
             "bot_names": ["bot-2", "bot-3"],
             "bot_name": "bot-1",
@@ -38,6 +43,7 @@ class TestResolveBotNames:
         assert result == ["bot-2", "bot-3"]
 
     def test_all_bots_takes_priority(self, odin_project):
+        """Verify all bots takes priority."""
         result = _resolve_bot_names({
             "all_bots": True,
             "bot_name": "bot-1",
@@ -48,6 +54,7 @@ class TestResolveBotNames:
 
 class TestExecuteToolDispatch:
     def test_unknown_tool_returns_error(self):
+        """Verify unknown tool returns error."""
         result = execute_tool("nonexistent_tool", {})
         assert result["status"] == "error"
         assert "Unknown tool" in result["error"]
@@ -56,6 +63,7 @@ class TestExecuteToolDispatch:
 
 class TestSetupStatusExecutor:
     def test_setup_status_returns_all_fields(self):
+        """Verify setup status returns all fields."""
         result = execute_tool("setup_status", {})
         assert result["status"] == "ok"
         assert "config_exists" in result
@@ -75,6 +83,7 @@ class TestSetupStatusExecutor:
 
 class TestInitExecutor:
     def test_init_creates_config(self, tmp_path, monkeypatch):
+        """Verify init creates config."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         # Clear config cache
@@ -87,6 +96,7 @@ class TestInitExecutor:
         assert (tmp_path / "iconfucius.toml").exists()
 
     def test_init_existing_config_returns_error(self, tmp_path, monkeypatch):
+        """Verify init existing config returns error."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         (tmp_path / "iconfucius.toml").write_text("[settings]\n")
@@ -96,6 +106,7 @@ class TestInitExecutor:
         assert "already exists" in result["error"]
 
     def test_init_with_num_bots(self, tmp_path, monkeypatch):
+        """Verify init with num bots."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         import iconfucius.config as cfg
@@ -110,6 +121,7 @@ class TestInitExecutor:
         assert "[bots.bot-3]" not in content
 
     def test_init_without_num_bots_defaults_to_three(self, tmp_path, monkeypatch):
+        """Verify init without num bots defaults to three."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         import iconfucius.config as cfg
@@ -127,6 +139,7 @@ class TestBotListExecutor:
     """Tests for bot_list agent skill."""
 
     def test_lists_bots(self, tmp_path, monkeypatch):
+        """Verify lists bots."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         import iconfucius.config as cfg
@@ -143,6 +156,7 @@ class TestBotListExecutor:
         assert "5 bot(s)" in result["display"]
 
     def test_no_config_returns_error(self, tmp_path, monkeypatch):
+        """Verify no config returns error."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         import iconfucius.config as cfg
@@ -170,6 +184,7 @@ class TestSetBotCountExecutor:
         return tmp_path
 
     def test_no_config_returns_error(self, tmp_path, monkeypatch):
+        """Verify no config returns error."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         import iconfucius.config as cfg
@@ -180,6 +195,7 @@ class TestSetBotCountExecutor:
         assert "No iconfucius.toml" in result["error"]
 
     def test_same_count_is_noop(self, tmp_path, monkeypatch):
+        """Verify same count is noop."""
         self._setup_project(tmp_path, monkeypatch, num_bots=3)
         result = execute_tool("set_bot_count", {"num_bots": 3})
         assert result["status"] == "ok"
@@ -187,6 +203,7 @@ class TestSetBotCountExecutor:
         assert "Already" in result["message"]
 
     def test_increase_adds_bots(self, tmp_path, monkeypatch):
+        """Verify increase adds bots."""
         self._setup_project(tmp_path, monkeypatch, num_bots=3)
         result = execute_tool("set_bot_count", {"num_bots": 7})
         assert result["status"] == "ok"
@@ -198,6 +215,7 @@ class TestSetBotCountExecutor:
         assert "[bots.bot-8]" not in content
 
     def test_increase_large(self, tmp_path, monkeypatch):
+        """Verify increase large."""
         self._setup_project(tmp_path, monkeypatch, num_bots=3)
         result = execute_tool("set_bot_count", {"num_bots": 100})
         assert result["status"] == "ok"
@@ -257,6 +275,7 @@ class TestSetBotCountExecutor:
         assert "[bots.bot-4]" not in content
 
     def test_num_bots_required(self, tmp_path, monkeypatch):
+        """Verify num bots required."""
         self._setup_project(tmp_path, monkeypatch, num_bots=3)
         result = execute_tool("set_bot_count", {})
         assert result["status"] == "error"
@@ -273,6 +292,7 @@ class TestSetBotCountExecutor:
 
 class TestWalletCreateExecutor:
     def test_wallet_create_creates_pem(self, tmp_path, monkeypatch):
+        """Verify wallet create creates pem."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
 
@@ -282,6 +302,7 @@ class TestWalletCreateExecutor:
         assert pem_path.exists()
 
     def test_wallet_create_existing_returns_error(self, tmp_path, monkeypatch):
+        """Verify wallet create existing returns error."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         wallet_dir = tmp_path / ".wallet"
@@ -303,6 +324,7 @@ class TestTokenLookupExecutor:
         assert result["known_match"]["id"] == "29m8"
 
     def test_token_lookup_missing_query_returns_error(self):
+        """Verify token lookup missing query returns error."""
         result = execute_tool("token_lookup", {})
         assert result["status"] == "error"
         assert "required" in result["error"].lower()
@@ -312,6 +334,7 @@ class TestSecurityStatusExecutor:
     """Tests for security_status agent skill."""
 
     def _setup_project(self, tmp_path, monkeypatch, settings=""):
+        """Set up a test project directory."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         import iconfucius.config as cfg
@@ -321,6 +344,7 @@ class TestSecurityStatusExecutor:
         (tmp_path / "iconfucius.toml").write_text(content)
 
     def test_blst_not_installed(self, tmp_path, monkeypatch):
+        """Verify blst not installed."""
         self._setup_project(tmp_path, monkeypatch)
         with patch.dict("sys.modules", {"blst": None}):
             result = execute_tool("security_status", {})
@@ -330,6 +354,7 @@ class TestSecurityStatusExecutor:
         assert "not installed" in result["display"]
 
     def test_blst_installed_not_enabled(self, tmp_path, monkeypatch):
+        """Verify blst installed not enabled."""
         self._setup_project(tmp_path, monkeypatch)
         with patch.dict("sys.modules", {"blst": object()}):
             result = execute_tool("security_status", {})
@@ -340,6 +365,7 @@ class TestSecurityStatusExecutor:
         assert "enable" in result["display"].lower()
 
     def test_blst_installed_and_enabled(self, tmp_path, monkeypatch):
+        """Verify blst installed and enabled."""
         self._setup_project(tmp_path, monkeypatch,
                             settings="verify_certificates = true")
         with patch.dict("sys.modules", {"blst": object()}):
@@ -350,6 +376,7 @@ class TestSecurityStatusExecutor:
         assert "enabled" in result["display"]
 
     def test_cache_sessions_disabled(self, tmp_path, monkeypatch):
+        """Verify cache sessions disabled."""
         self._setup_project(tmp_path, monkeypatch,
                             settings="cache_sessions = false")
         with patch.dict("sys.modules", {"blst": None}):
@@ -358,6 +385,7 @@ class TestSecurityStatusExecutor:
         assert "disabled" in result["display"].lower()
 
     def test_recommendations_when_blst_missing(self, tmp_path, monkeypatch):
+        """Verify recommendations when blst missing."""
         self._setup_project(tmp_path, monkeypatch)
         with patch.dict("sys.modules", {"blst": None}):
             result = execute_tool("security_status", {})
@@ -367,6 +395,7 @@ class TestSecurityStatusExecutor:
     def test_recommendation_when_blst_present_but_not_enabled(
         self, tmp_path, monkeypatch
     ):
+        """Verify recommendation when blst present but not enabled."""
         self._setup_project(tmp_path, monkeypatch)
         with patch.dict("sys.modules", {"blst": object()}):
             result = execute_tool("security_status", {})
@@ -376,6 +405,7 @@ class TestSecurityStatusExecutor:
     def test_no_recommendations_when_fully_configured(
         self, tmp_path, monkeypatch
     ):
+        """Verify no recommendations when fully configured."""
         self._setup_project(tmp_path, monkeypatch,
                             settings="verify_certificates = true")
         with patch.dict("sys.modules", {"blst": object()}):
@@ -387,6 +417,7 @@ class TestEnableVerifyCertificates:
     """Tests for _enable_verify_certificates helper."""
 
     def test_no_config_returns_not_enabled(self, tmp_path, monkeypatch):
+        """Verify no config returns not enabled."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         import iconfucius.config as cfg
@@ -396,6 +427,7 @@ class TestEnableVerifyCertificates:
         assert result["enabled_now"] is False
 
     def test_enables_when_not_present(self, tmp_path, monkeypatch):
+        """Verify enables when not present."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         import iconfucius.config as cfg
@@ -410,6 +442,7 @@ class TestEnableVerifyCertificates:
         assert "verify_certificates = true" in content
 
     def test_enables_when_false(self, tmp_path, monkeypatch):
+        """Verify enables when false."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         import iconfucius.config as cfg
@@ -426,6 +459,7 @@ class TestEnableVerifyCertificates:
         assert "verify_certificates = false" not in content
 
     def test_noop_when_already_true(self, tmp_path, monkeypatch):
+        """Verify noop when already true."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         import iconfucius.config as cfg
@@ -439,6 +473,7 @@ class TestEnableVerifyCertificates:
         assert result["enabled_now"] is False
 
     def test_adds_settings_section_if_missing(self, tmp_path, monkeypatch):
+        """Verify adds settings section if missing."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         import iconfucius.config as cfg
@@ -513,6 +548,7 @@ class TestInstallBlstExecutor:
         cfg._cached_config_path = None
 
         def fake_which(cmd):
+            """Mock shutil.which for testing."""
             if cmd in ("git", "cc"):
                 return f"/usr/bin/{cmd}"
             return None
@@ -538,6 +574,7 @@ class TestTradeRecording:
     @patch("iconfucius.memory.append_trade")
     def test_buy_records_trade(self, mock_append, _mock_fetch, _mock_usd,
                                tmp_path, monkeypatch):
+        """Verify buy records trade."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         from iconfucius.skills.executor import _HANDLERS
         original = _HANDLERS["trade_buy"]
@@ -567,6 +604,7 @@ class TestTradeRecording:
     @patch("iconfucius.memory.append_trade")
     def test_sell_records_trade(self, mock_append, _mock_fetch, _mock_usd,
                                 tmp_path, monkeypatch):
+        """Verify sell records trade."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         from iconfucius.skills.executor import _HANDLERS
         original = _HANDLERS["trade_sell"]
@@ -594,6 +632,7 @@ class TestTradeRecording:
     @patch("iconfucius.memory.append_trade")
     def test_sell_all_records_trade(self, mock_append, _mock_fetch, _mock_usd,
                                     tmp_path, monkeypatch):
+        """Verify sell all records trade."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         from iconfucius.skills.executor import _HANDLERS
         original = _HANDLERS["trade_sell"]
@@ -617,6 +656,7 @@ class TestTradeRecording:
 
     @patch("iconfucius.memory.append_trade")
     def test_failed_trade_not_recorded(self, mock_append):
+        """Verify failed trade not recorded."""
         from iconfucius.skills.executor import _HANDLERS
         original = _HANDLERS["trade_buy"]
         _HANDLERS["trade_buy"] = self._fake_handler(
@@ -633,6 +673,7 @@ class TestTradeRecording:
 
     @patch("iconfucius.memory.append_trade")
     def test_no_persona_no_recording(self, mock_append):
+        """Verify no persona no recording."""
         from iconfucius.skills.executor import _HANDLERS
         original = _HANDLERS["trade_buy"]
         _HANDLERS["trade_buy"] = self._fake_handler(
@@ -672,6 +713,7 @@ class TestMemoryToolHandlers:
     """Tests for memory_read_strategy, memory_read_learnings, memory_update."""
 
     def test_read_strategy_empty(self, tmp_path, monkeypatch):
+        """Verify read strategy empty."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         result = execute_tool("memory_read_strategy", {},
                               persona_name="test-persona")
@@ -679,6 +721,7 @@ class TestMemoryToolHandlers:
         assert "No strategy" in result["display"]
 
     def test_read_strategy_with_content(self, tmp_path, monkeypatch):
+        """Verify read strategy with content."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         from iconfucius.memory import write_strategy
         write_strategy("test-persona", "# My Strategy\nBuy low sell high")
@@ -688,6 +731,7 @@ class TestMemoryToolHandlers:
         assert "Buy low sell high" in result["display"]
 
     def test_read_learnings_empty(self, tmp_path, monkeypatch):
+        """Verify read learnings empty."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         result = execute_tool("memory_read_learnings", {},
                               persona_name="test-persona")
@@ -695,6 +739,7 @@ class TestMemoryToolHandlers:
         assert "No learnings" in result["display"]
 
     def test_read_learnings_with_content(self, tmp_path, monkeypatch):
+        """Verify read learnings with content."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         from iconfucius.memory import write_learnings
         write_learnings("test-persona", "# Learnings\nVolume spikes matter")
@@ -704,6 +749,7 @@ class TestMemoryToolHandlers:
         assert "Volume spikes matter" in result["display"]
 
     def test_update_strategy(self, tmp_path, monkeypatch):
+        """Verify update strategy."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         result = execute_tool("memory_update",
                               {"file": "strategy", "content": "New strategy"},
@@ -714,6 +760,7 @@ class TestMemoryToolHandlers:
         assert read_strategy("test-persona") == "New strategy"
 
     def test_update_learnings(self, tmp_path, monkeypatch):
+        """Verify update learnings."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         result = execute_tool("memory_update",
                               {"file": "learnings", "content": "New learnings"},
@@ -723,6 +770,7 @@ class TestMemoryToolHandlers:
         assert read_learnings("test-persona") == "New learnings"
 
     def test_update_invalid_file(self, tmp_path, monkeypatch):
+        """Verify update invalid file."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         result = execute_tool("memory_update",
                               {"file": "trades", "content": "Nope"},
@@ -731,6 +779,7 @@ class TestMemoryToolHandlers:
         assert "Unknown file" in result["error"]
 
     def test_update_missing_params(self, tmp_path, monkeypatch):
+        """Verify update missing params."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         result = execute_tool("memory_update", {},
                               persona_name="test-persona")
@@ -738,6 +787,7 @@ class TestMemoryToolHandlers:
         assert "required" in result["error"].lower()
 
     def test_no_persona_returns_error(self):
+        """Verify no persona returns error."""
         result = execute_tool("memory_read_strategy", {})
         assert result["status"] == "error"
         assert "persona" in result["error"].lower()
@@ -747,6 +797,7 @@ class TestWalletBalanceResult:
     """wallet_balance returns structured JSON for the AI to summarize."""
 
     def test_returns_structured_data(self):
+        """Verify returns structured data."""
         fake_data = {
             "wallet_ckbtc_sats": 1000,
             "bots": [
@@ -809,6 +860,7 @@ class TestWalletBalanceResult:
         }
 
     def test_none_data_returns_error_with_funding_hint(self):
+        """None from run_all_balances returns error with funding hint."""
         with patch("iconfucius.cli.balance.run_all_balances",
                     return_value=None):
             with patch("iconfucius.config.require_wallet", return_value=True):
@@ -875,6 +927,7 @@ class TestTokenDiscoverExecutor:
     ]
 
     def test_returns_tokens(self):
+        """Verify returns tokens."""
         with patch("iconfucius.tokens.discover_tokens",
                     return_value=self._FAKE_TOKENS):
             with patch("iconfucius.config.get_btc_to_usd_rate",
@@ -888,6 +941,7 @@ class TestTokenDiscoverExecutor:
         assert "xyz2" in ids
 
     def test_default_sort_is_volume(self):
+        """Verify default sort is volume."""
         with patch("iconfucius.tokens.discover_tokens",
                     return_value=self._FAKE_TOKENS):
             with patch("iconfucius.config.get_btc_to_usd_rate",
@@ -898,6 +952,7 @@ class TestTokenDiscoverExecutor:
         assert "trending" in result["display"].lower()
 
     def test_newest_sort(self):
+        """Verify newest sort."""
         with patch("iconfucius.tokens.discover_tokens",
                     return_value=self._FAKE_TOKENS):
             with patch("iconfucius.config.get_btc_to_usd_rate",
@@ -908,6 +963,7 @@ class TestTokenDiscoverExecutor:
         assert "newest" in result["display"].lower()
 
     def test_token_fields_present(self):
+        """Verify token fields present."""
         with patch("iconfucius.tokens.discover_tokens",
                     return_value=self._FAKE_TOKENS[:1]):
             with patch("iconfucius.config.get_btc_to_usd_rate",
@@ -926,6 +982,7 @@ class TestTokenDiscoverExecutor:
         assert "safety" in token
 
     def test_empty_results(self):
+        """Verify empty results."""
         with patch("iconfucius.tokens.discover_tokens", return_value=[]):
             with patch("iconfucius.config.get_btc_to_usd_rate",
                         return_value=100000.0):
@@ -936,6 +993,7 @@ class TestTokenDiscoverExecutor:
         assert "No tokens found" in result["display"]
 
     def test_display_includes_token_info(self):
+        """Verify display includes token info."""
         with patch("iconfucius.tokens.discover_tokens",
                     return_value=self._FAKE_TOKENS):
             with patch("iconfucius.config.get_btc_to_usd_rate",
@@ -967,6 +1025,7 @@ class TestTokenPriceExecutor:
     }
 
     def test_returns_price_data(self):
+        """Verify returns price data."""
         with patch("iconfucius.tokens._search_api", return_value=[]):
             with patch("iconfucius.tokens.fetch_token_data",
                         return_value=self._FAKE_API):
@@ -981,6 +1040,7 @@ class TestTokenPriceExecutor:
         assert "IConfucius" in result["display"]
 
     def test_price_change_percentages(self):
+        """Verify price change percentages."""
         with patch("iconfucius.tokens._search_api", return_value=[]):
             with patch("iconfucius.tokens.fetch_token_data",
                         return_value=self._FAKE_API):
@@ -995,11 +1055,13 @@ class TestTokenPriceExecutor:
         assert result["change_24h"] == "+50.0%"
 
     def test_missing_query_returns_error(self):
+        """Verify missing query returns error."""
         result = execute_tool("token_price", {})
         assert result["status"] == "error"
         assert "required" in result["error"].lower()
 
     def test_unknown_token_returns_error(self):
+        """Verify unknown token returns error."""
         with patch("iconfucius.tokens._search_api", return_value=[]):
             result = execute_tool("token_price",
                                   {"query": "nonexistent_xyz_999"})
@@ -1007,6 +1069,7 @@ class TestTokenPriceExecutor:
         assert "not found" in result["error"].lower()
 
     def test_api_failure_returns_error(self):
+        """Verify api failure returns error."""
         with patch("iconfucius.tokens._search_api", return_value=[]):
             with patch("iconfucius.tokens.fetch_token_data",
                         return_value=None):
@@ -1016,6 +1079,7 @@ class TestTokenPriceExecutor:
         assert "Could not fetch" in result["error"]
 
     def test_usd_rate_failure_graceful(self):
+        """Verify usd rate failure graceful."""
         with patch("iconfucius.tokens._search_api", return_value=[]):
             with patch("iconfucius.tokens.fetch_token_data",
                         return_value=self._FAKE_API):
@@ -1036,6 +1100,7 @@ class TestTokensToSubunits:
            return_value={"divisibility": 8})
     def test_basic_conversion(self, _mock):
         # 1000 tokens with div=8 → 100_000_000_000
+        """Verify basic conversion."""
         result = _tokens_to_subunits(1000.0, "29m8")
         assert result == 100_000_000_000
 
@@ -1043,17 +1108,20 @@ class TestTokensToSubunits:
            return_value={"divisibility": 0})
     def test_divisibility_zero(self, _mock):
         # div=0 → tokens are indivisible, 1:1
+        """Verify divisibility zero."""
         result = _tokens_to_subunits(500.0, "abc")
         assert result == 500
 
     @patch("iconfucius.tokens.fetch_token_data",
            return_value={"divisibility": 2})
     def test_divisibility_two(self, _mock):
+        """Verify divisibility two."""
         result = _tokens_to_subunits(10.5, "xyz")
         assert result == 1050
 
     @patch("iconfucius.tokens.fetch_token_data", return_value=None)
     def test_missing_data_defaults_to_8(self, _mock):
+        """Verify missing data defaults to 8."""
         result = _tokens_to_subunits(1.0, "unknown")
         assert result == 100_000_000
 
@@ -1061,6 +1129,7 @@ class TestTokensToSubunits:
            return_value={"divisibility": 8})
     def test_fractional_tokens(self, _mock):
         # 0.5 tokens with div=8 → 50_000_000
+        """Verify fractional tokens."""
         result = _tokens_to_subunits(0.5, "29m8")
         assert result == 50_000_000
 
@@ -1071,11 +1140,13 @@ class TestUsdConversion:
     @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100000.0)
     def test_usd_to_sats(self, _mock):
         # $1 at $100k/BTC = 1000 sats
+        """Verify usd to sats."""
         assert _usd_to_sats(1.0) == 1000
 
     @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100000.0)
     def test_usd_to_sats_twenty_dollars(self, _mock):
         # $20 at $100k/BTC = 20,000 sats
+        """Verify usd to sats twenty dollars."""
         assert _usd_to_sats(20.0) == 20000
 
     @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100000.0)
@@ -1084,6 +1155,7 @@ class TestUsdConversion:
     def test_usd_to_tokens(self, _mock_fetch, _mock_usd):
         # $5 at $100k/BTC = 5000 sats
         # raw_tokens = 5000 * 1_000_000 * 10^8 / 1500
+        """Verify usd to tokens."""
         tokens = _usd_to_tokens(5.0, "29m8")
         assert tokens > 0
         # Verify: value_sats = (tokens * 1500) / 10^8 / 10^6 ≈ 5000
@@ -1092,6 +1164,7 @@ class TestUsdConversion:
 
     @patch("iconfucius.tokens.fetch_token_data", return_value=None)
     def test_usd_to_tokens_no_price_raises(self, _mock):
+        """Verify usd to tokens no price raises."""
         from pytest import raises
         with raises(ValueError, match="Could not fetch price"):
             _usd_to_tokens(5.0, "nonexistent")
@@ -1198,6 +1271,7 @@ class TestAggregateTradeResults:
     """Tests for _aggregate_trade_results helper."""
 
     def test_all_succeeded(self):
+        """Verify all succeeded."""
         from iconfucius.skills.executor import _aggregate_trade_results
         results = [
             ("bot-1", {"status": "ok", "action": "buy", "amount": 3000}),
@@ -1216,6 +1290,7 @@ class TestAggregateTradeResults:
         assert r["notes"] == []
 
     def test_mixed_results(self):
+        """Verify mixed results."""
         from iconfucius.skills.executor import _aggregate_trade_results
         results = [
             ("bot-1", {"status": "ok", "action": "sell"}),
@@ -1229,6 +1304,7 @@ class TestAggregateTradeResults:
         assert r["skipped"] == 1
 
     def test_notes_from_capped_buy(self):
+        """Verify notes from capped buy."""
         from iconfucius.skills.executor import _aggregate_trade_results
         results = [
             ("bot-1", {"status": "ok", "action": "buy", "amount": 7371,
@@ -1241,6 +1317,7 @@ class TestAggregateTradeResults:
         assert "auto-capped" in r["notes"][0]
 
     def test_all_skipped(self):
+        """Verify all skipped."""
         from iconfucius.skills.executor import _aggregate_trade_results
         results = [
             ("bot-1", {"status": "skipped", "reason": "No tokens"}),
@@ -1255,6 +1332,7 @@ class TestCheckUpdate:
     """Tests for the check_update tool handler."""
 
     def test_returns_no_update_when_cache_empty(self):
+        """Verify returns no update when cache empty."""
         from iconfucius.skills.executor import _update_cache
         _update_cache.clear()
         result = execute_tool("check_update", {})
@@ -1264,6 +1342,7 @@ class TestCheckUpdate:
         assert result["upgrade_command"] == "/upgrade"
 
     def test_returns_update_when_cache_populated(self):
+        """Verify returns update when cache populated."""
         from iconfucius.skills.executor import _update_cache
         _update_cache.clear()
         _update_cache["latest_version"] = "99.0.0"
@@ -1279,6 +1358,7 @@ class TestCheckUpdate:
             _update_cache.clear()
 
     def test_includes_running_version(self):
+        """Verify includes running version."""
         from iconfucius import __version__
         from iconfucius.skills.executor import _update_cache
         _update_cache.clear()
@@ -1288,12 +1368,14 @@ class TestCheckUpdate:
 
 class TestAccountLookupExecutor:
     def test_missing_address_returns_error(self):
+        """Verify missing address returns error."""
         result = execute_tool("account_lookup", {})
         assert result["status"] == "error"
         assert "Address is required" in result["error"]
 
     @patch("iconfucius.accounts.lookup_odin_account", return_value=None)
     def test_unknown_address_returns_not_found(self, mock_lookup):
+        """Verify unknown address returns not found."""
         result = execute_tool("account_lookup", {"address": "zzzzz-zzzzz"})
         assert result["status"] == "ok"
         assert result["found"] is False
@@ -1301,6 +1383,7 @@ class TestAccountLookupExecutor:
 
     @patch("iconfucius.accounts.lookup_odin_account")
     def test_found_account_returns_details(self, mock_lookup):
+        """Verify found account returns details."""
         mock_lookup.return_value = {
             "principal": "abc-def-ghi",
             "username": "trader42",
@@ -1326,6 +1409,7 @@ class TestAccountLookupExecutor:
 
     @patch("iconfucius.accounts.lookup_odin_account")
     def test_resolves_btc_address(self, mock_lookup):
+        """Verify resolves btc address."""
         mock_lookup.return_value = {
             "principal": "resolved-principal",
             "username": None,
@@ -1354,6 +1438,7 @@ class TestWalletSendDefinition:
     """Verify wallet_send tool definition contains the BTC minimum and dual-mode info."""
 
     def _get_wallet_send_def(self):
+        """Return the wallet_send tool definition."""
         from iconfucius.skills.definitions import TOOLS
         for t in TOOLS:
             if t["name"] == "wallet_send":
@@ -1416,6 +1501,7 @@ class TestWalletSendMonitorHintStripped:
     @patch("iconfucius.config.require_wallet", return_value=_FAKE_PEM)
     def test_cli_monitor_hint_removed(self, mock_wallet):
         # Simulate CLI output that includes the monitor hint
+        """Verify cli monitor hint removed."""
         mock_result = MagicMock()
         mock_result.exit_code = 0
         mock_result.output = (
@@ -1457,6 +1543,7 @@ class TestHowToFundWalletHandler:
     """Tests for the how_to_fund_wallet executor handler."""
 
     def test_no_wallet_returns_error(self):
+        """Verify no wallet returns error."""
         with patch("iconfucius.config.require_wallet", return_value=False):
             result = execute_tool("how_to_fund_wallet", {})
         assert result["status"] == "error"
@@ -1473,6 +1560,7 @@ class TestHowToFundWalletHandler:
     def test_returns_structured_data(self, mock_rate, MockId, MockClient,
                                       MockAgent, mock_icrc1, mock_bal,
                                       mock_minter, mock_btc_addr, odin_project):
+        """Verify returns structured data."""
         mock_identity = MagicMock()
         mock_identity.sender.return_value = MagicMock(
             __str__=lambda s: "fund-principal"
@@ -1497,6 +1585,7 @@ class TestHowToFundWalletHandler:
     def test_display_has_both_options(self, mock_rate, MockId, MockClient,
                                       MockAgent, mock_icrc1, mock_bal,
                                       mock_minter, mock_btc_addr, odin_project):
+        """Verify display has both options."""
         mock_identity = MagicMock()
         mock_identity.sender.return_value = MagicMock(
             __str__=lambda s: "fund-principal"

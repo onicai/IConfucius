@@ -21,12 +21,14 @@ from iconfucius.memory import (
 
 class TestMemoryDir:
     def test_creates_memory_dir(self, tmp_path, monkeypatch):
+        """Verify creates memory dir."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         d = get_memory_dir("test-persona")
         assert d.exists()
         assert d == tmp_path / ".memory" / "test-persona"
 
     def test_idempotent_creation(self, tmp_path, monkeypatch):
+        """Verify idempotent creation."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         d1 = get_memory_dir("test-persona")
         d2 = get_memory_dir("test-persona")
@@ -35,10 +37,12 @@ class TestMemoryDir:
 
 class TestTrades:
     def test_read_empty(self, tmp_path, monkeypatch):
+        """Verify read empty."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         assert read_trades("test-persona") == []
 
     def test_append_and_read(self, tmp_path, monkeypatch):
+        """Verify append and read."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         trade = {"ts": "2026-02-17T21:00:00+00:00", "action": "BUY", "token_id": "29m8", "amount_sats": 1000}
         append_trade("test-persona", trade)
@@ -48,6 +52,7 @@ class TestTrades:
         assert result[0]["amount_sats"] == 1000
 
     def test_read_last_n(self, tmp_path, monkeypatch):
+        """Verify read last n."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         for i in range(5):
             append_trade("test-persona", {"ts": f"2026-02-1{i}T00:00:00+00:00", "action": "BUY", "index": i})
@@ -57,6 +62,7 @@ class TestTrades:
         assert result[1]["index"] == 4
 
     def test_migrate_trades_md_to_jsonl(self, tmp_path, monkeypatch):
+        """Verify migrate trades md to jsonl."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         # Write a trades.md with two entries
         memory_dir = tmp_path / ".memory" / "test-persona"
@@ -103,10 +109,12 @@ class TestTrades:
 
 class TestStrategy:
     def test_read_empty(self, tmp_path, monkeypatch):
+        """Verify read empty."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         assert read_strategy("test-persona") == ""
 
     def test_write_and_read(self, tmp_path, monkeypatch):
+        """Verify write and read."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         write_strategy("test-persona", "# Strategy\n\n1. Buy low, sell high")
         result = read_strategy("test-persona")
@@ -115,10 +123,12 @@ class TestStrategy:
 
 class TestLearnings:
     def test_read_empty(self, tmp_path, monkeypatch):
+        """Verify read empty."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         assert read_learnings("test-persona") == ""
 
     def test_write_and_read(self, tmp_path, monkeypatch):
+        """Verify write and read."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         write_learnings("test-persona", "# Learnings\n\n## Volume spikes")
         result = read_learnings("test-persona")
@@ -141,10 +151,12 @@ def _make_snapshot(ts: datetime, portfolio_sats: int = 100000) -> dict:
 
 class TestBalanceSnapshots:
     def test_read_empty(self, tmp_path, monkeypatch):
+        """Verify read empty."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         assert read_balance_snapshots("test-persona") == []
 
     def test_append_and_read(self, tmp_path, monkeypatch):
+        """Verify append and read."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         snap = _make_snapshot(datetime.now(timezone.utc))
         append_balance_snapshot("test-persona", snap)
@@ -153,6 +165,7 @@ class TestBalanceSnapshots:
         assert result[0]["portfolio_sats"] == 100000
 
     def test_skips_within_one_hour(self, tmp_path, monkeypatch):
+        """Verify skips within one hour."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         now = datetime.now(timezone.utc)
         snap1 = _make_snapshot(now - timedelta(minutes=30))
@@ -163,6 +176,7 @@ class TestBalanceSnapshots:
         assert len(result) == 1  # second was skipped
 
     def test_records_if_portfolio_changed(self, tmp_path, monkeypatch):
+        """Verify records if portfolio changed."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         now = datetime.now(timezone.utc)
         snap1 = _make_snapshot(now - timedelta(minutes=30), portfolio_sats=100000)
@@ -173,6 +187,7 @@ class TestBalanceSnapshots:
         assert len(result) == 2
 
     def test_archive_moves_old(self, tmp_path, monkeypatch):
+        """Verify archive moves old."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         now = datetime.now(timezone.utc)
         old_snap = _make_snapshot(now - timedelta(days=100))
@@ -188,6 +203,7 @@ class TestBalanceSnapshots:
         assert remaining[0]["portfolio_sats"] == 200000
 
     def test_archive_keeps_recent(self, tmp_path, monkeypatch):
+        """Verify archive keeps recent."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         now = datetime.now(timezone.utc)
         snap = _make_snapshot(now)
@@ -198,6 +214,7 @@ class TestBalanceSnapshots:
         assert len(remaining) == 1
 
     def test_archive_appends_to_existing(self, tmp_path, monkeypatch):
+        """Verify archive appends to existing."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         now = datetime.now(timezone.utc)
         # Write two old snapshots with different timestamps & portfolio values

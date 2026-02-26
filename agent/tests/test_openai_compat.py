@@ -19,16 +19,19 @@ class TestAnthropicMessagesToOpenAI:
     """Test anthropic_messages_to_openai()."""
 
     def test_system_prompt_to_openai(self):
+        """Verify system prompt to openai."""
         result = anthropic_messages_to_openai([], "You are helpful.")
         assert result == [{"role": "system", "content": "You are helpful."}]
 
     def test_empty_system_prompt(self):
+        """Verify empty system prompt."""
         result = anthropic_messages_to_openai(
             [{"role": "user", "content": "hi"}], ""
         )
         assert result[0]["role"] == "user"
 
     def test_text_messages_passthrough(self):
+        """Verify text messages passthrough."""
         messages = [
             {"role": "user", "content": "Hello"},
             {"role": "assistant", "content": "Hi there"},
@@ -39,6 +42,7 @@ class TestAnthropicMessagesToOpenAI:
         assert result[2] == {"role": "assistant", "content": "Hi there"}
 
     def test_tool_use_to_openai(self):
+        """Verify tool use to openai."""
         messages = [
             {
                 "role": "assistant",
@@ -144,6 +148,7 @@ class TestAnthropicToolsToOpenAI:
     """Test anthropic_tools_to_openai()."""
 
     def test_tool_definitions_conversion(self):
+        """Verify tool definitions conversion."""
         tools = [
             {
                 "name": "get_price",
@@ -165,6 +170,7 @@ class TestAnthropicToolsToOpenAI:
         assert "token" in func["parameters"]["properties"]
 
     def test_cache_control_in_schema_stripped(self):
+        """Verify cache control in schema stripped."""
         tools = [
             {
                 "name": "t",
@@ -179,6 +185,7 @@ class TestAnthropicToolsToOpenAI:
         assert "cache_control" not in result[0]["function"]["parameters"]
 
     def test_empty_tools(self):
+        """Verify empty tools."""
         assert anthropic_tools_to_openai([]) == []
 
 
@@ -186,6 +193,7 @@ class TestOpenAIResponseToAnthropic:
     """Test openai_response_to_anthropic()."""
 
     def test_response_text_only(self):
+        """Verify response text only."""
         data = {
             "choices": [
                 {"message": {"content": "Hello world", "role": "assistant"}}
@@ -197,6 +205,7 @@ class TestOpenAIResponseToAnthropic:
         assert resp.content[0].text == "Hello world"
 
     def test_response_with_tool_calls(self):
+        """Verify response with tool calls."""
         data = {
             "choices": [
                 {
@@ -226,6 +235,7 @@ class TestOpenAIResponseToAnthropic:
         assert block.input == {"token": "BTC"}
 
     def test_response_text_plus_tool_calls(self):
+        """Verify response text plus tool calls."""
         data = {
             "choices": [
                 {
@@ -252,6 +262,7 @@ class TestOpenAIResponseToAnthropic:
         assert resp.content[1].type == "tool_use"
 
     def test_response_empty_choices(self):
+        """Verify response empty choices."""
         resp = openai_response_to_anthropic({"choices": []})
         assert len(resp.content) == 1
         assert resp.content[0].type == "text"
@@ -289,6 +300,7 @@ class TestOpenAICompatResponse:
     """Test the response wrapper dataclass."""
 
     def test_model_dump(self):
+        """Verify model dump."""
         resp = OpenAICompatResponse(content=[
             TextBlock(text="hello"),
             ToolUseBlock(id="c1", name="fn", input={"a": 1}),
@@ -303,6 +315,7 @@ class TestOpenAICompatResponse:
         }
 
     def test_model_dump_no_mode(self):
+        """Verify model dump no mode."""
         resp = OpenAICompatResponse(content=[TextBlock(text="x")])
         dumped = resp.model_dump()
         assert "content" in dumped
@@ -331,12 +344,14 @@ class TestExtractToolCallFromText:
         assert result.input == {"token_id": "29m8", "amount_usd": 5}
 
     def test_tool_name_json_with_whitespace(self):
+        """Verify tool name json with whitespace."""
         result = _extract_tool_call_from_text('  wallet_balance  {"verbose": true}  ')
         assert result is not None
         assert result.name == "wallet_balance"
         assert result.input == {"verbose": True}
 
     def test_tool_name_invalid_json_returns_none(self):
+        """Verify tool name invalid json returns none."""
         result = _extract_tool_call_from_text('trade_buy {not valid json}')
         assert result is None
 
@@ -349,13 +364,16 @@ class TestExtractToolCallFromText:
         assert result.input == {"token": "BTC"}
 
     def test_xml_wrapped_json(self):
+        """Verify xml wrapped json."""
         text = '<json>{"name": "trade_buy", "arguments": {"token_id": "29m8"}}</json>'
         result = _extract_tool_call_from_text(text)
         assert result is not None
         assert result.name == "trade_buy"
 
     def test_no_tool_call_returns_none(self):
+        """Verify no tool call returns none."""
         assert _extract_tool_call_from_text("just some plain text") is None
 
     def test_empty_string_returns_none(self):
+        """Verify empty string returns none."""
         assert _extract_tool_call_from_text("") is None

@@ -29,6 +29,7 @@ class ConversationLogger:
     """
 
     def __init__(self, base_dir: str | Path | None = None):
+        """Initialize the conversation logger and open a new JSONL log file for this session."""
         root = Path(base_dir) if base_dir else Path(
             os.environ.get("ICONFUCIUS_ROOT", ".")
         )
@@ -119,4 +120,5 @@ class ConversationLogger:
 
     @property
     def path_cached(self) -> Path:
+        """Return the file path of the cached conversation log."""
         return self._path_cached

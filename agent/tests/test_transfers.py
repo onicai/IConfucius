@@ -28,25 +28,32 @@ from iconfucius.transfers import (
 
 class TestUnwrapCanisterResult:
     def test_list_with_value_dict(self):
+        """Verify list with value dict."""
         assert unwrap_canister_result([{"value": 42}]) == 42
 
     def test_list_with_plain_item(self):
+        """Verify list with plain item."""
         assert unwrap_canister_result([123]) == 123
 
     def test_empty_list(self):
+        """Verify empty list."""
         assert unwrap_canister_result([]) == []
 
     def test_non_list_passthrough(self):
+        """Verify non list passthrough."""
         assert unwrap_canister_result("hello") == "hello"
 
     def test_dict_passthrough(self):
+        """Verify dict passthrough."""
         result = {"Ok": 5}
         assert unwrap_canister_result(result) == {"Ok": 5}
 
     def test_none_passthrough(self):
+        """Verify none passthrough."""
         assert unwrap_canister_result(None) is None
 
     def test_nested_value(self):
+        """Verify nested value."""
         assert unwrap_canister_result([{"value": {"Ok": 99}}]) == {"Ok": 99}
 
 
@@ -56,6 +63,7 @@ class TestUnwrapCanisterResult:
 
 class TestPatchDelegateSender:
     def test_patches_sender_method(self):
+        """Verify patches sender method."""
         mock_identity = MagicMock()
         mock_identity.der_pubkey = b"\x00" * 44
 
@@ -66,6 +74,7 @@ class TestPatchDelegateSender:
         assert str(principal) != ""
 
     def test_sender_returns_consistent_principal(self):
+        """Verify sender returns consistent principal."""
         mock_identity = MagicMock()
         mock_identity.der_pubkey = b"\xab" * 44
 
@@ -83,6 +92,7 @@ class TestPatchDelegateSender:
 class TestCreateIcrc1Canister:
     @patch("iconfucius.transfers.Canister")
     def test_default_canister_id(self, MockCanister):
+        """Verify default canister id."""
         agent = MagicMock()
         create_icrc1_canister(agent)
         MockCanister.assert_called_once()
@@ -90,6 +100,7 @@ class TestCreateIcrc1Canister:
 
     @patch("iconfucius.transfers.Canister")
     def test_custom_canister_id(self, MockCanister):
+        """Verify custom canister id."""
         agent = MagicMock()
         create_icrc1_canister(agent, "custom-id")
         assert MockCanister.call_args.kwargs["canister_id"] == "custom-id"
@@ -102,6 +113,7 @@ class TestCreateIcrc1Canister:
 class TestCreateCkbtcMinter:
     @patch("iconfucius.transfers.Canister")
     def test_creates_minter(self, MockCanister):
+        """Verify creates minter."""
         agent = MagicMock()
         create_ckbtc_minter(agent)
         MockCanister.assert_called_once()
@@ -115,12 +127,14 @@ class TestCreateCkbtcMinter:
 class TestGetBalance:
     @patch("iconfucius.transfers.Principal")
     def test_returns_balance(self, MockPrincipal):
+        """Verify returns balance."""
         canister = MagicMock()
         canister.icrc1_balance_of.return_value = [{"value": 5000}]
         assert get_balance(canister, "some-principal") == 5000
 
     @patch("iconfucius.transfers.Principal")
     def test_returns_zero_balance(self, MockPrincipal):
+        """Verify returns zero balance."""
         canister = MagicMock()
         canister.icrc1_balance_of.return_value = [{"value": 0}]
         assert get_balance(canister, "some-principal") == 0
@@ -133,6 +147,7 @@ class TestGetBalance:
 class TestTransfer:
     @patch("iconfucius.transfers.Principal")
     def test_successful_transfer(self, MockPrincipal):
+        """Verify successful transfer."""
         canister = MagicMock()
         canister.icrc1_transfer.return_value = [{"value": {"Ok": 123}}]
         result = transfer(canister, "to-principal", 1000)
@@ -140,6 +155,7 @@ class TestTransfer:
 
     @patch("iconfucius.transfers.Principal")
     def test_transfer_error(self, MockPrincipal):
+        """Verify transfer error."""
         canister = MagicMock()
         err = {"Err": {"InsufficientFunds": {"balance": 0}}}
         canister.icrc1_transfer.return_value = [{"value": err}]
@@ -148,6 +164,7 @@ class TestTransfer:
 
     @patch("iconfucius.transfers.Principal")
     def test_transfer_calls_with_correct_amount(self, MockPrincipal):
+        """Verify transfer calls with correct amount."""
         canister = MagicMock()
         canister.icrc1_transfer.return_value = [{"value": {"Ok": 1}}]
         transfer(canister, "to-principal", 5000)
@@ -162,6 +179,7 @@ class TestTransfer:
 class TestGetBtcAddress:
     @patch("iconfucius.transfers.Principal")
     def test_returns_address(self, MockPrincipal):
+        """Verify returns address."""
         minter = MagicMock()
         minter.get_btc_address.return_value = [{"value": "bc1qtest"}]
         result = get_btc_address(minter, "owner-principal")
@@ -175,6 +193,7 @@ class TestGetBtcAddress:
 class TestCheckBtcDeposits:
     @patch("iconfucius.transfers.Principal")
     def test_returns_result(self, MockPrincipal):
+        """Verify returns result."""
         minter = MagicMock()
         minter.update_balance.return_value = [{"value": {"Ok": [{"block_index": 1}]}}]
         result = check_btc_deposits(minter, "owner-principal")
@@ -187,6 +206,7 @@ class TestCheckBtcDeposits:
 
 class TestGetWithdrawalAccount:
     def test_returns_account(self):
+        """Verify returns account."""
         minter = MagicMock()
         minter.get_withdrawal_account.return_value = [
             {"value": {"owner": "minter-principal", "subaccount": []}}
@@ -201,6 +221,7 @@ class TestGetWithdrawalAccount:
 
 class TestEstimateWithdrawalFee:
     def test_returns_fee(self):
+        """Verify returns fee."""
         minter = MagicMock()
         minter.estimate_withdrawal_fee.return_value = [
             {"value": {"minter_fee": 10, "bitcoin_fee": 2000}}
@@ -216,6 +237,7 @@ class TestEstimateWithdrawalFee:
 
 class TestRetrieveBtcWithdrawal:
     def test_returns_result(self):
+        """Verify returns result."""
         minter = MagicMock()
         minter.retrieve_btc.return_value = [
             {"value": {"Ok": {"block_index": 42}}}
@@ -230,10 +252,13 @@ class TestRetrieveBtcWithdrawal:
 
 class TestConstants:
     def test_ckbtc_fee(self):
+        """Verify ckbtc fee."""
         assert CKBTC_FEE == 10
 
     def test_ic_host(self):
+        """Verify ic host."""
         assert IC_HOST == "https://ic0.app"
 
     def test_ckbtc_canister_id(self):
+        """Verify ckbtc canister id."""
         assert CKBTC_LEDGER_CANISTER_ID == "mxzaz-hqaaa-aaaar-qaada-cai"

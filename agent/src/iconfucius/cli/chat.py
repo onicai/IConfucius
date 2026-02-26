@@ -119,6 +119,7 @@ class _Spinner:
     """
 
     def __init__(self, message: str = ""):
+        """Initialize the instance."""
         self._message = message
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -131,11 +132,13 @@ class _Spinner:
             self._message = message
 
     def __enter__(self):
+        """Enter the context manager."""
         self._thread = threading.Thread(target=self._spin, daemon=True)
         self._thread.start()
         return self
 
     def __exit__(self, *_):
+        """Exit the context manager."""
         self._stop.set()
         if self._thread:
             self._thread.join()
@@ -144,6 +147,7 @@ class _Spinner:
         self._stdout.flush()
 
     def _spin(self):
+        """Run the spinner animation loop."""
         frames = itertools.cycle("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
         while not self._stop.is_set():
             with self._lock:
@@ -418,6 +422,7 @@ def _reset_ai_config() -> None:
     content = config_path.read_text()
 
     def _comment_section(match):
+        """Format a comment section header."""
         return "".join(f"# {line}\n" for line in match.group(0).splitlines())
 
     content = re.sub(
@@ -835,6 +840,7 @@ def _run_tool_loop(backend, messages: list[dict], system: str,
                     )
 
                     def _on_progress(done, total):
+                        """Handle a progress update callback."""
                         width = 20
                         filled = int(width * done / total)
                         bar = "█" * filled + "░" * (width - filled)
@@ -843,6 +849,7 @@ def _run_tool_loop(backend, messages: list[dict], system: str,
                         )
 
                     def _on_status(message):
+                        """Handle a status update callback."""
                         spinner.update(f"Running {block.name}... {message}")
 
                     set_progress_callback(_on_progress)
@@ -915,6 +922,7 @@ def _check_pypi_version() -> tuple[str | None, str]:
         with urlopen("https://pypi.org/pypi/iconfucius/json", timeout=3) as resp:
             latest = json.loads(resp.read())["info"]["version"]
         def _ver_tuple(v: str) -> tuple:
+            """Parse a version string into a comparable tuple."""
             return tuple(int(x) for x in v.split("."))
         if _ver_tuple(latest) <= _ver_tuple(__version__):
             return None, ""
@@ -1130,12 +1138,14 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False,
                         )
                         with _Spinner("Checking bot holdings...") as sp:
                             def _on_progress(done, total):
+                                """Handle a progress update callback."""
                                 w = 20
                                 filled = int(w * done / total)
                                 bar = "█" * filled + "░" * (w - filled)
                                 sp.update(f"Checking bot holdings... [{bar}] {done}/{total}")
 
                             def _on_status(msg):
+                                """Handle a status update callback."""
                                 sp.update(f"Checking bot holdings... {msg}")
 
                             set_progress_callback(_on_progress)
