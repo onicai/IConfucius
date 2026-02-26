@@ -126,6 +126,11 @@ This works with any OpenAI-compatible endpoint (llama.cpp, Ollama, vLLM,
 LM Studio, Together AI, etc.). The `base_url` defaults to
 `http://localhost:55128` if omitted.
 
+> **Note**: If you previously configured an Anthropic API key (in `.env`),
+> you can keep both. The `[ai]` section in `iconfucius.toml` determines which
+> backend is used. Use `/ai` at runtime to switch, or remove the `[ai]`
+> section to go back to Claude.
+
 ### 3. Chat
 
 In a second terminal:

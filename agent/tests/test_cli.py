@@ -1205,7 +1205,8 @@ class TestStartChatWizard:
         mock_exec.side_effect = track_exec
         result = runner.invoke(app, [])
         assert "Wallet created." in result.output
-        assert "Option 1" in result.output or "Option 2" in result.output
+        assert "Option 1" in result.output
+        assert "Option 2" in result.output
 
     # --- Full wizard flow ---
 

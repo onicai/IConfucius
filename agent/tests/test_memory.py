@@ -219,5 +219,5 @@ class TestBalanceSnapshots:
         assert count2 == 1
         # Archive file should have all 3 archived entries
         archive_path = memory_dir / "balances-archive.jsonl"
-        lines = [l for l in archive_path.read_text().splitlines() if l.strip()]
+        lines = [line for line in archive_path.read_text().splitlines() if line.strip()]
         assert len(lines) == 3

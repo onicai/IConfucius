@@ -8,6 +8,7 @@ from iconfucius.openai_compat import (
     OpenAICompatResponse,
     TextBlock,
     ToolUseBlock,
+    _extract_tool_call_from_text,
     anthropic_messages_to_openai,
     anthropic_tools_to_openai,
     openai_response_to_anthropic,
@@ -317,3 +318,44 @@ class TestOpenAICompatResponse:
         assert tub.id == "c1"
         assert tub.name == "fn"
         assert tub.input == {"k": "v"}
+
+
+class TestExtractToolCallFromText:
+    """Test _extract_tool_call_from_text() inline tool-call parsing."""
+
+    def test_tool_name_json_pattern(self):
+        """Parse 'tool_name {"key": "value"}' shorthand."""
+        result = _extract_tool_call_from_text('trade_buy {"token_id": "29m8", "amount_usd": 5}')
+        assert result is not None
+        assert result.name == "trade_buy"
+        assert result.input == {"token_id": "29m8", "amount_usd": 5}
+
+    def test_tool_name_json_with_whitespace(self):
+        result = _extract_tool_call_from_text('  wallet_balance  {"verbose": true}  ')
+        assert result is not None
+        assert result.name == "wallet_balance"
+        assert result.input == {"verbose": True}
+
+    def test_tool_name_invalid_json_returns_none(self):
+        result = _extract_tool_call_from_text('trade_buy {not valid json}')
+        assert result is None
+
+    def test_json_object_pattern_still_works(self):
+        """Existing {"name": ..., "arguments": ...} pattern still works."""
+        text = '{"name": "get_price", "arguments": {"token": "BTC"}}'
+        result = _extract_tool_call_from_text(text)
+        assert result is not None
+        assert result.name == "get_price"
+        assert result.input == {"token": "BTC"}
+
+    def test_xml_wrapped_json(self):
+        text = '<json>{"name": "trade_buy", "arguments": {"token_id": "29m8"}}</json>'
+        result = _extract_tool_call_from_text(text)
+        assert result is not None
+        assert result.name == "trade_buy"
+
+    def test_no_tool_call_returns_none(self):
+        assert _extract_tool_call_from_text("just some plain text") is None
+
+    def test_empty_string_returns_none(self):
+        assert _extract_tool_call_from_text("") is None

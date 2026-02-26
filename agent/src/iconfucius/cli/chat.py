@@ -1227,10 +1227,20 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False,
             # Hot-swap backend when api_type or base_url changed
             if ai_result is not None:
                 new_api_type, new_model, new_base_url = ai_result
+                prev_api_type = persona.ai_api_type
+                prev_model = persona.ai_model
+                prev_base_url = persona.ai_base_url
                 persona.ai_api_type = new_api_type
                 persona.ai_model = new_model
                 persona.ai_base_url = new_base_url
-                new_backend = create_backend(persona)
+                try:
+                    new_backend = create_backend(persona)
+                except Exception as exc:
+                    print(f"\n  Error applying AI configuration: {exc}\n")
+                    persona.ai_api_type = prev_api_type
+                    persona.ai_model = prev_model
+                    persona.ai_base_url = prev_base_url
+                    continue
                 backend = LoggingBackend(new_backend, conv_logger)
                 non_default = _is_non_default_ai(persona)
             continue

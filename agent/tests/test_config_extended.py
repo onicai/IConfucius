@@ -332,3 +332,46 @@ class TestGetCacheSessions:
         """Default config template includes cache_sessions = true."""
         content = create_default_config()
         assert "cache_sessions = true" in content
+
+
+class TestGetAiTimeout:
+    """Tests for get_ai_timeout() validation."""
+
+    def test_default_timeout(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        cfg._cached_config = None
+        cfg._cached_config_path = None
+        from iconfucius.config import AI_TIMEOUT_DEFAULT, get_ai_timeout
+        assert get_ai_timeout() == AI_TIMEOUT_DEFAULT
+
+    def test_valid_timeout(self, tmp_path, monkeypatch):
+        (tmp_path / "iconfucius.toml").write_text("[ai]\ntimeout = 300\n")
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        cfg._cached_config = None
+        cfg._cached_config_path = None
+        from iconfucius.config import get_ai_timeout
+        assert get_ai_timeout() == 300
+
+    def test_malformed_timeout_falls_back(self, tmp_path, monkeypatch):
+        (tmp_path / "iconfucius.toml").write_text('[ai]\ntimeout = "not-a-number"\n')
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        cfg._cached_config = None
+        cfg._cached_config_path = None
+        from iconfucius.config import AI_TIMEOUT_DEFAULT, get_ai_timeout
+        assert get_ai_timeout() == AI_TIMEOUT_DEFAULT
+
+    def test_negative_timeout_falls_back(self, tmp_path, monkeypatch):
+        (tmp_path / "iconfucius.toml").write_text("[ai]\ntimeout = -10\n")
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        cfg._cached_config = None
+        cfg._cached_config_path = None
+        from iconfucius.config import AI_TIMEOUT_DEFAULT, get_ai_timeout
+        assert get_ai_timeout() == AI_TIMEOUT_DEFAULT
+
+    def test_zero_timeout_falls_back(self, tmp_path, monkeypatch):
+        (tmp_path / "iconfucius.toml").write_text("[ai]\ntimeout = 0\n")
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        cfg._cached_config = None
+        cfg._cached_config_path = None
+        from iconfucius.config import AI_TIMEOUT_DEFAULT, get_ai_timeout
+        assert get_ai_timeout() == AI_TIMEOUT_DEFAULT

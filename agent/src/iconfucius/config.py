@@ -354,7 +354,13 @@ def get_ai_timeout() -> int:
     config = load_config()
     val = config.get("ai", {}).get("timeout")
     if val is not None:
-        return int(val)
+        try:
+            timeout = int(val)
+        except (TypeError, ValueError):
+            return AI_TIMEOUT_DEFAULT
+        if timeout > 0:
+            return timeout
+        return AI_TIMEOUT_DEFAULT
     return AI_TIMEOUT_DEFAULT
 
 

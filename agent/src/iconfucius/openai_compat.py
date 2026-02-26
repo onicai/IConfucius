@@ -184,6 +184,21 @@ def _extract_tool_call_from_text(text: str) -> ToolUseBlock | None:
     # Strip <json>...</json> wrapper
     cleaned = re.sub(r"</?json>", "", text).strip()
 
+    # Pattern 0: tool_name { ...json args... }
+    m = re.match(r"^\s*([A-Za-z_][\w\-]*)\s+(\{.*\})\s*$", cleaned, re.DOTALL)
+    if m:
+        name, args_blob = m.groups()
+        try:
+            args = json.loads(args_blob)
+        except (json.JSONDecodeError, TypeError):
+            args = None
+        if isinstance(args, dict):
+            return ToolUseBlock(
+                id=f"call_{uuid.uuid4().hex[:24]}",
+                name=name,
+                input=args,
+            )
+
     # Try to find a JSON object in the text
     match = re.search(r"\{.*\}", cleaned, re.DOTALL)
     if not match:

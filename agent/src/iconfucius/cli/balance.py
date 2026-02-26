@@ -772,7 +772,7 @@ def _format_holdings_table(all_data: list, btc_usd_rate: float | None,
             withdrawal_usd = (wallet_withdrawal_sats / 100_000_000) * btc_usd_rate
             notes.append(f"${withdrawal_usd:,.3f} in BTC withdrawal account")
         note_str = f" (includes {', '.join(notes)})" if notes else ""
-        total_sats = int(wallet_total_sats + total_odin_sats + sum(total_token_value_sats.values()))
+        total_sats = round(wallet_total_sats + total_odin_sats + sum(total_token_value_sats.values()))
         lines.append(f"\nTotal portfolio value: {fmt_sats(total_sats, btc_usd_rate)}{note_str}")
 
     return "\n".join(lines)

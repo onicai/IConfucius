@@ -166,8 +166,12 @@ class TestOpenAICompatBackendChat:
         backend = OpenAICompatBackend(model="x",
                                   base_url="http://localhost:1")
 
-        with pytest.raises(requests.exceptions.ConnectionError):
-            backend.chat([{"role": "user", "content": "hi"}], "sys")
+        with patch.object(
+            backend._requests, "post",
+            side_effect=requests.exceptions.ConnectionError("unreachable"),
+        ):
+            with pytest.raises(requests.exceptions.ConnectionError):
+                backend.chat([{"role": "user", "content": "hi"}], "sys")
 
     def test_list_models_connection_error(self):
         """list_models returns [] on connection failure."""
