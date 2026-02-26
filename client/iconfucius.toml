@@ -1,0 +1,26 @@
+# iconfucius configuration
+# See: https://github.com/onicai/IConfucius
+
+[settings]
+# See README-security.md for details
+verify_certificates = false
+cache_sessions = true
+default_persona = "iconfucius"
+
+# AI backend (overrides persona defaults)
+# API key via env var: ANTHROPIC_API_KEY, GEMINI_API_KEY, etc.
+# [ai]
+# backend = "claude"
+# model = "claude-sonnet-4-6"
+
+# Bot definitions
+# Each bot gets its own trading identity on Odin.Fun.
+# Optional: persona = "<name>" assigns a trading persona to the bot.
+[bots.bot-1]
+description = "Bot 1"
+
+[bots.bot-2]
+description = "Bot 2"
+
+[bots.bot-3]
+description = "Bot 3"
