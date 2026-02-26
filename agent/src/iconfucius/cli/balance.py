@@ -272,10 +272,6 @@ def _collect_wallet_info(btc_usd_rate: float | None, ckbtc_minter: bool = False,
         "Wallet",
         "=" * 60,
         f"\nICRC-1 ckBTC: {fmt_sats(balance, btc_usd_rate)}",
-        "",
-        "To fund your wallet:",
-        f"-> Option 1: send ckBTC to your Wallet principal {principal}",
-        f"-> Option 2: send BTC to your Wallet BTC deposit address: {btc_address} (min deposit: {fmt_sats(10_000, btc_usd_rate)})",
     ]
 
     # ckBTC minter section (only when requested)
@@ -776,7 +772,8 @@ def _format_holdings_table(all_data: list, btc_usd_rate: float | None,
             withdrawal_usd = (wallet_withdrawal_sats / 100_000_000) * btc_usd_rate
             notes.append(f"${withdrawal_usd:,.3f} in BTC withdrawal account")
         note_str = f" (includes {', '.join(notes)})" if notes else ""
-        lines.append(f"\nTotal portfolio value: ${total_usd:,.3f}{note_str}")
+        total_sats = int(wallet_total_sats + total_odin_sats + sum(total_token_value_sats.values()))
+        lines.append(f"\nTotal portfolio value: {fmt_sats(total_sats, btc_usd_rate)}{note_str}")
 
     return "\n".join(lines)
 

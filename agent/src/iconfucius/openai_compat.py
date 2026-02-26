@@ -5,6 +5,7 @@ chat-completions format used by llama.cpp, Ollama, vLLM, etc.
 """
 
 import json
+import re
 import uuid
 from dataclasses import asdict, dataclass, field
 
@@ -168,11 +169,53 @@ def anthropic_tools_to_openai(tools: list[dict]) -> list[dict]:
 # OpenAI -> Anthropic conversion
 # ---------------------------------------------------------------------------
 
+def _extract_tool_call_from_text(text: str) -> ToolUseBlock | None:
+    """Try to parse a tool call that a small model wrote as plain text.
+
+    Small models (7B) sometimes output tool calls as text instead of using
+    the structured tool_calls format.  Common patterns::
+
+        <json>{"name": "trade_buy", "arguments": {"token_id": "29m8"}}</json>
+        {"name": "trade_buy", "arguments": {"token_id": "29m8"}}
+        trade_buy {"token_id": "29m8", "amount_usd": 5}
+
+    Returns a ToolUseBlock if a valid tool call is found, else None.
+    """
+    # Strip <json>...</json> wrapper
+    cleaned = re.sub(r"</?json>", "", text).strip()
+
+    # Try to find a JSON object in the text
+    match = re.search(r"\{.*\}", cleaned, re.DOTALL)
+    if not match:
+        return None
+
+    try:
+        obj = json.loads(match.group())
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+    # Pattern 1: {"name": "tool_name", "arguments": {...}}
+    if "name" in obj and "arguments" in obj:
+        name = obj["name"]
+        args = obj["arguments"]
+        if isinstance(name, str) and isinstance(args, dict):
+            return ToolUseBlock(
+                id=f"call_{uuid.uuid4().hex[:24]}",
+                name=name,
+                input=args,
+            )
+
+    return None
+
+
 def openai_response_to_anthropic(data: dict) -> OpenAICompatResponse:
     """Convert an OpenAI chat-completions JSON response to our wrapper.
 
     Handles ``choices[0].message.content`` (text) and
     ``choices[0].message.tool_calls`` (function calls).
+
+    If the model produced text-only but the text contains a JSON tool call
+    (common with small models), extract it as a ToolUseBlock.
     """
     blocks: list = []
 
@@ -181,11 +224,20 @@ def openai_response_to_anthropic(data: dict) -> OpenAICompatResponse:
         return OpenAICompatResponse(content=[TextBlock(text="")])
 
     message = choices[0].get("message", {})
+    has_tool_calls = bool(message.get("tool_calls"))
 
     # Text content
     text = message.get("content")
     if text:
-        blocks.append(TextBlock(text=text))
+        # If no structured tool_calls, check if text contains a tool call
+        if not has_tool_calls:
+            extracted = _extract_tool_call_from_text(text)
+            if extracted:
+                blocks.append(extracted)
+            else:
+                blocks.append(TextBlock(text=text))
+        else:
+            blocks.append(TextBlock(text=text))
 
     # Tool calls
     for tc in message.get("tool_calls", []):

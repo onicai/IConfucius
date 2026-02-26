@@ -1,7 +1,7 @@
 """Tests for iconfucius.skills.executor — Tool dispatch and execution."""
 
 import os
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from iconfucius.skills.executor import (
     execute_tool,
@@ -50,28 +50,6 @@ class TestExecuteToolDispatch:
         assert result["status"] == "error"
         assert "Unknown tool" in result["error"]
 
-    def test_persona_list_returns_personas(self):
-        result = execute_tool("persona_list", {})
-        assert result["status"] == "ok"
-        assert "personas" in result
-        assert "iconfucius" in result["personas"]
-
-    def test_persona_show_returns_details(self):
-        result = execute_tool("persona_show", {"name": "iconfucius"})
-        assert result["status"] == "ok"
-        assert result["name"] == "IConfucius"
-        assert result["ai_backend"] == "claude"
-        assert result["risk"] == "conservative"
-
-    def test_persona_show_unknown_returns_error(self):
-        result = execute_tool("persona_show", {"name": "nonexistent"})
-        assert result["status"] == "error"
-        assert "not found" in result["error"]
-
-    def test_persona_show_missing_name_returns_error(self):
-        result = execute_tool("persona_show", {})
-        assert result["status"] == "error"
-        assert "required" in result["error"].lower()
 
 
 class TestSetupStatusExecutor:
@@ -573,13 +551,13 @@ class TestTradeRecording:
         assert result["status"] == "ok"
         mock_append.assert_called_once()
         entry = mock_append.call_args[0][1]
-        assert "BUY" in entry
-        assert "29m8" in entry
-        assert "ICONFUCIUS" in entry
-        assert "bot-1" in entry
-        assert "1,000 sats" in entry
-        assert "Price:" in entry
-        assert "Est. tokens:" in entry
+        assert entry["action"] == "BUY"
+        assert entry["token_id"] == "29m8"
+        assert entry["ticker"] == "ICONFUCIUS"
+        assert "bot-1" in entry["bots"]
+        assert entry["amount_sats"] == 1000
+        assert entry["price_sats"] == 1500
+        assert "est_tokens" in entry
 
     @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100000.0)
     @patch("iconfucius.tokens.fetch_token_data",
@@ -602,11 +580,11 @@ class TestTradeRecording:
         assert result["status"] == "ok"
         mock_append.assert_called_once()
         entry = mock_append.call_args[0][1]
-        assert "SELL" in entry
-        assert "29m8" in entry
-        assert "ICONFUCIUS" in entry
-        assert "Price:" in entry
-        assert "Est. received:" in entry
+        assert entry["action"] == "SELL"
+        assert entry["token_id"] == "29m8"
+        assert entry["ticker"] == "ICONFUCIUS"
+        assert entry["price_sats"] == 1500
+        assert "est_sats_received" in entry
 
     @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100000.0)
     @patch("iconfucius.tokens.fetch_token_data",
@@ -629,11 +607,11 @@ class TestTradeRecording:
         assert result["status"] == "ok"
         mock_append.assert_called_once()
         entry = mock_append.call_args[0][1]
-        assert "SELL" in entry
-        assert "ALL tokens" in entry
-        assert "29m8" in entry
-        # sell-all should NOT have "Est. received" or sub-units
-        assert "sub-units" not in entry
+        assert entry["action"] == "SELL"
+        assert entry["tokens_sold"] == "all"
+        assert entry["token_id"] == "29m8"
+        # sell-all should NOT have est_sats_received
+        assert "est_sats_received" not in entry
 
     @patch("iconfucius.memory.append_trade")
     def test_failed_trade_not_recorded(self, mock_append):
@@ -1310,3 +1288,172 @@ class TestAccountLookupExecutor:
         assert result["status"] == "ok"
         assert result["found"] is True
         assert result["principal"] == "resolved-principal"
+
+
+# ---------------------------------------------------------------------------
+# Tool definition content — ensures AI sees critical constraints
+# ---------------------------------------------------------------------------
+
+
+class TestWalletSendDefinition:
+    """Verify wallet_send tool definition contains the BTC minimum and dual-mode info."""
+
+    def _get_wallet_send_def(self):
+        from iconfucius.skills.definitions import TOOLS
+        for t in TOOLS:
+            if t["name"] == "wallet_send":
+                return t
+        raise AssertionError("wallet_send not found in TOOL_DEFINITIONS")
+
+    def test_description_mentions_btc_minimum(self):
+        """AI must see the 50,000 sats minimum for BTC sends."""
+        desc = self._get_wallet_send_def()["description"]
+        assert "50,000" in desc
+
+    def test_description_mentions_ic_principal(self):
+        """AI must know it can send ckBTC to an IC principal."""
+        desc = self._get_wallet_send_def()["description"]
+        assert "principal" in desc.lower()
+
+    def test_description_mentions_btc_address(self):
+        """AI must know BTC address mode converts via ckBTC minter."""
+        desc = self._get_wallet_send_def()["description"]
+        assert "bc1" in desc
+        assert "minter" in desc.lower()
+
+    def test_description_forbids_below_minimum(self):
+        """AI must see NEVER call with less than 50,000 sats."""
+        desc = self._get_wallet_send_def()["description"]
+        assert "NEVER" in desc
+        assert "50,000" in desc
+
+    def test_only_address_required(self):
+        """amount is optional (amount_usd is an alternative), only address required."""
+        schema = self._get_wallet_send_def()["input_schema"]
+        assert schema["required"] == ["address"]
+
+    def test_amount_field_mentions_btc_minimum(self):
+        """amount field reminds AI of the 50,000 minimum for BTC addresses."""
+        props = self._get_wallet_send_def()["input_schema"]["properties"]
+        assert "50000" in props["amount"]["description"]
+
+    def test_amount_usd_field_mentions_btc_minimum(self):
+        """amount_usd field reminds AI of the 50,000 minimum for BTC addresses."""
+        props = self._get_wallet_send_def()["input_schema"]["properties"]
+        assert "50000" in props["amount_usd"]["description"]
+
+    def test_address_field_describes_both_modes(self):
+        """Address field describes both IC principal and BTC address."""
+        props = self._get_wallet_send_def()["input_schema"]["properties"]
+        addr_desc = props["address"]["description"]
+        assert "principal" in addr_desc.lower()
+        assert "bc1" in addr_desc
+
+    def test_description_mentions_wallet_monitor(self):
+        """AI should know to use wallet_monitor after a BTC send."""
+        desc = self._get_wallet_send_def()["description"]
+        assert "wallet_monitor" in desc
+
+
+class TestWalletSendMonitorHintStripped:
+    """Verify wallet_send strips the CLI-specific monitor command."""
+
+    @patch("iconfucius.config.require_wallet", return_value="/tmp/fake.pem")
+    def test_cli_monitor_hint_removed(self, mock_wallet):
+        # Simulate CLI output that includes the monitor hint
+        mock_result = MagicMock()
+        mock_result.exit_code = 0
+        mock_result.output = (
+            "BTC withdrawal initiated! Block index: 123\n"
+            "BTC will arrive after the transaction is confirmed.\n"
+            "Check progress with: iconfucius wallet balance --monitor\n"
+            "Wallet balance: 5,000 sats"
+        )
+
+        with patch("typer.testing.CliRunner") as MockRunner:
+            MockRunner.return_value.invoke.return_value = mock_result
+            result = execute_tool("wallet_send", {
+                "amount": "50000", "address": "bc1qfake",
+            })
+
+        assert result["status"] == "ok"
+        assert "iconfucius wallet balance --monitor" not in result["display"]
+        assert "BTC withdrawal initiated" in result["display"]
+        assert result["hint"] == "Use wallet_monitor to check withdrawal progress."
+
+    @patch("iconfucius.config.require_wallet", return_value="/tmp/fake.pem")
+    def test_ckbtc_send_no_hint(self, mock_wallet):
+        """ckBTC sends (no BTC withdrawal) should not get a hint."""
+        mock_result = MagicMock()
+        mock_result.exit_code = 0
+        mock_result.output = "Transfer succeeded! Block index: 456"
+
+        with patch("typer.testing.CliRunner") as MockRunner:
+            MockRunner.return_value.invoke.return_value = mock_result
+            result = execute_tool("wallet_send", {
+                "amount": "5000", "address": "rrkah-fqaaa-aaaaa-aaaaq-cai",
+            })
+
+        assert result["status"] == "ok"
+        assert "hint" not in result
+
+
+class TestHowToFundWalletHandler:
+    """Tests for the how_to_fund_wallet executor handler."""
+
+    def test_no_wallet_returns_error(self):
+        with patch("iconfucius.config.require_wallet", return_value=False):
+            result = execute_tool("how_to_fund_wallet", {})
+        assert result["status"] == "error"
+        assert "wallet" in result["error"].lower()
+
+    @patch("iconfucius.transfers.get_btc_address", return_value="bc1qfund123")
+    @patch("iconfucius.transfers.create_ckbtc_minter")
+    @patch("iconfucius.transfers.get_balance", return_value=0)
+    @patch("iconfucius.transfers.create_icrc1_canister")
+    @patch("icp_agent.Agent")
+    @patch("icp_agent.Client")
+    @patch("icp_identity.Identity")
+    @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100_000.0)
+    def test_returns_structured_data(self, mock_rate, MockId, MockClient,
+                                      MockAgent, mock_icrc1, mock_bal,
+                                      mock_minter, mock_btc_addr, odin_project):
+        mock_identity = MagicMock()
+        mock_identity.sender.return_value = MagicMock(
+            __str__=lambda s: "fund-principal"
+        )
+        MockId.from_pem.return_value = mock_identity
+        MockId.return_value = MagicMock()
+
+        result = execute_tool("how_to_fund_wallet", {})
+        assert result["status"] == "ok"
+        assert result["wallet_principal"] == "fund-principal"
+        assert result["btc_deposit_address"] == "bc1qfund123"
+        assert result["ckbtc_balance_sats"] == 0
+
+    @patch("iconfucius.transfers.get_btc_address", return_value="bc1qfund123")
+    @patch("iconfucius.transfers.create_ckbtc_minter")
+    @patch("iconfucius.transfers.get_balance", return_value=0)
+    @patch("iconfucius.transfers.create_icrc1_canister")
+    @patch("icp_agent.Agent")
+    @patch("icp_agent.Client")
+    @patch("icp_identity.Identity")
+    @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100_000.0)
+    def test_display_has_both_options(self, mock_rate, MockId, MockClient,
+                                      MockAgent, mock_icrc1, mock_bal,
+                                      mock_minter, mock_btc_addr, odin_project):
+        mock_identity = MagicMock()
+        mock_identity.sender.return_value = MagicMock(
+            __str__=lambda s: "fund-principal"
+        )
+        MockId.from_pem.return_value = mock_identity
+        MockId.return_value = MagicMock()
+
+        result = execute_tool("how_to_fund_wallet", {})
+        display = result["display"]
+        assert "Option 1" in display
+        assert "Option 2" in display
+        assert "bc1qfund123" in display
+        assert "fund-principal" in display
+        assert "wallet_monitor" in display
+        assert "~6 Bitcoin confirmations" in display

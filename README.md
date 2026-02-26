@@ -1,4 +1,4 @@
-[![cicd](https://github.com/onicai/IConfucius/actions/workflows/cicd.yml/badge.svg)](https://github.com/onicai/IConfucius/actions/workflows/cicd.yml)
+[![cicd](https://github.com/onicai/IConfucius/actions/workflows/cicd.yml/badge.svg)](https://github.com/onicai/IConfucius/actions/workflows/cicd.yml) ![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/onicai/IConfucius?utm_source=oss&utm_medium=github&utm_campaign=onicai%2FIConfucius&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)
 
 <p align="center">                                                                                          
     <img src="agent/brand/iconfucius_social_preview.png" alt="IConfucius | Wisdom for Bitcoin Markets">       
@@ -45,7 +45,7 @@ That's it. The onboarding wizard runs automatically on first launch:
 Everything is stored in the current directory — run `iconfucius`
 from the same folder next time.
 
-## How to run with llama.cpp server
+## How to run with llama.cpp server (experimental)
 
 You can run iconfucius with a fully local AI — no API key, no cloud.
 
@@ -60,25 +60,57 @@ sudo apt-get install -y build-essential cmake libcurl4-openssl-dev
 git clone https://github.com/ggerganov/llama.cpp && cd llama.cpp
 cmake -B build && cmake --build build --config Release -j
 sudo cmake --install build
+```
 
-# Start with the recommended model (~4.7GB download on first run)
+Start the server with the recommended model (~10.4 GB download on first run):
+
+```bash
 # Port 55128 = Confucius' birthday (September 28, 551 BC)
-llama-server --jinja --port 55128 -hf bartowski/Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M
+llama-server \
+  --jinja -fa \
+  --port 55128 \
+  -np 1 \
+  -hf bartowski/Mistral-Nemo-Instruct-2407-GGUF:Q6_K_L
 ```
 
 Leave that terminal running.
 
-Pick a different model if you have less (or more) RAM:
+| Flag      | Purpose                                                    |
+| --------- | ---------------------------------------------------------- |
+| `--jinja` | Enables native tool/function calling via chat templates    |
+| `-fa`     | Enables flash attention for faster inference               |
+| `-np 1`   | Single slot — optimal for single-user conversations        |
 
-| Size   | Model            | `-hf` flag                                                    |
-| ------ | ---------------- | ------------------------------------------------------------- |
-| ~0.7GB | LFM2.5-1.2B     | `LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M`                |
-| ~2.2GB | Ministral-3-3B   | `mistralai/Ministral-3-3B-Instruct-2512-GGUF:Q4_K_M`        |
-| ~2.5GB | Phi-4-mini       | `bartowski/microsoft_Phi-4-mini-instruct-GGUF:Q4_K_M`       |
-| ~4.7GB | Qwen2.5-Coder-7B | `bartowski/Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M`          |
-| ~7.5GB | Mistral-NeMo-12B | `bartowski/Mistral-Nemo-Instruct-2407-GGUF:Q4_K_M`          |
+### Why Mistral Nemo 12B?
 
-All models use Q4_K_M quantization and support llama.cpp's native tool calling.
+iconfucius relies heavily on tool calling (buy, sell, fund, withdraw, balance
+checks, etc.) and multi-turn conversation to help users trade. In our testing,
+**models smaller than 12B were not accurate enough** — they frequently made
+incorrect tool calls, lost track of the conversation context, and gave
+unreliable trading advice. Mistral Nemo 12B is the smallest model we found
+that consistently handles tool use and maintains coherent multi-turn
+conversations.
+
+**Recommended quantization: Q6_K_L** (~10.4 GB). With the KV cache for a
+16K context window, expect ~12 GB total RAM usage. This fits comfortably on
+machines with 16 GB RAM or a GPU with 12+ GB VRAM.
+
+Alternative quantizations if RAM is tight:
+
+| Quant  | Model Size | Total RAM* | `-hf` flag                                            |
+| ------ | ---------- | ---------- | ----------------------------------------------------- |
+| Q6_K_L | 10.4 GB    | ~12 GB     | `bartowski/Mistral-Nemo-Instruct-2407-GGUF:Q6_K_L`   |
+| Q5_K_M | 8.7 GB     | ~11 GB     | `bartowski/Mistral-Nemo-Instruct-2407-GGUF:Q5_K_M`   |
+| Q4_K_M | 7.5 GB     | ~9 GB      | `bartowski/Mistral-Nemo-Instruct-2407-GGUF:Q4_K_M`   |
+
+*Total RAM includes the KV cache at the default 16K context window.
+
+### Prompt caching
+
+The llama.cpp server automatically caches conversation prefixes via its
+KV cache. Each turn, only new tokens are computed — the system prompt and
+prior messages are reused from cache. No client-side configuration needed;
+this works out of the box with `--cache-prompt` (enabled by default).
 
 ### 2. Configure iconfucius
 
@@ -86,19 +118,20 @@ Add (or uncomment) the `[ai]` section in your `iconfucius.toml`:
 
 ```toml
 [ai]
-backend = "llamacpp"
-model = "Qwen2.5-Coder-7B-Instruct"
+api_type = "openai"
+base_url = "http://localhost:55128"
 ```
 
-The server URL defaults to `http://localhost:55128` — override with
-`llamacpp_url` if needed.
+This works with any OpenAI-compatible endpoint (llama.cpp, Ollama, vLLM,
+LM Studio, Together AI, etc.). The `base_url` defaults to
+`http://localhost:55128` if omitted.
 
 ### 3. Chat
 
 In a second terminal:
 
 ```bash
-iconfucius
+iconfucius --experimental
 ```
 
 ## Project Layout
@@ -147,15 +180,16 @@ The software and hosted services are provided "as is", without warranty of any k
 - ✅ CI/CD pipeline across Python 3.11, 3.12, 3.13
 - ✅ Self-upgrade: `/upgrade` command updates and restarts the CLI in-place
 - ✅ Version awareness: shows running version in prompt, notifies when updates are available
-- ✅ Dual conversation logs: `ai-full` (complete API replay) and `ai-cached` (quick reading)
-- ✅ Prompt caching: system prompt and tools cached with Anthropic's ephemeral cache for lower latency and cost
-- ✅ Default AI model: Claude opus-4-6 with `/model` command to switch at runtime
+- ✅ Conversation logs: `ai-cached` JSONL with system/tools deduplication for quick reading
+- ✅ Prompt caching: system prompt, tools, and messages cached with Anthropic's ephemeral cache for lower latency and cost
+- ✅ Default AI model: Claude opus-4-6 with `/ai` command to switch at runtime (experimental)
+- ✅ OpenAI-compatible backend: llama.cpp, Ollama, vLLM, LM Studio, Together AI, etc.
 
 ## Coming Next
 
 - 🚧 Learning loop: AI reflects on trades, extracts patterns, revises strategy over time
 - 🚧 Auto-pilot mode: autonomous trading with budget limits
-- 🚧 More AI backends: llama.cpp, Ollama, Grok, OpenAI, Gemini, etc.
+- 🚧 More AI backends: Grok, OpenAI, Gemini, etc.
 - 🚧 Social integration: trade announcements and market wisdom via X and OpenChat
 - 🚧 On-chain memory sync: back up trading experience to mAIner canister on the IC
 - 🚧 IConfucius takes a role in [funnAI](https://funnai.onicai.com/) — mAIners become autonomous traders?

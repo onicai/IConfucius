@@ -26,6 +26,7 @@ from iconfucius.config import (
     MIN_DEPOSIT_SATS,
     ODIN_DEPOSIT_CANISTER_ID,
     ODIN_TRADING_CANISTER_ID,
+    WALLET_RESERVE_SATS,
     get_pem_file,
     get_verify_certificates,
     log,
@@ -215,17 +216,21 @@ def run_fund(bot_names: list, amount: int, verbose: bool = False) -> dict:
 
     # Per bot cost: amount (deposit) + CKBTC_FEE (approve allowance) + CKBTC_FEE (transfer fee)
     per_bot_cost = amount + 2 * CKBTC_FEE
-    total_needed = per_bot_cost * len(bot_names)
+    total_cost = per_bot_cost * len(bot_names)
 
     logger.info("Step 2: Wallet balance: %s", _fmt(wallet_balance))
 
-    if wallet_balance < total_needed:
+    remaining = wallet_balance - total_cost
+    if remaining < WALLET_RESERVE_SATS:
+        max_per_bot = (wallet_balance - WALLET_RESERVE_SATS) // len(bot_names) - 2 * CKBTC_FEE
         return {
             "status": "error",
             "error": (f"Insufficient wallet balance. "
-                      f"Need {_fmt(total_needed)} "
-                      f"({len(bot_names)} bot(s) x {amount:,} + fees), "
-                      f"have {_fmt(wallet_balance)}"),
+                      f"Need {_fmt(total_cost + WALLET_RESERVE_SATS)} "
+                      f"({len(bot_names)} bot(s) x {amount:,} + fees + "
+                      f"{WALLET_RESERVE_SATS:,} sats reserve), "
+                      f"have {_fmt(wallet_balance)}. "
+                      f"Max per bot: {_fmt(max(0, max_per_bot))}"),
         }
 
     # -----------------------------------------------------------------------

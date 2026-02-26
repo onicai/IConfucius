@@ -138,3 +138,26 @@ class TestTokenPriceDefinition:
         tools = get_tools_for_anthropic()
         names = [t["name"] for t in tools]
         assert "token_price" in names
+
+
+class TestHowToFundWalletDefinition:
+
+    def test_exists_with_correct_metadata(self):
+        meta = get_tool_metadata("how_to_fund_wallet")
+        assert meta is not None
+        assert meta["requires_confirmation"] is False
+        assert meta["category"] == "read"
+
+    def test_description_mentions_empty_wallet(self):
+        meta = get_tool_metadata("how_to_fund_wallet")
+        assert "empty" in meta["description"] or "insufficient" in meta["description"]
+
+    def test_wallet_receive_removed(self):
+        """wallet_receive was replaced by how_to_fund_wallet."""
+        assert get_tool_metadata("wallet_receive") is None
+
+    def test_in_anthropic_format(self):
+        tools = get_tools_for_anthropic()
+        names = [t["name"] for t in tools]
+        assert "how_to_fund_wallet" in names
+        assert "wallet_receive" not in names

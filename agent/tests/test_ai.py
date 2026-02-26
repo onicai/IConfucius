@@ -1,13 +1,14 @@
-"""Tests for iconfucius.ai — LlamaCppBackend and create_backend()."""
+"""Tests for iconfucius.ai — OpenAICompatBackend and create_backend()."""
 
-import json
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 import iconfucius.config as cfg
-from iconfucius.ai import LlamaCppBackend, create_backend
-from iconfucius.openai_compat import OpenAICompatResponse, TextBlock, ToolUseBlock
+from iconfucius.ai import (
+    LlamaCppBackend, OpenAICompatBackend, cached_messages, create_backend,
+)
+from iconfucius.openai_compat import OpenAICompatResponse
 
 
 # ---------------------------------------------------------------------------
@@ -16,27 +17,33 @@ from iconfucius.openai_compat import OpenAICompatResponse, TextBlock, ToolUseBlo
 
 class TestCreateBackend:
 
-    def test_create_backend_llamacpp(self, tmp_path, monkeypatch):
-        """create_backend returns LlamaCppBackend for llamacpp persona."""
+    def test_create_backend_openai(self, tmp_path, monkeypatch):
+        """create_backend returns OpenAICompatBackend for openai persona."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         cfg._cached_config = None
         cfg._cached_config_path = None
 
         persona = MagicMock()
-        persona.ai_backend = "llamacpp"
+        persona.ai_api_type = "openai"
         persona.ai_model = "test-model"
+        persona.ai_base_url = "http://localhost:9999"
 
         backend = create_backend(persona)
-        assert isinstance(backend, LlamaCppBackend)
+        assert isinstance(backend, OpenAICompatBackend)
         assert backend.model == "test-model"
+        assert backend.base_url == "http://localhost:9999"
 
         cfg._cached_config = None
         cfg._cached_config_path = None
 
+    def test_legacy_alias(self):
+        """LlamaCppBackend is an alias for OpenAICompatBackend."""
+        assert LlamaCppBackend is OpenAICompatBackend
+
     def test_create_backend_unsupported(self):
         persona = MagicMock()
-        persona.ai_backend = "unknown"
-        with pytest.raises(ValueError, match="Unsupported AI backend"):
+        persona.ai_api_type = "unknown"
+        with pytest.raises(ValueError, match="Unsupported AI API type"):
             create_backend(persona)
 
 
@@ -44,11 +51,11 @@ class TestCreateBackend:
 # LlamaCppBackend
 # ---------------------------------------------------------------------------
 
-class TestLlamaCppBackendChat:
+class TestOpenAICompatBackendChat:
 
     def test_chat_basic(self):
         """chat() sends correct payload and returns text."""
-        backend = LlamaCppBackend(model="test-model",
+        backend = OpenAICompatBackend(model="test-model",
                                   base_url="http://localhost:9999")
         mock_resp = MagicMock()
         mock_resp.json.return_value = {
@@ -77,7 +84,7 @@ class TestLlamaCppBackendChat:
 
     def test_chat_with_tools(self):
         """chat_with_tools() sends tools and returns OpenAICompatResponse."""
-        backend = LlamaCppBackend(model="test-model",
+        backend = OpenAICompatBackend(model="test-model",
                                   base_url="http://localhost:9999")
         mock_resp = MagicMock()
         mock_resp.json.return_value = {
@@ -135,7 +142,7 @@ class TestLlamaCppBackendChat:
 
     def test_list_models(self):
         """list_models() parses /v1/models response."""
-        backend = LlamaCppBackend(model="x",
+        backend = OpenAICompatBackend(model="x",
                                   base_url="http://localhost:9999")
         mock_resp = MagicMock()
         mock_resp.json.return_value = {
@@ -156,7 +163,7 @@ class TestLlamaCppBackendChat:
         """Meaningful error when server is unreachable."""
         import requests
 
-        backend = LlamaCppBackend(model="x",
+        backend = OpenAICompatBackend(model="x",
                                   base_url="http://localhost:1")
 
         with pytest.raises(requests.exceptions.ConnectionError):
@@ -164,18 +171,51 @@ class TestLlamaCppBackendChat:
 
     def test_list_models_connection_error(self):
         """list_models returns [] on connection failure."""
-        backend = LlamaCppBackend(model="x",
+        backend = OpenAICompatBackend(model="x",
                                   base_url="http://localhost:1")
         assert backend.list_models() == []
 
+    def test_chat_with_tools_caches_messages(self):
+        """Multi-turn messages are sent with cache markers stripped."""
+        backend = OpenAICompatBackend(model="test-model",
+                                  base_url="http://localhost:9999")
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "choices": [
+                {"message": {"role": "assistant", "content": "Got it."}}
+            ]
+        }
+        mock_resp.raise_for_status = MagicMock()
+
+        messages = [
+            {"role": "user", "content": "first"},
+            {"role": "assistant", "content": "reply"},
+            {"role": "user", "content": "second"},
+        ]
+
+        with patch.object(backend._requests, "post",
+                          return_value=mock_resp) as mock_post:
+            backend.chat_with_tools(messages, "sys", [])
+
+        payload = mock_post.call_args[1]["json"]
+        oai_msgs = payload["messages"]
+        # system + 3 conversation messages
+        assert len(oai_msgs) == 4
+        # No cache_control keys should appear in OpenAI format
+        for m in oai_msgs:
+            assert "cache_control" not in m
+            if isinstance(m.get("content"), list):
+                for block in m["content"]:
+                    assert "cache_control" not in block
+
     def test_base_url_trailing_slash_stripped(self):
-        backend = LlamaCppBackend(model="x",
+        backend = OpenAICompatBackend(model="x",
                                   base_url="http://localhost:9999/")
         assert backend.base_url == "http://localhost:9999"
 
     def test_model_dump_compatibility(self):
         """Verify response works with LoggingBackend's model_dump call."""
-        backend = LlamaCppBackend(model="test-model",
+        backend = OpenAICompatBackend(model="test-model",
                                   base_url="http://localhost:9999")
         mock_resp = MagicMock()
         mock_resp.json.return_value = {
@@ -196,62 +236,141 @@ class TestLlamaCppBackendChat:
         assert "content" in dumped
 
 
+
 # ---------------------------------------------------------------------------
-# get_llamacpp_url()
+# OpenAICompatBackend api_key support
 # ---------------------------------------------------------------------------
 
-class TestGetLlamacppUrl:
+class TestOpenAICompatBackendApiKey:
 
-    def test_default_url(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
-        monkeypatch.delenv("LLAMACPP_URL", raising=False)
-        cfg._cached_config = None
-        cfg._cached_config_path = None
+    def test_api_key_passed_to_headers(self):
+        """API key is included in request headers when provided."""
+        backend = OpenAICompatBackend(model="x",
+                                      base_url="http://localhost:9999",
+                                      api_key="sk-test-123")
+        headers = backend._headers()
+        assert headers == {"Authorization": "Bearer sk-test-123"}
 
-        from iconfucius.config import LLAMACPP_URL_DEFAULT, get_llamacpp_url
-        assert get_llamacpp_url() == LLAMACPP_URL_DEFAULT
+    def test_no_api_key_empty_headers(self, monkeypatch):
+        """No API key results in empty headers."""
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        backend = OpenAICompatBackend(model="x",
+                                      base_url="http://localhost:9999")
+        headers = backend._headers()
+        assert headers == {}
 
-        cfg._cached_config = None
-        cfg._cached_config_path = None
+    def test_api_key_from_env(self, monkeypatch):
+        """API key falls back to OPENAI_API_KEY env var."""
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-env-key")
+        backend = OpenAICompatBackend(model="x",
+                                      base_url="http://localhost:9999")
+        headers = backend._headers()
+        assert headers == {"Authorization": "Bearer sk-env-key"}
 
-    def test_env_var_override(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
-        monkeypatch.setenv("LLAMACPP_URL", "http://myhost:8080")
-        cfg._cached_config = None
-        cfg._cached_config_path = None
 
-        from iconfucius.config import get_llamacpp_url
-        assert get_llamacpp_url() == "http://myhost:8080"
+# ---------------------------------------------------------------------------
+# cached_messages()
+# ---------------------------------------------------------------------------
 
-        cfg._cached_config = None
-        cfg._cached_config_path = None
+class TestCachedMessages:
 
-    def test_config_file_override(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
-        monkeypatch.delenv("LLAMACPP_URL", raising=False)
-        cfg._cached_config = None
-        cfg._cached_config_path = None
+    def test_empty_returns_empty(self):
+        assert cached_messages([]) == []
 
-        config = '[ai]\nllamacpp_url = "http://configured:1234"\n'
-        (tmp_path / "iconfucius.toml").write_text(config)
+    def test_single_message_unchanged(self):
+        """One message — nothing to cache (no prior history)."""
+        msgs = [{"role": "user", "content": "hello"}]
+        result = cached_messages(msgs)
+        assert result == msgs
 
-        from iconfucius.config import get_llamacpp_url
-        assert get_llamacpp_url() == "http://configured:1234"
+    def test_string_content_wrapped(self):
+        """String content on penultimate message is wrapped in a block."""
+        msgs = [
+            {"role": "user", "content": "first question"},
+            {"role": "assistant", "content": "first answer"},
+            {"role": "user", "content": "second question"},
+        ]
+        result = cached_messages(msgs)
 
-        cfg._cached_config = None
-        cfg._cached_config_path = None
+        # Penultimate (assistant) should now have a list content block
+        penultimate = result[1]
+        assert isinstance(penultimate["content"], list)
+        assert len(penultimate["content"]) == 1
+        block = penultimate["content"][0]
+        assert block["type"] == "text"
+        assert block["text"] == "first answer"
+        assert block["cache_control"] == {"type": "ephemeral"}
 
-    def test_env_takes_precedence_over_config(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
-        monkeypatch.setenv("LLAMACPP_URL", "http://env:5555")
-        cfg._cached_config = None
-        cfg._cached_config_path = None
+        # Other messages unchanged
+        assert result[0] == msgs[0]
+        assert result[2] == msgs[2]
 
-        config = '[ai]\nllamacpp_url = "http://config:1234"\n'
-        (tmp_path / "iconfucius.toml").write_text(config)
+    def test_list_content_cache_on_last_block(self):
+        """List content gets cache_control on its last block."""
+        msgs = [
+            {"role": "user", "content": "hi"},
+            {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "t1", "content": "r1"},
+                {"type": "tool_result", "tool_use_id": "t2", "content": "r2"},
+            ]},
+            {"role": "assistant", "content": "done"},
+        ]
+        result = cached_messages(msgs)
 
-        from iconfucius.config import get_llamacpp_url
-        assert get_llamacpp_url() == "http://env:5555"
+        penultimate = result[1]
+        assert isinstance(penultimate["content"], list)
+        # First block untouched
+        assert "cache_control" not in penultimate["content"][0]
+        # Last block has cache_control
+        assert penultimate["content"][1]["cache_control"] == {"type": "ephemeral"}
 
-        cfg._cached_config = None
-        cfg._cached_config_path = None
+    def test_assistant_tool_use_blocks(self):
+        """Assistant message with tool_use blocks gets cache_control on last."""
+        msgs = [
+            {"role": "user", "content": "check balance"},
+            {"role": "assistant", "content": [
+                {"type": "text", "text": "Let me check..."},
+                {"type": "tool_use", "id": "t1", "name": "wallet_balance",
+                 "input": {}},
+            ]},
+            {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "t1",
+                 "content": '{"status":"ok"}'},
+            ]},
+        ]
+        result = cached_messages(msgs)
+
+        # Penultimate is the assistant message
+        penultimate = result[1]
+        blocks = penultimate["content"]
+        assert "cache_control" not in blocks[0]
+        assert blocks[1]["cache_control"] == {"type": "ephemeral"}
+
+    def test_original_messages_not_mutated(self):
+        """cached_messages must not mutate the original list or dicts."""
+        inner = {"type": "tool_result", "tool_use_id": "t1", "content": "r"}
+        msgs = [
+            {"role": "user", "content": "hi"},
+            {"role": "user", "content": [inner]},
+            {"role": "assistant", "content": "ok"},
+        ]
+        _ = cached_messages(msgs)  # return value not needed; testing mutation only
+
+        # Original inner dict should not have cache_control
+        assert "cache_control" not in inner
+        # Original messages list should be unchanged
+        assert msgs[1]["content"][0] is inner
+
+    def test_two_messages(self):
+        """With exactly two messages, first gets cache breakpoint."""
+        msgs = [
+            {"role": "user", "content": "question"},
+            {"role": "assistant", "content": "answer"},
+        ]
+        result = cached_messages(msgs)
+
+        first = result[0]
+        assert isinstance(first["content"], list)
+        assert first["content"][0]["cache_control"] == {"type": "ephemeral"}
+        # Second unchanged
+        assert result[1] == msgs[1]

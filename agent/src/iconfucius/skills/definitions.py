@@ -11,27 +11,6 @@ TOOLS: list[dict] = [
     # Read-only tools (no confirmation needed)
     # ------------------------------------------------------------------
     {
-        "name": "fmt_sats",
-        "description": (
-            "Format a satoshi amount for display. "
-            "Returns the amount with comma separators and current USD value, "
-            "e.g. '5,000 sats ($5.00)'. "
-            "Always use this tool when displaying BTC or ckBTC amounts."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "sats": {
-                    "type": "integer",
-                    "description": "Amount in satoshis to format.",
-                },
-            },
-            "required": ["sats"],
-        },
-        "requires_confirmation": False,
-        "category": "read",
-    },
-    {
         "name": "setup_status",
         "description": (
             "Check if the iconfucius project is initialized and ready. "
@@ -52,6 +31,22 @@ TOOLS: list[dict] = [
             "Check if a newer version of iconfucius is available. "
             "Returns the running version, latest version, and release notes. "
             "The user can type /upgrade to install the update."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+        "requires_confirmation": False,
+        "category": "read",
+    },
+    {
+        "name": "enable_experimental",
+        "description": (
+            "Enable experimental features for this session. "
+            "Call this when the user asks to change the AI model, "
+            "API type, or backend configuration. "
+            "After enabling, tell the user to type /ai to configure."
         ),
         "input_schema": {
             "type": "object",
@@ -137,59 +132,17 @@ TOOLS: list[dict] = [
         "category": "read",
     },
     {
-        "name": "wallet_receive",
+        "name": "how_to_fund_wallet",
         "description": (
-            "Show the wallet's receiving addresses for funding. "
-            "Returns both the ckBTC principal (for sending ckBTC on the Internet Computer) "
-            "and the BTC deposit address (for sending BTC, min 10,000 sats, ~6 confirmations)."
+            "Show instructions for funding the wallet. "
+            "Call when the wallet is empty or has insufficient funds, "
+            "or when the user asks how to deposit/fund/top up. "
+            "Returns the wallet's receiving addresses and step-by-step instructions."
         ),
         "input_schema": {
             "type": "object",
             "properties": {},
             "required": [],
-        },
-        "requires_confirmation": False,
-        "category": "read",
-    },
-    {
-        "name": "wallet_info",
-        "description": (
-            "Show wallet principal identity and ckBTC balance."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {},
-            "required": [],
-        },
-        "requires_confirmation": False,
-        "category": "read",
-    },
-    {
-        "name": "persona_list",
-        "description": "List all available trading personas.",
-        "input_schema": {
-            "type": "object",
-            "properties": {},
-            "required": [],
-        },
-        "requires_confirmation": False,
-        "category": "read",
-    },
-    {
-        "name": "persona_show",
-        "description": (
-            "Show details of a specific trading persona "
-            "(name, voice, risk level, AI backend)."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "name": {
-                    "type": "string",
-                    "description": "Persona name (e.g. 'iconfucius').",
-                },
-            },
-            "required": ["name"],
         },
         "requires_confirmation": False,
         "category": "read",
@@ -197,10 +150,10 @@ TOOLS: list[dict] = [
     {
         "name": "token_lookup",
         "description": (
-            "Search for a token by name, ticker, or ID. "
-            "Returns token details with safety indicators "
-            "(bonded status, verification, holder count). "
-            "Use this to find the correct token ID before trading."
+            "Resolve a token name or ticker to its token ID. "
+            "ALWAYS call this tool when the user mentions a token by name "
+            "(e.g. 'ICONFUCIUS', 'ODINDOG') instead of by ID (e.g. '29m8'). "
+            "Use the returned token ID for trade_buy or trade_sell."
         ),
         "input_schema": {
             "type": "object",
@@ -345,6 +298,65 @@ TOOLS: list[dict] = [
         "category": "read",
     },
     {
+        "name": "memory_read_trades",
+        "description": (
+            "Read recent trade history from memory. Returns the last "
+            "N trades with token, amount, price, and bot details."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "last_n": {
+                    "type": "integer",
+                    "description": "Number of recent trades to return (default 5).",
+                },
+            },
+            "required": [],
+        },
+        "requires_confirmation": False,
+        "category": "read",
+    },
+    {
+        "name": "memory_read_balances",
+        "description": (
+            "Read recent portfolio balance snapshots. Returns timestamped "
+            "balance history for tracking trading performance. "
+            "Snapshots are recorded automatically after each balance check."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "last_n": {
+                    "type": "integer",
+                    "description": "Number of recent snapshots to return (default 50).",
+                },
+            },
+            "required": [],
+        },
+        "requires_confirmation": False,
+        "category": "read",
+    },
+    {
+        "name": "memory_archive_balances",
+        "description": (
+            "Archive old balance snapshots. Moves entries older than N days "
+            "from balances.jsonl to balances-archive.jsonl. Data is preserved, "
+            "not deleted — this limits the data sent to the AI for recent analysis."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "keep_days": {
+                    "type": "integer",
+                    "description": "Keep snapshots from the last N days (default 90). Older entries are archived.",
+                },
+            },
+            "required": [],
+        },
+        "requires_confirmation": True,
+        "category": "write",
+    },
+    {
         "name": "memory_update",
         "description": (
             "Update your trading strategy or learnings in memory. "
@@ -479,8 +491,10 @@ TOOLS: list[dict] = [
         "description": (
             "Deposit ckBTC from wallet into bot Odin.fun trading accounts. "
             "Minimum deposit: 5,000 sats per bot. "
-            "Provide either amount (sats) or amount_usd (dollars). "
-            "Specify bot_names for specific bots or all_bots=true for every bot."
+            "The wallet must retain at least 1,000 sats after the deposit (for signing fees). "
+            "If the user asks to deposit 'all', subtract fees and the 1,000 sats reserve first. "
+            "REQUIRED: (1) amount or amount_usd, (2) bot_name or bot_names or all_bots. "
+            "If the user does not specify which bot, ask them."
         ),
         "input_schema": {
             "type": "object",
@@ -499,7 +513,10 @@ TOOLS: list[dict] = [
                 },
                 "bot_name": {
                     "type": "string",
-                    "description": "Single bot name (e.g. 'bot-1').",
+                    "description": (
+                        "REQUIRED: bot name (e.g. 'bot-1'). "
+                        "Extract from user message or ask."
+                    ),
                 },
                 "bot_names": {
                     "type": "array",
@@ -519,17 +536,21 @@ TOOLS: list[dict] = [
     {
         "name": "trade_buy",
         "description": (
-            "Buy tokens on Odin.fun using BTC from bot trading accounts. "
+            "Buy tokens on Odin.fun using BTC from a bot's trading account. "
             "Minimum trade: 500 sats. "
-            "Provide either amount (sats) or amount_usd (dollars). "
-            "Specify bot_names for specific bots or all_bots=true for every bot."
+            "REQUIRED: (1) token_id, (2) amount or amount_usd, (3) bot_name. "
+            "If the user gives a token name, call token_lookup FIRST to get the token_id. "
+            "If any parameter is missing, ask the user before calling this tool."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "token_id": {
                     "type": "string",
-                    "description": "Token ID to buy (e.g. '29m8').",
+                    "description": (
+                        "REQUIRED: token ID to buy (e.g. '29m8'). "
+                        "Use token_lookup first if the user gives a name."
+                    ),
                 },
                 "amount": {
                     "type": "integer",
@@ -539,13 +560,15 @@ TOOLS: list[dict] = [
                     "type": "number",
                     "description": (
                         "Amount in USD to spend per bot. "
-                        "Converted to sats automatically. "
                         "Use this when the user specifies a dollar amount."
                     ),
                 },
                 "bot_name": {
                     "type": "string",
-                    "description": "Single bot name (e.g. 'bot-1').",
+                    "description": (
+                        "REQUIRED: bot name (e.g. 'bot-1'). "
+                        "Extract from user message or ask."
+                    ),
                 },
                 "bot_names": {
                     "type": "array",
@@ -566,34 +589,40 @@ TOOLS: list[dict] = [
         "name": "trade_sell",
         "description": (
             "Sell tokens on Odin.fun. "
-            "Provide amount (token count), amount_usd (dollars), or 'all'. "
             "Minimum trade value: 500 sats. "
-            "Specify bot_names for specific bots or all_bots=true for every bot."
+            "REQUIRED: (1) token_id, (2) amount or amount_usd or 'all', (3) bot_name. "
+            "If the user gives a token name, call token_lookup FIRST to get the token_id. "
+            "If any parameter is missing, ask the user before calling this tool."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "token_id": {
                     "type": "string",
-                    "description": "Token ID to sell (e.g. '29m8').",
+                    "description": (
+                        "REQUIRED: token ID to sell (e.g. '29m8'). "
+                        "Use token_lookup first if the user gives a name."
+                    ),
                 },
                 "amount": {
                     "type": "string",
                     "description": (
-                        "Number of tokens to sell (e.g. '1000' for 1,000 tokens), or 'all'."
+                        "Number of tokens to sell (e.g. '1000'), or 'all'."
                     ),
                 },
                 "amount_usd": {
                     "type": "number",
                     "description": (
                         "Amount in USD worth of tokens to sell per bot. "
-                        "Converted to token amount automatically. "
                         "Use this when the user specifies a dollar amount."
                     ),
                 },
                 "bot_name": {
                     "type": "string",
-                    "description": "Single bot name (e.g. 'bot-1').",
+                    "description": (
+                        "REQUIRED: bot name (e.g. 'bot-1'). "
+                        "Extract from user message or ask."
+                    ),
                 },
                 "bot_names": {
                     "type": "array",
@@ -614,8 +643,8 @@ TOOLS: list[dict] = [
         "name": "withdraw",
         "description": (
             "Withdraw BTC from bot Odin.fun accounts back to the iconfucius wallet. "
-            "Provide amount (sats), amount_usd (dollars), or 'all'. "
-            "Specify bot_names for specific bots or all_bots=true for every bot."
+            "REQUIRED: (1) amount or amount_usd or 'all', (2) bot_name or bot_names or all_bots. "
+            "If the user does not specify which bot, ask them."
         ),
         "input_schema": {
             "type": "object",
@@ -636,7 +665,10 @@ TOOLS: list[dict] = [
                 },
                 "bot_name": {
                     "type": "string",
-                    "description": "Single bot name (e.g. 'bot-1').",
+                    "description": (
+                        "REQUIRED: bot name (e.g. 'bot-1'). "
+                        "Extract from user message or ask."
+                    ),
                 },
                 "bot_names": {
                     "type": "array",
@@ -711,7 +743,15 @@ TOOLS: list[dict] = [
     {
         "name": "wallet_send",
         "description": (
-            "Send ckBTC from the iconfucius wallet to an external Bitcoin address. "
+            "Send from the iconfucius wallet. Two modes: "
+            "(1) To an IC principal — sends ckBTC directly, no minimum. "
+            "(2) To a BTC address (bc1...) — converts ckBTC to BTC via the ckBTC minter, "
+            "minimum SEND AMOUNT is 50,000 sats (~$34), takes ~6 confirmations. "
+            "For mode 2: the amount parameter MUST be at least 50,000 sats. "
+            "If the user asks to send less than 50,000 sats to a bc1 address, "
+            "tell them the minimum and ask if they want to send 50,000 sats instead. "
+            "NEVER call this tool with less than 50,000 sats for a bc1 address. "
+            "After a BTC send, use wallet_monitor to track confirmation progress. "
             "Provide amount (sats), amount_usd (dollars), or 'all'."
         ),
         "input_schema": {
@@ -720,7 +760,8 @@ TOOLS: list[dict] = [
                 "amount": {
                     "type": "string",
                     "description": (
-                        "Amount in sats to send, or 'all' for entire balance."
+                        "Amount in sats to send, or 'all' for entire balance. "
+                        "For BTC addresses: must be >= 50000."
                     ),
                 },
                 "amount_usd": {
@@ -728,15 +769,19 @@ TOOLS: list[dict] = [
                     "description": (
                         "Amount in USD to send. "
                         "Converted to sats automatically. "
-                        "Use this when the user specifies a dollar amount."
+                        "Use this when the user specifies a dollar amount. "
+                        "For BTC addresses: the converted sats must be >= 50000."
                     ),
                 },
                 "address": {
                     "type": "string",
-                    "description": "Destination Bitcoin address.",
+                    "description": (
+                        "Destination: IC principal (for ckBTC) "
+                        "or Bitcoin address (bc1... for BTC)."
+                    ),
                 },
             },
-            "required": ["amount", "address"],
+            "required": ["address"],
         },
         "requires_confirmation": True,
         "category": "write",

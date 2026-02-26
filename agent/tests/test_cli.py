@@ -447,14 +447,14 @@ class TestSweepRouting:
         assert mock_trade.call_count == 2
         assert mock_trade.call_args_list[0] == call(
             bot_name="bot-1", action="sell", token_id="29m8", amount="all",
-            verbose=False,
+            verbose=True,
         )
         assert mock_trade.call_args_list[1] == call(
             bot_name="bot-1", action="sell", token_id="2jjj", amount="all",
-            verbose=False,
+            verbose=True,
         )
         mock_withdraw.assert_called_once_with(
-            bot_name="bot-1", amount="all", verbose=False,
+            bot_name="bot-1", amount="all", verbose=True,
         )
 
     @patch("iconfucius.cli.withdraw.run_withdraw")
@@ -476,7 +476,7 @@ class TestSweepRouting:
         assert mock_trade.call_count == 1
         assert mock_trade.call_args == call(
             bot_name="bot-1", action="sell", token_id="29m8", amount="all",
-            verbose=False,
+            verbose=True,
         )
         # All 3 bots should attempt withdraw
         assert mock_withdraw.call_count == 3
@@ -947,13 +947,13 @@ class TestStartChatWizard:
             "env_exists": True, "has_api_key": False, "ready": False,
         }
 
-    def _wallet_receive_result(self):
+    def _how_to_fund_wallet_result(self):
         return {
             "status": "ok",
+            "display": "Wallet balance: 0 sats\n\nOption 1: ...\nOption 2: ...",
             "wallet_principal": "abc-principal",
             "btc_deposit_address": "bc1qtest123",
             "ckbtc_balance_sats": 0,
-            "balance_display": "0 sats",
         }
 
     # --- Config init prompts ---
@@ -1198,16 +1198,14 @@ class TestStartChatWizard:
                 return self._no_wallet_status()
             if name == "wallet_create":
                 return {"status": "ok", "display": "Wallet created"}
-            if name == "wallet_receive":
-                return self._wallet_receive_result()
+            if name == "how_to_fund_wallet":
+                return self._how_to_fund_wallet_result()
             return self._ready_status()
 
         mock_exec.side_effect = track_exec
         result = runner.invoke(app, [])
         assert "Wallet created." in result.output
-        assert "abc-principal" in result.output
-        assert "bc1qtest123" in result.output
-        assert "send ckBTC or BTC" in result.output
+        assert "Option 1" in result.output or "Option 2" in result.output
 
     # --- Full wizard flow ---
 
@@ -1233,8 +1231,8 @@ class TestStartChatWizard:
             if name == "wallet_create":
                 step["n"] = 2
                 return {"status": "ok", "display": "done"}
-            if name == "wallet_receive":
-                return self._wallet_receive_result()
+            if name == "how_to_fund_wallet":
+                return self._how_to_fund_wallet_result()
             return {"status": "ok"}
 
         mock_exec.side_effect = track_exec
@@ -1265,8 +1263,8 @@ class TestStartChatWizard:
                 }
             if name == "wallet_create":
                 return {"status": "ok", "display": "done"}
-            if name == "wallet_receive":
-                return self._wallet_receive_result()
+            if name == "how_to_fund_wallet":
+                return self._how_to_fund_wallet_result()
             return self._ready_status()
 
         mock_exec.side_effect = track_exec

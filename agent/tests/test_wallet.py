@@ -149,9 +149,8 @@ class TestWalletInfo:
         result = runner.invoke(app, ["wallet", "info"])
         assert result.exit_code == 0
         assert "25,000 sats" in result.output
-        assert "test-principal" in result.output
-        assert "bc1qtest123" in result.output
-        assert "To fund your wallet:" in result.output
+        # Funding instructions moved to how_to_fund_wallet / wallet receive
+        assert "To fund your wallet:" not in result.output
         assert "Wallet PEM file:" in result.output
         assert "Notes:" in result.output
         # No minter section by default

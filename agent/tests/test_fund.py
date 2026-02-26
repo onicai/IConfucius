@@ -150,6 +150,44 @@ class TestRunFundSuccess:
         assert "New Odin.Fun balance" in result["notes"][0]
 
 
+    @patch("iconfucius.cli.balance.run_all_balances")
+    @patch(f"{M}.get_btc_to_usd_rate", return_value=100_000.0)
+    @patch(f"{M}.unwrap_canister_result", side_effect=lambda x: x)
+    @patch(f"{M}.patch_delegate_sender")
+    @patch(f"{M}.transfer", return_value={"Ok": 1})
+    # Exactly at reserve boundary: 5000 + 2*10 fees + 1000 reserve = 6020
+    @patch(f"{M}.get_balance", return_value=6020)
+    @patch(f"{M}.create_icrc1_canister")
+    @patch(f"{M}.load_session")
+    @patch(f"{M}.Canister")
+    @patch(f"{M}.Principal")
+    @patch(f"{M}.Agent")
+    @patch(f"{M}.Client")
+    @patch(f"{M}.Identity")
+    def test_exact_reserve_boundary(self, MockId, MockClient, MockAgent,
+                                     MockPrincipal, MockCanister, mock_load,
+                                     mock_create_icrc1, mock_get_bal,
+                                     mock_transfer, mock_patch_del,
+                                     mock_unwrap, mock_rate, mock_run_all,
+                                     odin_project, mock_siwb_auth):
+        MockId.from_pem.return_value = _make_mock_identity()
+        mock_load.return_value = mock_siwb_auth
+
+        mock_ckbtc = MagicMock()
+        mock_ckbtc.icrc2_approve.return_value = {"Ok": 1}
+        mock_deposit = MagicMock()
+        mock_deposit.ckbtc_deposit.return_value = {"ok": 1}
+        mock_odin = MagicMock()
+        mock_odin.getBalance.return_value = 5_000_000
+        MockCanister.side_effect = [mock_ckbtc, mock_deposit, mock_odin]
+
+        from iconfucius.cli.fund import run_fund
+        result = run_fund(bot_names=["bot-1"], amount=5000, verbose=False)
+
+        assert result["status"] == "ok"
+        assert result["funded"] == ["bot-1"]
+
+
 class TestRunFundErrors:
     def test_no_wallet(self, odin_project_no_wallet):
         from iconfucius.cli.fund import run_fund
@@ -179,6 +217,45 @@ class TestRunFundErrors:
 
         assert result["status"] == "error"
         assert "Insufficient wallet balance" in result["error"]
+
+    @patch(f"{M}.get_btc_to_usd_rate", return_value=100_000.0)
+    # 1 bot x 5000 sats: cost = 5000 + 2*10 = 5020, need 5020 + 1000 = 6020
+    # Wallet has 6019 — 1 sat short of reserve
+    @patch(f"{M}.get_balance", return_value=6019)
+    @patch(f"{M}.create_icrc1_canister")
+    @patch(f"{M}.Agent")
+    @patch(f"{M}.Client")
+    @patch(f"{M}.Identity")
+    def test_wallet_reserve_enforced(self, MockId, MockClient, MockAgent,
+                                      mock_create, mock_get_bal, mock_rate,
+                                      odin_project):
+        MockId.from_pem.return_value = _make_mock_identity()
+
+        from iconfucius.cli.fund import run_fund
+        result = run_fund(bot_names=["bot-1"], amount=5000)
+
+        assert result["status"] == "error"
+        assert "reserve" in result["error"]
+        assert "Max per bot" in result["error"]
+
+    @patch(f"{M}.get_btc_to_usd_rate", return_value=100_000.0)
+    # 2 bots x 5000: cost = 2 * 5020 = 10040, need 10040 + 1000 = 11040
+    # Wallet has 10500 — covers costs but not reserve
+    @patch(f"{M}.get_balance", return_value=10_500)
+    @patch(f"{M}.create_icrc1_canister")
+    @patch(f"{M}.Agent")
+    @patch(f"{M}.Client")
+    @patch(f"{M}.Identity")
+    def test_wallet_reserve_multi_bot(self, MockId, MockClient, MockAgent,
+                                       mock_create, mock_get_bal, mock_rate,
+                                       odin_project):
+        MockId.from_pem.return_value = _make_mock_identity()
+
+        from iconfucius.cli.fund import run_fund
+        result = run_fund(bot_names=["bot-1", "bot-2"], amount=5000)
+
+        assert result["status"] == "error"
+        assert "reserve" in result["error"]
 
     @patch(f"{M}.get_btc_to_usd_rate", return_value=100_000.0)
     @patch(f"{M}.patch_delegate_sender")

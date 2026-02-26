@@ -9,6 +9,22 @@ import os
 from pathlib import Path
 
 
+# Session-level flag for experimental features (set by enable_experimental tool)
+_experimental_enabled = False
+
+EXPERIMENTAL_ENABLED = (
+    "Experimental features have been enabled for this session. "
+    "Type /ai to configure your AI model and backend."
+)
+
+EXPERIMENTAL_RISK_WARNING = (
+    "WARNING: Changing the AI model is an experimental feature. "
+    "Alternative backends \u2014 such as local llama.cpp, Ollama, or other "
+    "OpenAI-compatible endpoints \u2014 may not support tool use or may "
+    "behave unexpectedly. Use at your own risk."
+)
+
+
 def execute_tool(name: str, args: dict, *, persona_name: str = "") -> dict:
     """Execute a tool by name with the given arguments.
 
@@ -26,7 +42,7 @@ def execute_tool(name: str, args: dict, *, persona_name: str = "") -> dict:
         return {"status": "error", "error": f"Unknown tool: {name}"}
     try:
         # Memory tools need persona_name
-        if name in ("memory_read_strategy", "memory_read_learnings", "memory_update"):
+        if name in ("memory_read_strategy", "memory_read_learnings", "memory_read_trades", "memory_update", "memory_read_balances", "memory_archive_balances"):
             result = handler(args, persona_name=persona_name)
         else:
             result = handler(args)
@@ -34,6 +50,10 @@ def execute_tool(name: str, args: dict, *, persona_name: str = "") -> dict:
         # Record successful trades
         if name in ("trade_buy", "trade_sell") and result.get("status") == "ok" and persona_name:
             _record_trade(name, args, result, persona_name)
+
+        # Record balance snapshot
+        if name == "wallet_balance" and result.get("status") == "ok" and persona_name:
+            _record_balance_snapshot(result, persona_name)
 
         return result
     except SystemExit:
@@ -54,20 +74,6 @@ def execute_tool(name: str, args: dict, *, persona_name: str = "") -> dict:
 # ---------------------------------------------------------------------------
 # Formatting handlers
 # ---------------------------------------------------------------------------
-
-def _handle_fmt_sats(args: dict) -> dict:
-    from iconfucius.config import fmt_sats, get_btc_to_usd_rate
-
-    sats = args.get("sats")
-    if sats is None:
-        return {"status": "error", "error": "'sats' is required."}
-
-    try:
-        rate = get_btc_to_usd_rate()
-    except Exception:
-        rate = None
-
-    return {"status": "ok", "formatted": fmt_sats(int(sats), rate)}
 
 
 # ---------------------------------------------------------------------------
@@ -109,6 +115,21 @@ def _handle_check_update(args: dict) -> dict:
 
 # Populated by chat.py at startup so the handler doesn't re-fetch
 _update_cache: dict = {}
+
+
+def _handle_enable_experimental(args: dict) -> dict:
+    global _experimental_enabled
+    _experimental_enabled = True
+    return {
+        "status": "ok",
+        "display": f"\n{EXPERIMENTAL_ENABLED}\n\n{EXPERIMENTAL_RISK_WARNING}",
+        "instruction": (
+            "Explain to the user that changing the AI model is experimental. "
+            "Alternative backends may lack tool-use support, produce lower "
+            "quality responses, or behave unexpectedly. Ask if they want to "
+            "proceed, and if so, tell them to type /ai."
+        ),
+    }
 
 
 def _handle_init(args: dict) -> dict:
@@ -336,7 +357,7 @@ def _handle_wallet_balance(args: dict) -> dict:
     return result
 
 
-def _handle_wallet_receive(args: dict) -> dict:
+def _handle_how_to_fund_wallet(args: dict) -> dict:
     from iconfucius.config import require_wallet
 
     if not require_wallet():
@@ -373,13 +394,23 @@ def _handle_wallet_receive(args: dict) -> dict:
         rate = None
 
     balance_str = fmt_sats(balance, rate)
+    min_deposit = fmt_sats(10_000, rate)
     display = (
-        f"Principal:       {principal}\n"
-        f"Deposit address: {btc_address}\n"
-        f"Balance:         {balance_str}\n"
+        f"Wallet balance: {balance_str}\n"
         f"\n"
-        f"To fund your wallet, send ckBTC to the principal or BTC to the deposit address.\n"
-        f"BTC deposits require min 10,000 sats and ~6 confirmations."
+        f"Option 1: Send BTC from any Bitcoin wallet\n"
+        f"  {btc_address}\n"
+        f"  Min deposit: {min_deposit}.\n"
+        f"  BTC is converted to ckBTC via the ckBTC minter.\n"
+        f"  Requires ~6 Bitcoin confirmations (~1 hour).\n"
+        f"  Use wallet_monitor to track the conversion progress.\n"
+        f"\n"
+        f"Option 2: Send ckBTC from any ckBTC wallet\n"
+        f"  {principal}\n"
+        f"  Send from NNS, Plug, Oisy, or any ckBTC wallet.\n"
+        f"  Arrives instantly, no conversion needed.\n"
+        f"\n"
+        f"After funding, distribute to bots with the fund tool."
     )
 
     return {
@@ -388,24 +419,8 @@ def _handle_wallet_receive(args: dict) -> dict:
         "wallet_principal": principal,
         "btc_deposit_address": btc_address,
         "ckbtc_balance_sats": balance,
-        "balance_display": balance_str,
     }
 
-
-def _handle_wallet_info(args: dict) -> dict:
-    from iconfucius.config import require_wallet
-
-    if not require_wallet():
-        return {"status": "error", "error": "No wallet found. Run: iconfucius wallet create"}
-
-    from iconfucius.cli.balance import run_wallet_balance
-
-    data = run_wallet_balance()
-    if data is None:
-        return {"status": "error", "error": "Wallet balance check failed."}
-
-    display_text = data.pop("_display", "")
-    return {"status": "ok", "display": display_text.strip()}
 
 
 def _handle_wallet_monitor(args: dict) -> dict:
@@ -753,60 +768,6 @@ def _handle_account_lookup(args: dict) -> dict:
         **account,
     }
 
-
-def _handle_persona_list(args: dict) -> dict:
-    from iconfucius.config import get_default_persona
-    from iconfucius.persona import list_personas
-
-    names = list_personas()
-    default = get_default_persona()
-    lines = ["Available personas:"]
-    for name in names:
-        marker = " (default)" if name == default else ""
-        lines.append(f"  {name}{marker}")
-    return {"status": "ok", "display": "\n".join(lines), "personas": names}
-
-
-def _handle_persona_show(args: dict) -> dict:
-    from iconfucius.persona import PersonaNotFoundError, load_persona
-
-    name = args.get("name", "")
-    if not name:
-        return {"status": "error", "error": "Persona name is required."}
-
-    try:
-        p = load_persona(name)
-    except PersonaNotFoundError:
-        return {"status": "error", "error": f"Persona '{name}' not found."}
-
-    from iconfucius.config import fmt_sats, get_btc_to_usd_rate
-    try:
-        _rate = get_btc_to_usd_rate()
-    except Exception:
-        _rate = None
-    budget = "unlimited" if p.budget_limit == 0 else fmt_sats(p.budget_limit, _rate)
-    display = (
-        f"Name:        {p.name}\n"
-        f"Description: {p.description}\n"
-        f"Voice:       {p.voice}\n"
-        f"Risk:        {p.risk}\n"
-        f"Budget:      {budget}\n"
-        f"Default bot: {p.bot}\n"
-        f"AI backend:  {p.ai_backend}\n"
-        f"AI model:    {p.ai_model}"
-    )
-    return {
-        "status": "ok",
-        "display": display,
-        "name": p.name,
-        "description": p.description,
-        "voice": p.voice,
-        "risk": p.risk,
-        "budget_limit": p.budget_limit,
-        "bot": p.bot,
-        "ai_backend": p.ai_backend,
-        "ai_model": p.ai_model,
-    }
 
 
 def _handle_token_lookup(args: dict) -> dict:
@@ -1281,12 +1242,37 @@ def _handle_withdraw(args: dict) -> dict:
     display = "\n".join(lines) if lines else "No withdrawals executed"
 
     all_ok = not failed
-    return {
+    resp: dict = {
         "status": "ok" if all_ok else "partial",
         "display": display,
         "succeeded": len(succeeded),
         "failed": len(failed),
     }
+
+    # Include updated wallet balance so the AI knows how much is available
+    try:
+        from iconfucius.config import get_btc_to_usd_rate, fmt_sats
+        from iconfucius.transfers import create_icrc1_canister, get_balance, IC_HOST
+        from icp_agent import Agent, Client
+        from icp_identity import Identity
+
+        client = Client(url=IC_HOST)
+        anon_agent = Agent(Identity(anonymous=True), client)
+        canister = create_icrc1_canister(anon_agent)
+        identity = Identity.from_pem_file(
+            str(require_wallet())
+        )
+        wallet_sats = get_balance(canister, str(identity.sender()))
+        try:
+            rate = get_btc_to_usd_rate()
+        except Exception:
+            rate = None
+        resp["wallet_balance_sats"] = wallet_sats
+        resp["wallet_balance_display"] = fmt_sats(wallet_sats, rate)
+    except Exception:
+        pass  # best-effort
+
+    return resp
 
 
 def _handle_token_transfer(args: dict) -> dict:
@@ -1366,6 +1352,52 @@ def _handle_wallet_send(args: dict) -> dict:
     if not amount or not address:
         return {"status": "error", "error": "Both 'amount' (or 'amount_usd') and 'address' are required."}
 
+    # Early validation: BTC address sends must meet the minimum
+    is_btc_address = isinstance(address, str) and address.startswith("bc1")
+    if is_btc_address and str(amount).lower() != "all":
+        from iconfucius.config import MIN_BTC_WITHDRAWAL_SATS
+        try:
+            send_sats = int(amount)
+        except (ValueError, TypeError):
+            send_sats = 0
+        if 0 < send_sats < MIN_BTC_WITHDRAWAL_SATS:
+            # Fetch wallet balance so the AI can suggest the right amount
+            wallet_sats = 0
+            wallet_display = "unknown"
+            try:
+                from iconfucius.config import fmt_sats, get_btc_to_usd_rate
+                from iconfucius.transfers import (
+                    create_icrc1_canister, get_balance, IC_HOST,
+                )
+                from icp_agent import Agent, Client
+                from icp_identity import Identity
+
+                client = Client(url=IC_HOST)
+                anon_agent = Agent(Identity(anonymous=True), client)
+                canister = create_icrc1_canister(anon_agent)
+                identity = Identity.from_pem_file(str(require_wallet()))
+                wallet_sats = get_balance(canister, str(identity.sender()))
+                try:
+                    rate = get_btc_to_usd_rate()
+                except Exception:
+                    rate = None
+                wallet_display = fmt_sats(wallet_sats, rate)
+                min_display = fmt_sats(MIN_BTC_WITHDRAWAL_SATS, rate)
+            except Exception:
+                min_display = f"{MIN_BTC_WITHDRAWAL_SATS:,} sats"
+
+            return {
+                "status": "error",
+                "error": (
+                    f"BTC send amount too low: {send_sats:,} sats. "
+                    f"Minimum for BTC address: {min_display}. "
+                    f"Current wallet balance: {wallet_display}. "
+                    f"Retry with amount={MIN_BTC_WITHDRAWAL_SATS} or amount='all'."
+                ),
+                "wallet_balance_sats": wallet_sats,
+                "minimum_sats": MIN_BTC_WITHDRAWAL_SATS,
+            }
+
     # wallet send uses typer.Exit for errors, so we need to catch it
     import typer
 
@@ -1379,7 +1411,16 @@ def _handle_wallet_send(args: dict) -> dict:
         result = runner.invoke(wallet_app, ["send", str(amount), address])
         if result.exit_code != 0:
             return {"status": "error", "error": result.output.strip()}
-        return {"status": "ok", "display": result.output.strip()}
+        # Strip CLI-specific hints — the AI has wallet_monitor for this
+        display = result.output.strip()
+        display = display.replace(
+            "Check progress with: iconfucius wallet balance --monitor",
+            "",
+        ).strip()
+        resp = {"status": "ok", "display": display}
+        if "BTC withdrawal" in display:
+            resp["hint"] = "Use wallet_monitor to check withdrawal progress."
+        return resp
     except typer.Exit:
         return {"status": "error", "error": "Command failed."}
 
@@ -1405,13 +1446,10 @@ def _record_trade(tool_name: str, args: dict, result: dict,
     else:
         amount = args.get("amount", "?")
     bots = _resolve_bot_names(args)
-    bot_str = ", ".join(bots) if bots else "?"
-    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
     # Fetch live price and BTC/USD rate for enriched logging
     price = 0
     ticker = token_id
-    divisibility = 8
     btc_usd = None
     try:
         from iconfucius.tokens import fetch_token_data
@@ -1420,7 +1458,6 @@ def _record_trade(tool_name: str, args: dict, result: dict,
         if data:
             price = data.get("price", 0)
             ticker = data.get("ticker", token_id)
-            divisibility = data.get("divisibility", 8)
     except Exception:
         pass
     try:
@@ -1430,40 +1467,78 @@ def _record_trade(tool_name: str, args: dict, result: dict,
     except Exception:
         pass
 
-    def _fmt_usd(sats: float) -> str:
-        if btc_usd:
-            return f"${(sats / 100_000_000) * btc_usd:.3f}"
-        return "?"
-
-    lines = [f"## {action} — {ts}"]
-    lines.append(f"- Token: {token_id} ({ticker})")
+    entry: dict = {
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "action": action,
+        "token_id": token_id,
+        "ticker": ticker,
+    }
 
     is_sell_all = str(amount).lower() == "all"
     if action == "BUY":
-        # amount is sats spent; estimate display tokens received
         amount_int = 0 if is_sell_all else int(float(amount)) if amount else 0
-        lines.append(f"- Spent: {amount_int:,} sats ({_fmt_usd(amount_int)})")
+        entry["amount_sats"] = amount_int
         if price:
-            # display_tokens = sats * 10^6 / price (divisibility cancels out)
-            display_tokens = amount_int * 1_000_000 / price
-            lines.append(f"- Est. tokens: ~{display_tokens:,.3f}")
+            entry["est_tokens"] = round(amount_int * 1_000_000 / price, 2)
     elif is_sell_all:
-        lines.append(f"- Sold: ALL tokens")
+        entry["tokens_sold"] = "all"
     else:
-        # amount is human-readable token count; estimate sats received
         display_tokens = float(amount) if amount else 0.0
-        lines.append(f"- Sold: {display_tokens:,.3f} tokens")
+        entry["tokens_sold"] = display_tokens
         if price:
-            est_sats = display_tokens * price / 1_000_000
-            lines.append(f"- Est. received: ~{est_sats:,.0f} sats ({_fmt_usd(est_sats)})")
+            entry["est_sats_received"] = round(display_tokens * price / 1_000_000)
 
     if price:
-        lines.append(f"- Price: {price:,} sats/token ({_fmt_usd(price)})")
-    lines.append(f"- Bots: {bot_str}")
+        entry["price_sats"] = price
+    if btc_usd:
+        entry["btc_usd_rate"] = btc_usd
+    entry["bots"] = bots if bots else ["?"]
 
-    entry = "\n".join(lines)
     try:
         append_trade(persona_name, entry)
+    except Exception:
+        pass  # best-effort
+
+
+# ---------------------------------------------------------------------------
+# Balance snapshot recording
+# ---------------------------------------------------------------------------
+
+def _record_balance_snapshot(result: dict, persona_name: str) -> None:
+    """Record a portfolio balance snapshot. Best-effort — never raises."""
+    from datetime import datetime, timezone
+
+    from iconfucius.memory import append_balance_snapshot
+
+    try:
+        from iconfucius.config import get_btc_to_usd_rate
+        btc_usd = get_btc_to_usd_rate()
+    except Exception:
+        btc_usd = None
+
+    wallet_sats = result.get("wallet_ckbtc_sats", 0)
+    odin_sats = result.get("total_odin_sats", 0)
+    token_value_sats = result.get("total_token_value_sats", 0)
+    portfolio_sats = result.get("portfolio_sats", 0)
+    bot_count = len(result.get("bots", []))
+
+    portfolio_usd = None
+    if btc_usd:
+        portfolio_usd = round((portfolio_sats / 100_000_000) * btc_usd, 2)
+
+    snapshot = {
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "wallet_sats": wallet_sats,
+        "odin_sats": odin_sats,
+        "token_value_sats": token_value_sats,
+        "portfolio_sats": portfolio_sats,
+        "btc_usd_rate": btc_usd,
+        "portfolio_usd": portfolio_usd,
+        "bot_count": bot_count,
+    }
+
+    try:
+        append_balance_snapshot(persona_name, snapshot)
     except Exception:
         pass  # best-effort
 
@@ -1494,6 +1569,42 @@ def _handle_memory_read_learnings(args: dict, *, persona_name: str = "") -> dict
     return {"status": "ok", "display": content}
 
 
+def _handle_memory_read_trades(args: dict, *, persona_name: str = "") -> dict:
+    from iconfucius.memory import read_trades
+
+    if not persona_name:
+        return {"status": "error", "error": "No persona context available."}
+    last_n = args.get("last_n", 5)
+    trades = read_trades(persona_name, last_n=last_n)
+    if not trades:
+        return {"status": "ok", "display": "No trades recorded yet.", "trades": [], "count": 0}
+    return {"status": "ok", "trades": trades, "count": len(trades)}
+
+
+def _handle_memory_read_balances(args: dict, *, persona_name: str = "") -> dict:
+    from iconfucius.memory import read_balance_snapshots
+
+    if not persona_name:
+        return {"status": "error", "error": "No persona context available."}
+    last_n = args.get("last_n", 50)
+    snapshots = read_balance_snapshots(persona_name, last_n=last_n)
+    if not snapshots:
+        return {"status": "ok", "display": "No balance snapshots recorded yet.", "snapshots": []}
+    return {"status": "ok", "snapshots": snapshots, "count": len(snapshots)}
+
+
+def _handle_memory_archive_balances(args: dict, *, persona_name: str = "") -> dict:
+    from iconfucius.memory import archive_balance_snapshots
+
+    if not persona_name:
+        return {"status": "error", "error": "No persona context available."}
+    keep_days = args.get("keep_days", 90)
+    count = archive_balance_snapshots(persona_name, keep_days=keep_days)
+    if count == 0:
+        return {"status": "ok", "display": "No old snapshots to archive.", "archived": 0}
+    return {"status": "ok", "display": f"Archived {count} snapshot(s) older than {keep_days} days.", "archived": count}
+
+
 def _handle_memory_update(args: dict, *, persona_name: str = "") -> dict:
     from iconfucius.memory import write_learnings, write_strategy
 
@@ -1520,22 +1631,19 @@ def _handle_memory_update(args: dict, *, persona_name: str = "") -> dict:
 # ---------------------------------------------------------------------------
 
 _HANDLERS: dict[str, callable] = {
-    "fmt_sats": _handle_fmt_sats,
     "setup_status": _handle_setup_status,
     "check_update": _handle_check_update,
+    "enable_experimental": _handle_enable_experimental,
     "init": _handle_init,
     "set_bot_count": _handle_set_bot_count,
     "bot_list": _handle_bot_list,
     "wallet_create": _handle_wallet_create,
     "wallet_balance": _handle_wallet_balance,
-    "wallet_receive": _handle_wallet_receive,
-    "wallet_info": _handle_wallet_info,
+    "how_to_fund_wallet": _handle_how_to_fund_wallet,
     "wallet_monitor": _handle_wallet_monitor,
     "security_status": _handle_security_status,
     "install_blst": _handle_install_blst,
     "account_lookup": _handle_account_lookup,
-    "persona_list": _handle_persona_list,
-    "persona_show": _handle_persona_show,
     "token_lookup": _handle_token_lookup,
     "token_discover": _handle_token_discover,
     "token_price": _handle_token_price,
@@ -1547,5 +1655,8 @@ _HANDLERS: dict[str, callable] = {
     "wallet_send": _handle_wallet_send,
     "memory_read_strategy": _handle_memory_read_strategy,
     "memory_read_learnings": _handle_memory_read_learnings,
+    "memory_read_trades": _handle_memory_read_trades,
+    "memory_read_balances": _handle_memory_read_balances,
+    "memory_archive_balances": _handle_memory_archive_balances,
     "memory_update": _handle_memory_update,
 }

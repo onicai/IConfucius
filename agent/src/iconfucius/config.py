@@ -52,13 +52,12 @@ ODIN_API_URL = "https://api.odin.fun/v1"
 MIN_DEPOSIT_SATS = 5000   # minimum ckBTC deposit into Odin.Fun
 MIN_TRADE_SATS = 500      # minimum BTC-equivalent for buy/sell on Odin.Fun
 MIN_BTC_WITHDRAWAL_SATS = 50_000  # minimum BTC withdrawal via ckBTC minter
+WALLET_RESERVE_SATS = 1000  # minimum ckBTC to keep in wallet after deposits (for signing fees)
 
 # ---------------------------------------------------------------------------
-# llama.cpp server defaults
+# AI defaults
 # ---------------------------------------------------------------------------
 
-# Port 55128: Confucius was born 551 BC, September 28 -> 551 + 28 = 55128
-LLAMACPP_URL_DEFAULT = "http://localhost:55128"
 AI_TIMEOUT_DEFAULT = 600  # seconds
 
 # ---------------------------------------------------------------------------
@@ -89,20 +88,19 @@ def fmt_sats(sats, btc_usd_rate) -> str:
 
 
 def fmt_tokens(count, token_id: str) -> str:
-    """Format a human-readable token count with USD value.
+    """Format a raw token balance with USD value for display.
 
     Args:
-        count: Token count (human-readable, e.g. 1000.0).
+        count: Token count in raw sub-units (as returned by canister getBalance).
         token_id: Odin token ID (e.g. '29m8').
 
     Returns:
-        e.g. '1,000.00 tokens ($5.00)' or '1,000.00 tokens' on failure.
+        e.g. '1,000.000 tokens ($5.00)' or '1,000.000 tokens' on failure.
     """
     try:
-        amount = float(count)
+        raw_amount = float(count)
     except (TypeError, ValueError):
         return f"{count} tokens"
-    label = f"{amount:,.3f} tokens"
     try:
         from curl_cffi import requests as cffi_requests
         resp = cffi_requests.get(
@@ -112,18 +110,20 @@ def fmt_tokens(count, token_id: str) -> str:
             timeout=10,
         )
         if resp.status_code != 200:
-            return label
+            return f"{count} tokens"
         info = resp.json()
         price = info.get("price", 0)
         divisibility = info.get("divisibility", 8)
+        # Convert raw sub-units to human-readable token count for display
+        display_amount = raw_amount / (10 ** divisibility) if divisibility > 0 else raw_amount
+        label = f"{display_amount:,.3f} tokens"
         btc_usd_rate = get_btc_to_usd_rate()
-        # amount * price gives value in microsats (divisibility cancels out)
-        value_microsats = amount * price
+        value_microsats = (raw_amount * price) / (10 ** divisibility)
         value_sats = value_microsats / 1_000_000
         usd = (value_sats / 100_000_000) * btc_usd_rate
         return f"{label} (${usd:,.3f})"
     except Exception:
-        return label
+        return f"{count} tokens"
 
 
 # ---------------------------------------------------------------------------
@@ -344,24 +344,6 @@ def get_ai_config() -> dict:
     return config.get("ai", {})
 
 
-def get_llamacpp_url() -> str:
-    """Return llama.cpp server URL from env var, config, or default.
-
-    Resolution order:
-    1. LLAMACPP_URL environment variable
-    2. ``llamacpp_url`` in [ai] section of iconfucius.toml
-    3. LLAMACPP_URL_DEFAULT (http://localhost:55128)
-    """
-    env = os.environ.get("LLAMACPP_URL")
-    if env:
-        return env
-    config = load_config()
-    url = config.get("ai", {}).get("llamacpp_url")
-    if url:
-        return url
-    return LLAMACPP_URL_DEFAULT
-
-
 def get_ai_timeout() -> int:
     """Return AI request timeout in seconds from config or default.
 
@@ -402,27 +384,26 @@ verify_certificates = false
 cache_sessions = true
 default_persona = "iconfucius"
 
-# AI backend (overrides persona defaults)
-# API key via env var: ANTHROPIC_API_KEY, GEMINI_API_KEY, etc.
+# AI configuration (overrides persona defaults)
+# Default: Claude with claude-opus-4-6 (API key via ANTHROPIC_API_KEY env var)
+#
+# Claude with a different model:
 # [ai]
-# backend = "claude"
 # model = "claude-sonnet-4-6"
-# timeout = 600  # optional, seconds (default: 600)
 #
-# For local llama.cpp (no API key needed):
+# Any OpenAI-compatible endpoint (llama.cpp, Ollama, vLLM, LM Studio, etc.):
 # [ai]
-# backend = "llamacpp"
-# model = "Qwen2.5-Coder-7B-Instruct"
-# llamacpp_url = "http://localhost:55128"  # optional, this is the default
-# timeout = 600  # optional, seconds (default: 600)
-# Start server: llama-server --jinja --port 55128 -hf bartowski/Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M
+# api_type = "openai"
+# base_url = "http://localhost:55128"
+# # API key via OPENAI_API_KEY env var (optional for local servers)
 #
-# Recommended models for CPU laptops (Q4_K_M quantization):
-#   ~4.7GB  Qwen2.5-Coder-7B    bartowski/Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M
-#   ~2.2GB  Ministral-3-3B       mistralai/Ministral-3-3B-Instruct-2512-GGUF:Q4_K_M
-#   ~2.5GB  Phi-4-mini           bartowski/microsoft_Phi-4-mini-instruct-GGUF:Q4_K_M
-#   ~0.7GB  LFM2.5-1.2B         LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M
+# Start llama.cpp server:
+#   llama-server --jinja --port 55128 -hf bartowski/Mistral-Nemo-Instruct-2407-GGUF:Q4_K_M
+#
+# Recommended local models for tool calling (Q4_K_M quantization):
 #   ~7.5GB  Mistral-NeMo-12B    bartowski/Mistral-Nemo-Instruct-2407-GGUF:Q4_K_M
+#   ~9 GB   Qwen2.5-14B         bartowski/Qwen2.5-14B-Instruct-GGUF:Q4_K_M
+#   ~15GB   Mistral-Small-24B   bartowski/Mistral-Small-24B-Instruct-2501-GGUF:Q4_K_M
 
 # Bot definitions
 # Each bot gets its own trading identity on Odin.Fun.

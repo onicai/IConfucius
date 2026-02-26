@@ -218,9 +218,8 @@ class TestCollectWalletInfo:
         output = "\n".join(lines)
         assert "ICRC-1 ckBTC:" in output
         assert "50,000 sats" in output
-        assert "To fund your wallet:" in output
-        assert "ctrl-principal" in output
-        assert "bc1qtest456" in output
+        # Funding instructions are in how_to_fund_wallet, not here
+        assert "To fund your wallet:" not in output
         # No minter section by default
         assert "ckBTC minter:" not in output
         # Data dict
