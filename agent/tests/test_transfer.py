@@ -13,6 +13,7 @@ S = "iconfucius.siwb"
 
 
 def _make_mock_auth(bot_principal="bot-principal-abc"):
+    """Create a mock auth for testing."""
     delegate = MagicMock()
     delegate.der_pubkey = b"\x30" * 44
     return {
@@ -28,6 +29,7 @@ def _get_balance_side_effect(token_balance, btc_msat=200_000):
     Default btc_msat=200_000 (200 sats) is enough for the 100 sats transfer fee.
     """
     def _impl(principal, asset, **kwargs):
+        """Shared implementation for test cases."""
         if asset == "btc":
             return btc_msat
         return token_balance
@@ -41,6 +43,7 @@ def _get_balance_side_effect(token_balance, btc_msat=200_000):
 class TestResolveOdinAccount:
     @patch(f"{A}.cffi_requests")
     def test_resolves_valid_principal(self, mock_requests):
+        """Verify resolves valid principal."""
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {"data": [{"principal": "abc-def"}]}
@@ -51,6 +54,7 @@ class TestResolveOdinAccount:
 
     @patch(f"{A}.cffi_requests")
     def test_resolves_btc_address_to_principal(self, mock_requests):
+        """Verify resolves btc address to principal."""
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {"data": [{"principal": "resolved-principal-xyz"}]}
@@ -61,6 +65,7 @@ class TestResolveOdinAccount:
 
     @patch(f"{A}.cffi_requests")
     def test_returns_none_for_unknown_address(self, mock_requests):
+        """Verify returns none for unknown address."""
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {"data": []}
@@ -71,6 +76,7 @@ class TestResolveOdinAccount:
 
     @patch(f"{A}.cffi_requests")
     def test_returns_none_on_404(self, mock_requests):
+        """Verify returns none on 404."""
         mock_resp = MagicMock()
         mock_resp.status_code = 404
         mock_requests.get.return_value = mock_resp
@@ -80,6 +86,7 @@ class TestResolveOdinAccount:
 
     @patch(f"{A}.cffi_requests")
     def test_returns_none_on_api_error(self, mock_requests):
+        """Verify returns none on api error."""
         mock_requests.get.side_effect = Exception("connection error")
 
         from iconfucius.accounts import resolve_odin_account
@@ -87,6 +94,7 @@ class TestResolveOdinAccount:
 
     @patch(f"{A}.cffi_requests")
     def test_returns_none_on_empty_json(self, mock_requests):
+        """Verify returns none on empty json."""
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {}
@@ -103,6 +111,7 @@ class TestResolveOdinAccount:
 class TestLookupOdinAccount:
     @patch(f"{A}.cffi_requests")
     def test_returns_account_details(self, mock_requests):
+        """Verify returns account details."""
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {"data": [{
@@ -130,6 +139,7 @@ class TestLookupOdinAccount:
 
     @patch(f"{A}.cffi_requests")
     def test_returns_none_for_unknown(self, mock_requests):
+        """Verify returns none for unknown."""
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {"data": []}
@@ -140,6 +150,7 @@ class TestLookupOdinAccount:
 
     @patch(f"{A}.cffi_requests")
     def test_returns_none_on_error(self, mock_requests):
+        """Verify returns none on error."""
         mock_requests.get.side_effect = Exception("network error")
 
         from iconfucius.accounts import lookup_odin_account
@@ -152,6 +163,7 @@ class TestLookupOdinAccount:
 
 class TestRunTransferErrors:
     def test_no_wallet(self, odin_project_no_wallet):
+        """Verify no wallet."""
         from iconfucius.cli.transfer import run_transfer
         result = run_transfer(
             bot_name="bot-1", token_id="29m8", amount="1000",
@@ -163,6 +175,7 @@ class TestRunTransferErrors:
     @patch(f"{M}.resolve_odin_account", return_value=None)
     @patch(f"{M}.fetch_token_data", return_value={"ticker": "TEST"})
     def test_rejects_unregistered_account(self, mock_token, mock_resolve, odin_project):
+        """Verify rejects unregistered account."""
         from iconfucius.cli.transfer import run_transfer
         result = run_transfer(
             bot_name="bot-1", token_id="29m8", amount="1000",
@@ -182,6 +195,7 @@ class TestRunTransferErrors:
     def test_rejects_self_transfer(self, MockClient, MockAgent, MockCanister,
                                     mock_token, mock_resolve, mock_load,
                                     mock_patch_del, mock_unwrap, odin_project):
+        """Verify rejects self transfer."""
         mock_load.return_value = _make_mock_auth(bot_principal="same-principal-abc")
 
         from iconfucius.cli.transfer import run_transfer
@@ -225,6 +239,7 @@ class TestRunTransferErrors:
     def test_rejects_zero_amount(self, MockClient, MockAgent, MockCanister,
                                   mock_token, mock_resolve, mock_load,
                                   mock_patch_del, mock_unwrap, odin_project):
+        """Verify rejects zero amount."""
         mock_load.return_value = _make_mock_auth()
         mock_odin_canister = MagicMock()
         mock_odin_canister.getBalance.side_effect = _get_balance_side_effect(5000)
@@ -249,6 +264,7 @@ class TestRunTransferErrors:
     def test_insufficient_balance(self, MockClient, MockAgent, MockCanister,
                                    mock_token, mock_resolve, mock_load,
                                    mock_patch_del, mock_unwrap, odin_project):
+        """Verify insufficient balance."""
         mock_load.return_value = _make_mock_auth()
         mock_odin_canister = MagicMock()
         mock_odin_canister.getBalance.side_effect = _get_balance_side_effect(500)
@@ -275,6 +291,7 @@ class TestRunTransferAllEmpty:
     def test_transfer_all_zero_balance(self, MockClient, MockAgent, MockCanister,
                                         mock_token, mock_resolve, mock_load,
                                         mock_patch_del, mock_unwrap, odin_project):
+        """Verify transfer all zero balance."""
         mock_load.return_value = _make_mock_auth()
         mock_odin_canister = MagicMock()
         mock_odin_canister.getBalance.side_effect = _get_balance_side_effect(0)
@@ -402,6 +419,7 @@ class TestRunTransferSuccess:
     def test_transfer_specific_amount(self, MockClient, MockAgent, MockCanister,
                                        mock_token, mock_resolve, mock_load,
                                        mock_patch_del, mock_unwrap, odin_project):
+        """Verify transfer specific amount."""
         mock_load.return_value = _make_mock_auth()
         mock_odin_canister = MagicMock()
         mock_odin_canister.getBalance.return_value = 10_000_000_000_000
@@ -469,6 +487,7 @@ class TestRunTransferSuccess:
     def test_transfer_all(self, MockClient, MockAgent, MockCanister,
                            mock_token, mock_resolve, mock_load,
                            mock_patch_del, mock_unwrap, odin_project):
+        """Verify transfer all."""
         mock_load.return_value = _make_mock_auth()
         mock_odin_canister = MagicMock()
         mock_odin_canister.getBalance.return_value = 7_777_000_000_000
@@ -497,6 +516,7 @@ class TestRunTransferSuccess:
     def test_transfer_canister_error(self, MockClient, MockAgent, MockCanister,
                                       mock_token, mock_resolve, mock_load,
                                       mock_patch_del, mock_unwrap, odin_project):
+        """Verify transfer canister error."""
         mock_load.return_value = _make_mock_auth()
         mock_odin_canister = MagicMock()
         mock_odin_canister.getBalance.side_effect = _get_balance_side_effect(10_000)
@@ -533,6 +553,7 @@ class TestTransferInsufficientBtcForFee:
         mock_token, mock_resolve, mock_load,
         mock_patch_del, mock_unwrap, odin_project,
     ):
+        """Verify returns options when btc insufficient."""
         mock_load.return_value = _make_mock_auth()
         mock_odin = MagicMock()
         # 0 BTC → insufficient for 100 sats fee
@@ -569,6 +590,7 @@ class TestTransferInsufficientBtcForFee:
         mock_token, mock_resolve, mock_load,
         mock_patch_del, mock_unwrap, odin_project,
     ):
+        """Verify passes when btc sufficient."""
         mock_load.return_value = _make_mock_auth()
         mock_odin = MagicMock()
         # 200 sats BTC → enough for 100 sats fee

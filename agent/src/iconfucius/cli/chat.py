@@ -11,7 +11,6 @@ from urllib.request import urlopen
 
 from iconfucius import __version__
 from iconfucius.ai import APIKeyMissingError, create_backend
-from iconfucius.memory import read_learnings, read_strategy, read_trades
 from iconfucius.persona import DEFAULT_MODEL, Persona, PersonaNotFoundError, load_persona
 from iconfucius.skills.definitions import get_tool_metadata, get_tools_for_anthropic
 from iconfucius.skills.executor import execute_tool
@@ -120,6 +119,7 @@ class _Spinner:
     """
 
     def __init__(self, message: str = ""):
+        """Initialize the instance."""
         self._message = message
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -132,11 +132,13 @@ class _Spinner:
             self._message = message
 
     def __enter__(self):
+        """Enter the context manager."""
         self._thread = threading.Thread(target=self._spin, daemon=True)
         self._thread.start()
         return self
 
     def __exit__(self, *_):
+        """Exit the context manager."""
         self._stop.set()
         if self._thread:
             self._thread.join()
@@ -145,6 +147,7 @@ class _Spinner:
         self._stdout.flush()
 
     def _spin(self):
+        """Run the spinner animation loop."""
         frames = itertools.cycle("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
         while not self._stop.is_set():
             with self._lock:
@@ -154,6 +157,29 @@ class _Spinner:
             time.sleep(0.08)
 
 
+def _run_with_spinner(label: str, func, *args, **kwargs):
+    """Run *func* inside a spinner with progress/status callbacks wired up."""
+    from iconfucius.cli.concurrent import set_progress_callback, set_status_callback
+
+    with _Spinner(label) as sp:
+        def _on_progress(done, total):
+            w = 20
+            filled = int(w * done / total)
+            bar = "█" * filled + "░" * (w - filled)
+            sp.update(f"{label} [{bar}] {done}/{total}")
+
+        def _on_status(msg):
+            sp.update(f"{label} {msg}")
+
+        set_progress_callback(_on_progress)
+        set_status_callback(_on_status)
+        try:
+            return func(*args, **kwargs)
+        finally:
+            set_progress_callback(None)
+            set_status_callback(None)
+
+
 def _get_language_code() -> str:
     """Detect system language. Returns 'cn' for Chinese, 'en' otherwise."""
     try:
@@ -161,6 +187,89 @@ def _get_language_code() -> str:
     except ValueError:
         lang = ""
     return "cn" if lang.startswith("zh") else "en"
+
+
+def _prompt_increase_timeout() -> str:
+    """Ask the user if they want to increase the AI timeout. Returns status message."""
+    from iconfucius.config import get_ai_timeout
+    current = get_ai_timeout()
+    new_timeout = current * 2
+    try:
+        answer = input(
+            f"\n  Current timeout: {current}s. "
+            f"Increase to {new_timeout}s? [Y/n] "
+        ).strip().lower()
+    except (KeyboardInterrupt, EOFError):
+        return ""
+    if answer in ("n", "no"):
+        return ""
+    _persist_ai_timeout(new_timeout)
+    return f"Timeout updated to {new_timeout}s."
+
+
+def _toml_quote(value: str) -> str:
+    """Escape a string for use as a TOML basic-string value (with quotes)."""
+    return json.dumps(value)
+
+
+def _persist_ai_timeout(timeout: int) -> None:
+    """Add or update the timeout key in the [ai] section of iconfucius.toml.
+
+    Reads the current [ai] config and re-writes it with the new timeout,
+    preserving all other settings.
+    """
+    import re
+
+    from iconfucius import config as cfg
+    from iconfucius.config import AI_TIMEOUT_DEFAULT
+    from iconfucius.persona import DEFAULT_MODEL
+
+    config_path = cfg.find_config()
+    if config_path is None:
+        return
+
+    ai = cfg.load_config().get("ai", {})
+
+    # Build the new [ai] section content
+    lines = ["[ai]"]
+    api_type = ai.get("api_type", "")
+    model = ai.get("model", "")
+    base_url = ai.get("base_url", "")
+    if api_type and api_type != "claude":
+        lines.append(f"api_type = {_toml_quote(api_type)}")
+    if model and model not in (DEFAULT_MODEL, "default"):
+        lines.append(f"model = {_toml_quote(model)}")
+    if base_url:
+        lines.append(f"base_url = {_toml_quote(base_url)}")
+    if timeout != AI_TIMEOUT_DEFAULT:
+        lines.append(f"timeout = {timeout}")
+    new_section = "\n".join(lines) + "\n" if len(lines) > 1 else ""
+
+    content = config_path.read_text()
+
+    if re.search(r'^\[ai\]', content, re.MULTILINE):
+        if new_section:
+            content = re.sub(
+                r'^\[ai\]\n(?:[^\[]*?)(?=\n\[|\Z)',
+                new_section,
+                content,
+                count=1,
+                flags=re.MULTILINE | re.DOTALL,
+            )
+        else:
+            content = re.sub(
+                r'^\[ai\]\n(?:[^\[]*?)(?=\n\[|\Z)',
+                '',
+                content,
+                count=1,
+                flags=re.MULTILINE | re.DOTALL,
+            )
+    elif new_section:
+        separator = "" if content.endswith("\n") else "\n"
+        content += f'{separator}\n{new_section}'
+
+    config_path.write_text(content)
+    cfg.load_config(reload=True)
 
 
 def _format_api_error(e: Exception) -> str:
@@ -177,6 +286,8 @@ def _format_api_error(e: Exception) -> str:
         return "Rate limited. Please wait a moment and try again."
     if "overloaded" in msg:
         return "The API is temporarily overloaded. Please try again."
+    if "timed out" in msg or "timeout" in msg:
+        return f"{e}\n" + _prompt_increase_timeout()
     return str(e)
 
 
@@ -218,14 +329,110 @@ def _generate_startup(backend, persona, lang: str) -> tuple[str, str]:
     return greeting, goodbye
 
 
-def _persist_ai_model(new_model: str) -> None:
-    """Write the AI model to the [ai] section in iconfucius.toml.
+def _persist_ai_config(api_type: str = "", model: str = "",
+                       base_url: str = "",
+                       keep_timeout: bool = False) -> None:
+    """Write AI configuration to the [ai] section in iconfucius.toml.
 
-    Handles four cases:
-    - Commented ``# [ai]`` block  → replace with uncommented section
-    - Existing ``[ai]`` with ``model =`` → update the value
-    - Existing ``[ai]`` without ``model =`` → append model line
-    - No ``[ai]`` section at all → append a new section
+    Replaces the entire [ai] section (or commented-out block) with the
+    given settings.  Only writes keys that differ from defaults.
+
+    Args:
+        keep_timeout: If True, preserve any existing timeout setting.
+    """
+    import re
+
+    from iconfucius import config as cfg
+    from iconfucius.persona import DEFAULT_MODEL
+
+    config_path = cfg.find_config()
+    if config_path is None:
+        return
+
+    # Preserve existing timeout if requested
+    existing_timeout = None
+    if keep_timeout:
+        raw_timeout = cfg.load_config().get("ai", {}).get("timeout")
+        if raw_timeout is not None:
+            try:
+                parsed = int(raw_timeout)
+            except (TypeError, ValueError):
+                parsed = None
+            existing_timeout = parsed if parsed and parsed > 0 else None
+
+    # Build the new [ai] section content
+    lines = ["[ai]"]
+    if api_type and api_type != "claude":
+        lines.append(f"api_type = {_toml_quote(api_type)}")
+    if model and model not in (DEFAULT_MODEL, "default"):
+        lines.append(f"model = {_toml_quote(model)}")
+    if base_url:
+        lines.append(f"base_url = {_toml_quote(base_url)}")
+    if existing_timeout is not None:
+        lines.append(f'timeout = {existing_timeout}')
+
+    if len(lines) == 1:
+        # Only [ai] header — nothing to write, just model default
+        new_section = ""
+    else:
+        new_section = "\n".join(lines) + "\n"
+
+    content = config_path.read_text()
+
+    if re.search(r'^# ?\[ai\]', content, re.MULTILINE):
+        # Commented-out [ai] block → replace entire commented block
+        if new_section:
+            content = re.sub(
+                r'^# ?\[ai\]\n(?:#[^\n]*\n)*',
+                new_section,
+                content,
+                count=1,
+                flags=re.MULTILINE,
+            )
+        else:
+            content = re.sub(
+                r'^# ?\[ai\]\n(?:#[^\n]*\n)*',
+                '',
+                content,
+                count=1,
+                flags=re.MULTILINE,
+            )
+    elif re.search(r'^\[ai\]', content, re.MULTILINE):
+        # Existing [ai] section → replace everything until next [section] or EOF
+        if new_section:
+            content = re.sub(
+                r'^\[ai\]\n(?:[^\[]*?)(?=\n\[|\Z)',
+                new_section,
+                content,
+                count=1,
+                flags=re.MULTILINE | re.DOTALL,
+            )
+        else:
+            content = re.sub(
+                r'^\[ai\]\n(?:[^\[]*?)(?=\n\[|\Z)',
+                '',
+                content,
+                count=1,
+                flags=re.MULTILINE | re.DOTALL,
+            )
+    elif new_section:
+        # No [ai] section → append
+        separator = "" if content.endswith("\n") else "\n"
+        content += f'{separator}\n{new_section}'
+
+    config_path.write_text(content)
+    cfg._cached_config = None
+
+
+def _persist_ai_model(new_model: str) -> None:
+    """Legacy wrapper: persist only the model name."""
+    _persist_ai_config(model=new_model, keep_timeout=True)
+
+
+def _reset_ai_config() -> None:
+    """Comment out the [ai] section in iconfucius.toml.
+
+    Prefixes each line with ``# `` so the user can re-enable it later.
     """
     import re
 
@@ -237,38 +444,17 @@ def _persist_ai_model(new_model: str) -> None:
 
     content = config_path.read_text()
 
-    if re.search(r'^# ?\[ai\]', content, re.MULTILINE):
-        # Commented-out [ai] block → replace entire commented block
-        content = re.sub(
-            r'^# ?\[ai\]\n(?:#[^\n]*\n)*',
-            f'[ai]\nmodel = "{new_model}"\n',
-            content,
-            count=1,
-            flags=re.MULTILINE,
-        )
-    elif re.search(r'^\[ai\]', content, re.MULTILINE):
-        if re.search(r'^model\s*=', content, re.MULTILINE):
-            # Existing model line → update value
-            content = re.sub(
-                r'^(model\s*=\s*).*$',
-                f'model = "{new_model}"',
-                content,
-                count=1,
-                flags=re.MULTILINE,
-            )
-        else:
-            # [ai] exists but no model line → append after [ai]
-            content = re.sub(
-                r'^(\[ai\]\n)',
-                f'[ai]\nmodel = "{new_model}"\n',
-                content,
-                count=1,
-                flags=re.MULTILINE,
-            )
-    else:
-        # No [ai] section → append
-        separator = "" if content.endswith("\n") else "\n"
-        content += f'{separator}\n[ai]\nmodel = "{new_model}"\n'
+    def _comment_section(match):
+        """Format a comment section header."""
+        return "".join(f"# {line}\n" for line in match.group(0).splitlines())
+
+    content = re.sub(
+        r'^\[ai\]\n(?:[^\[]*?)(?=\n\[|\Z)',
+        _comment_section,
+        content,
+        count=1,
+        flags=re.MULTILINE | re.DOTALL,
+    )
 
     config_path.write_text(content)
     cfg._cached_config = None
@@ -317,6 +503,83 @@ def _handle_model_interactive(backend) -> None:
     backend.model = new_model
     _persist_ai_model(new_model)
     print(f"\n  Model changed to: {new_model}\n")
+
+
+def _handle_ai_interactive(backend, persona) -> tuple:
+    """Interactive /ai menu. Returns (new_api_type, new_model, new_base_url) or None."""
+    from iconfucius.persona import DEFAULT_MODEL
+
+    is_default = (
+        persona.ai_api_type == "claude"
+        and persona.ai_model == DEFAULT_MODEL
+        and not persona.ai_base_url
+    )
+
+    print("\n  Current AI configuration:")
+    print(f"    API type: {persona.ai_api_type}")
+    print(f"    Model:    {backend.model}")
+    if persona.ai_base_url:
+        print(f"    Base URL: {persona.ai_base_url}")
+    print()
+
+    # Build menu options dynamically
+    options = []
+    options.append(("endpoint", "Change to OpenAI-compatible endpoint"))
+    options.append(("model", f"Change {persona.ai_api_type} model"))
+    if not is_default:
+        options.append(("reset", "Reset to default"))
+
+    for i, (_, label) in enumerate(options, 1):
+        print(f"  {i}. {label}")
+    print()
+
+    max_choice = len(options)
+    try:
+        choice = input(f"  Choice [1-{max_choice}]: ").strip()
+    except (KeyboardInterrupt, EOFError):
+        print()
+        return None
+
+    try:
+        idx = int(choice) - 1
+        if idx < 0 or idx >= len(options):
+            raise ValueError
+        action = options[idx][0]
+    except (ValueError, IndexError):
+        print("  Invalid choice.\n")
+        return None
+
+    if action == "endpoint":
+        default_url = "http://localhost:55128"
+        try:
+            base_url = input(f"  Base URL [{default_url}]: ").strip() or default_url
+        except (KeyboardInterrupt, EOFError):
+            print()
+            return None
+        try:
+            model = input("  Model name (Enter for 'default'): ").strip() or "default"
+        except (KeyboardInterrupt, EOFError):
+            print()
+            return None
+
+        _persist_ai_config(api_type="openai", model=model, base_url=base_url)
+        print(f"\n  Switched to OpenAI-compatible endpoint: {base_url}\n")
+        return ("openai", model, base_url)
+
+    if action == "model":
+        old_model = backend.model
+        _handle_model_interactive(backend)
+        if backend.model != old_model:
+            persona.ai_model = backend.model
+        return None
+
+    if action == "reset":
+        _persist_ai_config()  # empty = remove overrides
+        print(f"\n  Reset to default: claude / {DEFAULT_MODEL}\n")
+        return ("claude", DEFAULT_MODEL, "")
+
+    print("  Invalid choice.\n")
+    return None
 
 
 _MAX_TOOL_ITERATIONS = 10
@@ -409,8 +672,13 @@ def _describe_tool_call(name: str, tool_input: dict) -> str:
             f"{token_id} via {_bot_target(tool_input)}"
         )
     if name == "withdraw":
+        amt = tool_input.get("amount")
+        if str(amt).lower() == "all":
+            amt_str = "all ckBTC"
+        else:
+            amt_str = f"{_fmt_sats(amt)} ckBTC"
         return (
-            f"Withdraw {_fmt_sats(tool_input.get('amount'))} from "
+            f"Withdraw {amt_str} from "
             f"{_bot_target(tool_input)}"
         )
     if name == "wallet_send":
@@ -467,7 +735,7 @@ def _run_tool_loop(backend, messages: list[dict], system: str,
         )
 
         if not has_tool_use:
-            # Text-only response — extract and print
+            # Text-only response — extract text and show to user
             text = "".join(
                 block.text for block in response.content
                 if block.type == "text"
@@ -475,8 +743,6 @@ def _run_tool_loop(backend, messages: list[dict], system: str,
             messages.append({"role": "assistant", "content": text})
             print(f"\n{text}\n")
             return
-
-        # Has tool calls — process them
         # Add the full assistant response to messages
         messages.append({
             "role": "assistant",
@@ -583,38 +849,18 @@ def _run_tool_loop(backend, messages: list[dict], system: str,
             # Skip spinner for instant tools (read-only, no network)
             meta = get_tool_metadata(block.name) or {}
             use_spinner = meta.get("category") == "write" or block.name in (
-                "wallet_balance", "wallet_receive", "wallet_monitor",
-                "wallet_info", "token_lookup", "token_price",
+                "wallet_balance", "how_to_fund_wallet",
+                "wallet_monitor", "token_lookup", "token_price",
                 "token_discover", "account_lookup", "security_status",
                 "install_blst",
             )
 
             if use_spinner:
-                with _Spinner(f"Running {block.name}...") as spinner:
-                    from iconfucius.cli.concurrent import (
-                        set_progress_callback,
-                        set_status_callback,
-                    )
-
-                    def _on_progress(done, total):
-                        width = 20
-                        filled = int(width * done / total)
-                        bar = "█" * filled + "░" * (width - filled)
-                        spinner.update(
-                            f"Running {block.name}... [{bar}] {done}/{total}"
-                        )
-
-                    def _on_status(message):
-                        spinner.update(f"Running {block.name}... {message}")
-
-                    set_progress_callback(_on_progress)
-                    set_status_callback(_on_status)
-                    try:
-                        result = execute_tool(block.name, block.input,
-                                              persona_name=persona_key)
-                    finally:
-                        set_progress_callback(None)
-                        set_status_callback(None)
+                result = _run_with_spinner(
+                    f"Running {block.name}...",
+                    execute_tool, block.name, block.input,
+                    persona_name=persona_key,
+                )
             else:
                 result = execute_tool(block.name, block.input,
                                       persona_name=persona_key)
@@ -623,6 +869,7 @@ def _run_tool_loop(backend, messages: list[dict], system: str,
             terminal_output = result.pop("_terminal_output", None)
             if terminal_output:
                 print(f"\n{terminal_output}")
+            result.pop("_display", None)
 
             tool_results.append({
                 "type": "tool_result",
@@ -677,6 +924,7 @@ def _check_pypi_version() -> tuple[str | None, str]:
         with urlopen("https://pypi.org/pypi/iconfucius/json", timeout=3) as resp:
             latest = json.loads(resp.read())["info"]["version"]
         def _ver_tuple(v: str) -> tuple:
+            """Parse a version string into a comparable tuple."""
             return tuple(int(x) for x in v.split("."))
         if _ver_tuple(latest) <= _ver_tuple(__version__):
             return None, ""
@@ -720,13 +968,24 @@ def _handle_upgrade() -> None:
     os.execvp(sys.argv[0], sys.argv)
 
 
-def run_chat(persona_name: str, bot_name: str, verbose: bool = False) -> None:
+def _is_non_default_ai(persona: Persona) -> bool:
+    """Return True if the persona has any non-default AI configuration."""
+    return (
+        persona.ai_api_type != "claude"
+        or persona.ai_model != DEFAULT_MODEL
+        or bool(persona.ai_base_url)
+    )
+
+
+def run_chat(persona_name: str, bot_name: str, verbose: bool = False,
+             experimental: bool = False) -> None:
     """Run interactive chat with a trading persona.
 
     Args:
         persona_name: Name of the persona to load.
         bot_name: Default bot for trading context.
         verbose: Show verbose output.
+        experimental: Enable experimental features (/ai command).
     """
     from iconfucius.config import set_verbose
     set_verbose(verbose)
@@ -736,6 +995,28 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False) -> None:
     except PersonaNotFoundError as e:
         print(f"Error: {e}")
         return
+
+    # Non-default AI config warning
+    non_default = _is_non_default_ai(persona)
+    if non_default:
+        print("\n  \033[33m⚠ Non-default AI configuration detected:\033[0m")
+        print(f"    API type: {persona.ai_api_type}")
+        if persona.ai_base_url:
+            print(f"    Base URL: {persona.ai_base_url}")
+        print(f"    Model:    {persona.ai_model}")
+        print()
+        try:
+            answer = input("  Continue with this configuration? [Y/n] ").strip().lower()
+        except (KeyboardInterrupt, EOFError):
+            print()
+            return
+        if answer in ("n", "no"):
+            _reset_ai_config()
+            from iconfucius.config import load_config
+            load_config(reload=True)
+            persona = load_persona(persona_name)
+            non_default = False
+            print("  Reset to default configuration.\n")
 
     try:
         backend = create_backend(persona)
@@ -751,6 +1032,10 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False) -> None:
     conv_logger = ConversationLogger()
     backend = LoggingBackend(backend, conv_logger)
 
+    # One-time migration: trades.md → trades.jsonl
+    from iconfucius.memory import migrate_trades_md_to_jsonl
+    migrate_trades_md_to_jsonl(persona_name)
+
     # Build system prompt with memory context
     system = persona.system_prompt
 
@@ -765,24 +1050,16 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False) -> None:
         )
         system += "\nGuide the user through any missing setup steps before trading."
 
-    strategy = read_strategy(persona_name)
-    learnings = read_learnings(persona_name)
-    recent_trades = read_trades(persona_name, last_n=5)
-
-    if strategy:
-        system += f"\n\n## Current Strategy\n{strategy}"
-    if learnings:
-        system += f"\n\n## Learnings\n{learnings}"
-    if recent_trades:
-        system += f"\n\n## Recent Trades\n{recent_trades}"
-
-    # Inject known tokens for name→ID resolution
-    from iconfucius.tokens import format_known_tokens_for_prompt
-
-    known_tokens_table = format_known_tokens_for_prompt()
-    if known_tokens_table:
-        system += f"\n\n## Known Tokens\n{known_tokens_table}"
-        system += "\nUse these token IDs directly. For unknown tokens, use token_lookup."
+    # Trading context is fetched on-demand via tools, not injected here.
+    system += (
+        "\n\n## On-Demand Context"
+        "\nUse these tools to review your trading context when needed:"
+        "\n- memory_read_strategy — read your current trading strategy"
+        "\n- memory_read_learnings — read your accumulated trading learnings"
+        "\n- memory_read_trades — read recent trade history"
+        "\n- token_lookup — resolve token names/tickers to IDs before trading"
+        "\n- enable_experimental — enable experimental features (AI model configuration)"
+    )
 
     from iconfucius.config import get_bot_names
 
@@ -810,9 +1087,26 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False) -> None:
 
     print(f"\n{greeting}\n")
 
+    # Determine if /ai is active for this session
+    from iconfucius.skills.executor import _experimental_enabled
+    ai_active = experimental or _experimental_enabled or non_default
+
     print(f"\033[2miconfucius v{__version__} · exit to quit · Ctrl+C to interrupt\033[0m")
-    print(f"\033[2mModel: {backend.model} · /model to change\033[0m")
-    if backend.model != DEFAULT_MODEL:
+    ai_parts = [persona.ai_api_type, str(backend.model)]
+    if persona.ai_base_url:
+        ai_parts.append(persona.ai_base_url)
+    ai_desc = " · ".join(ai_parts)
+    if ai_active:
+        print(f"\033[2mAI: {ai_desc} · /ai to change\033[0m")
+    else:
+        print(f"\033[2mAI: {ai_desc}\033[0m")
+    if experimental:
+        from iconfucius.skills.executor import EXPERIMENTAL_ENABLED, EXPERIMENTAL_RISK_WARNING
+        print(f"\033[2m\n{EXPERIMENTAL_ENABLED}\033[0m")
+        if backend.model != DEFAULT_MODEL:
+            print(f"\033[2mNote: recommended model is {DEFAULT_MODEL}\033[0m")
+        print(f"\033[2m\n{EXPERIMENTAL_RISK_WARNING}\033[0m")
+    elif backend.model != DEFAULT_MODEL:
         print(f"\033[2mNote: recommended model is {DEFAULT_MODEL}\033[0m")
 
     # Check PyPI for newer version (non-blocking, best-effort)
@@ -825,54 +1119,45 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False) -> None:
         _update_cache["release_notes"] = release_notes
     print()
 
-    # Show wallet balance at startup (fast — single IC call)
+    # Show wallet balance at startup — same path as AI-initiated wallet_balance
+    startup_balance_result = None
     if setup.get("wallet_exists"):
         try:
-            with _Spinner("Checking wallet..."):
-                from iconfucius.cli.balance import run_wallet_balance
-                wallet_data = run_wallet_balance()
-            if wallet_data:
-                wallet_display = wallet_data.get("_display", "")
-                if wallet_display and len(all_bot_names) <= 1:
-                    print(wallet_display)
-                    print()
-
-                # Show bot holdings at startup (multi-bot only)
-                if len(all_bot_names) > 1:
-                    try:
-                        from iconfucius.cli.concurrent import (
-                            set_progress_callback,
-                            set_status_callback,
-                        )
-                        with _Spinner("Checking bot holdings...") as sp:
-                            def _on_progress(done, total):
-                                w = 20
-                                filled = int(w * done / total)
-                                bar = "█" * filled + "░" * (w - filled)
-                                sp.update(f"Checking bot holdings... [{bar}] {done}/{total}")
-
-                            def _on_status(msg):
-                                sp.update(f"Checking bot holdings... {msg}")
-
-                            set_progress_callback(_on_progress)
-                            set_status_callback(_on_status)
-                            try:
-                                from iconfucius.cli.balance import run_all_balances
-                                bot_data = run_all_balances(all_bot_names, verbose=verbose)
-                            finally:
-                                set_progress_callback(None)
-                                set_status_callback(None)
-                        if bot_data:
-                            bot_display = bot_data.get("_display", "")
-                            if bot_display:
-                                print(f"\n{bot_display}\n")
-                    except (KeyboardInterrupt, EOFError):
-                        print()  # user cancelled — continue to chat
+            startup_balance_result = _run_with_spinner(
+                "Checking balances...",
+                execute_tool, "wallet_balance", {},
+                persona_name=persona_name,
+            )
+            if startup_balance_result and startup_balance_result.get("status") == "ok":
+                display_text = startup_balance_result.pop("_display", "")
+                if display_text:
+                    print(f"\n{display_text}\n")
+        except (KeyboardInterrupt, EOFError):
+            print()  # user cancelled — continue to chat
         except Exception:
-            pass  # non-critical — don't block chat startup
+            from iconfucius.logging_config import get_logger
+            get_logger().debug("Startup balance check failed", exc_info=True)
 
     tools = get_tools_for_anthropic()
     messages: list[dict] = []
+
+    # Seed conversation with balance data so the AI sees it on its first turn
+    if startup_balance_result and startup_balance_result.get("status") == "ok":
+        tool_call_id = "startup_wallet_balance"
+        messages.append({
+            "role": "assistant",
+            "content": [
+                {"type": "tool_use", "id": tool_call_id,
+                 "name": "wallet_balance", "input": {}},
+            ],
+        })
+        messages.append({
+            "role": "user",
+            "content": [
+                {"type": "tool_result", "tool_use_id": tool_call_id,
+                 "content": json.dumps(startup_balance_result)},
+            ],
+        })
 
     # Seed conversation with update data so the AI sees it on its first turn
     if latest_version:
@@ -893,12 +1178,29 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False) -> None:
             ],
         })
 
+    # If balance data has a next_step, trigger an automatic AI response
+    if (startup_balance_result
+            and startup_balance_result.get("next_step")
+            and messages):
+        try:
+            _run_tool_loop(backend, messages, system, tools, persona.name,
+                           persona_key=persona_name)
+        except Exception:
+            from iconfucius.logging_config import get_logger
+            get_logger().debug("Startup auto next_step failed", exc_info=True)
+
     def _prompt_banner() -> None:
         """Print separator lines with optional upgrade notice."""
         print("\033[2m" + "─" * 60 + "\033[0m")
         if latest_version:
             print(f"\033[2mv{latest_version} available · /upgrade to install\033[0m")
             print("\033[2m" + "─" * 60 + "\033[0m")
+
+    # Enable readline for input history (up/down arrows) and line editing
+    try:
+        import readline  # noqa: F401
+    except ImportError:
+        pass
 
     while True:
         try:
@@ -908,14 +1210,75 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False) -> None:
             print(f"\n\n{goodbye}")
             break
 
-        if user_input.startswith("/model"):
+        if user_input.startswith("/ai"):
+            # Re-check ai_active (enable_experimental may have been called)
+            from iconfucius.skills.executor import _experimental_enabled
+            ai_active = experimental or _experimental_enabled or non_default
+            if not ai_active:
+                print("\n  /ai is an experimental feature. Start with: iconfucius --experimental\n")
+                continue
             parts = user_input.split(maxsplit=1)
+            ai_result = None
             if len(parts) == 1:
-                _handle_model_interactive(backend)
+                ai_result = _handle_ai_interactive(backend, persona)
+            elif parts[1].strip() == "reset":
+                from iconfucius.persona import DEFAULT_MODEL as _dm
+                _persist_ai_config()
+                print(f"\n  Reset to default: claude / {_dm}\n")
+                ai_result = ("claude", _dm, "")
+            elif parts[1].strip().startswith("model "):
+                new_model = parts[1].strip()[6:].strip()
+                backend.model = new_model
+                persona.ai_model = new_model
+                _persist_ai_model(new_model)
+                print(f"\n  Model changed to: {new_model}\n")
             else:
                 new_model = parts[1].strip()
                 backend.model = new_model
+                persona.ai_model = new_model
                 _persist_ai_model(new_model)
+                print(f"\n  Model changed to: {new_model}\n")
+            # Hot-swap backend when api_type or base_url changed
+            if ai_result is not None:
+                new_api_type, new_model, new_base_url = ai_result
+                prev_api_type = persona.ai_api_type
+                prev_model = persona.ai_model
+                prev_base_url = persona.ai_base_url
+                persona.ai_api_type = new_api_type
+                persona.ai_model = new_model
+                persona.ai_base_url = new_base_url
+                try:
+                    new_backend = create_backend(persona)
+                except Exception as exc:
+                    print(f"\n  Error applying AI configuration: {exc}\n")
+                    persona.ai_api_type = prev_api_type
+                    persona.ai_model = prev_model
+                    persona.ai_base_url = prev_base_url
+                    _persist_ai_config(
+                        api_type=prev_api_type,
+                        model=prev_model,
+                        base_url=prev_base_url,
+                        keep_timeout=True,
+                    )
+                    continue
+                backend = LoggingBackend(new_backend, conv_logger)
+                non_default = _is_non_default_ai(persona)
+            continue
+
+        if user_input.startswith("/model"):
+            parts = user_input.split(maxsplit=1)
+            if len(parts) == 1:
+                old_model = backend.model
+                _handle_model_interactive(backend)
+                if backend.model != old_model:
+                    persona.ai_model = backend.model
+                    non_default = _is_non_default_ai(persona)
+            else:
+                new_model = parts[1].strip()
+                backend.model = new_model
+                persona.ai_model = new_model
+                _persist_ai_model(new_model)
+                non_default = _is_non_default_ai(persona)
                 print(f"\n  Model changed to: {new_model}\n")
             continue
 

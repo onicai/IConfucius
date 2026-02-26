@@ -23,15 +23,18 @@ from iconfucius.config import fmt_sats
 
 class TestSatsStr:
     def test_with_usd_rate(self):
+        """Format sats with a USD conversion appended."""
         result = fmt_sats(100_000_000, 100_000.0)
         assert "100,000,000 sats" in result
         assert "$100000.000" in result
 
     def test_without_usd_rate(self):
+        """Format sats without USD when rate is None."""
         result = fmt_sats(5000, None)
         assert result == "5,000 sats"
 
     def test_zero(self):
+        """Format zero sats with USD showing $0."""
         result = fmt_sats(0, 100_000.0)
         assert "0 sats" in result
         assert "$0.000" in result
@@ -51,22 +54,27 @@ class TestFmtTokenAmount:
         assert "2,771,411,893,677,396" not in result
 
     def test_divisibility_8_small_balance(self):
+        """Small raw balance with divisibility 8 shows sub-unit decimals."""
         result = _fmt_token_amount(100, 8)
         # 100 / 10^8 = 0.000001
         assert "0.000001" in result
 
     def test_divisibility_0(self):
+        """Divisibility 0 returns the raw integer with commas."""
         result = _fmt_token_amount(1_234_567, 0)
         assert result == "1,234,567"
 
     def test_zero_balance(self):
+        """Zero balance returns the string '0' regardless of divisibility."""
         assert _fmt_token_amount(0, 8) == "0"
 
     def test_divisibility_2(self):
+        """Divisibility 2 divides by 100 and shows three decimal places."""
         result = _fmt_token_amount(12345, 2)
         assert result == "123.450"
 
     def test_tiny_amount_shows_more_decimals(self):
+        """Amounts below 0.01 display full precision instead of truncating."""
         # 1 / 10^8 = 0.00000001 — less than 0.01, so full precision
         result = _fmt_token_amount(1, 8)
         assert "0.00000001" in result
@@ -78,6 +86,7 @@ class TestFmtTokenAmount:
 
 class TestFormatPaddedTable:
     def test_basic_table(self):
+        """Render a two-column table with headers, separator, and data rows."""
         headers = ["Name", "Value"]
         rows = [("Alice", "100"), ("Bob", "2000")]
         lines = _format_padded_table(headers, rows)
@@ -89,6 +98,7 @@ class TestFormatPaddedTable:
         assert "---" in output
 
     def test_auto_sizes_columns(self):
+        """Column widths expand to fit the longest cell content."""
         headers = ["A", "B"]
         rows = [("very long cell", "x")]
         lines = _format_padded_table(headers, rows)
@@ -102,12 +112,14 @@ class TestFormatPaddedTable:
 
 class TestBotBalances:
     def test_defaults(self):
+        """BotBalances defaults to None for all balance fields (unchecked)."""
         data = BotBalances(bot_name="bot-1", bot_principal="abc")
-        assert data.odin_sats == 0.0
-        assert data.token_holdings == []
-        assert data.has_odin_account is False
+        assert data.odin_sats is None
+        assert data.token_holdings is None
+        assert data.has_odin_account is None
 
     def test_with_holdings(self):
+        """BotBalances stores provided odin_sats, holdings, and account flag."""
         holdings = [{"ticker": "ICONFUCIUS", "token_id": "29m8",
                      "balance": 1000, "divisibility": 8, "value_sats": 50}]
         data = BotBalances(bot_name="bot-1", bot_principal="abc",
@@ -124,12 +136,14 @@ class TestBotBalances:
 
 class TestFormatHoldingsTable:
     def test_single_bot_no_tokens(self):
-        data = [BotBalances("bot-1", "abc", odin_sats=1000.0)]
+        """Single bot with no token holdings shows only ODIN sats."""
+        data = [BotBalances("bot-1", "abc", odin_sats=1000.0, token_holdings=[])]
         output = _format_holdings_table(data, btc_usd_rate=100_000.0)
         assert "bot-1" in output
         assert "1,000 sats" in output
 
     def test_single_bot_with_tokens(self):
+        """Single bot with token holdings includes adjusted token amounts."""
         data = [BotBalances("bot-1", "abc", odin_sats=5000.0,
                             token_holdings=[
                                 {"ticker": "TEST", "token_id": "t1",
@@ -141,6 +155,7 @@ class TestFormatHoldingsTable:
         assert "500.000" in output
 
     def test_multi_bot_shows_totals(self):
+        """Multiple bots produce a TOTAL row and portfolio value summary."""
         data = [
             BotBalances("bot-1", "abc", odin_sats=3000.0,
                         token_holdings=[
@@ -162,12 +177,14 @@ class TestFormatHoldingsTable:
         assert "Total portfolio value:" in output
 
     def test_no_totals_for_single_bot(self):
-        data = [BotBalances("bot-1", "abc", odin_sats=1000.0)]
+        """Single-bot output omits the TOTAL row."""
+        data = [BotBalances("bot-1", "abc", odin_sats=1000.0, token_holdings=[])]
         output = _format_holdings_table(data, btc_usd_rate=100_000.0)
         assert "TOTAL" not in output
 
     def test_no_usd_rate(self):
-        data = [BotBalances("bot-1", "abc", odin_sats=1000.0)]
+        """Verify no usd rate."""
+        data = [BotBalances("bot-1", "abc", odin_sats=1000.0, token_holdings=[])]
         output = _format_holdings_table(data, btc_usd_rate=None)
         assert "1,000 sats" in output
         assert "$" not in output
@@ -208,6 +225,7 @@ class TestCollectWalletInfo:
                                mock_create, mock_get_bal, mock_minter,
                                mock_btc_addr,
                                odin_project):
+        """Verify returns data and display."""
         mock_identity = MagicMock()
         mock_identity.sender.return_value = MagicMock(
             __str__=lambda s: "ctrl-principal"
@@ -218,9 +236,8 @@ class TestCollectWalletInfo:
         output = "\n".join(lines)
         assert "ICRC-1 ckBTC:" in output
         assert "50,000 sats" in output
-        assert "To fund your wallet:" in output
-        assert "ctrl-principal" in output
-        assert "bc1qtest456" in output
+        # Funding instructions are in how_to_fund_wallet, not here
+        assert "To fund your wallet:" not in output
         # No minter section by default
         assert "ckBTC minter:" not in output
         # Data dict
@@ -244,6 +261,7 @@ class TestCollectWalletInfo:
                                mock_pending, mock_btc_addr,
                                mock_withdrawal_acct, mock_unwrap,
                                odin_project):
+        """Verify ckbtc minter shows minter section."""
         mock_identity = MagicMock()
         mock_identity.sender.return_value = MagicMock(
             __str__=lambda s: "ctrl-principal"
@@ -274,6 +292,7 @@ class TestCollectWalletInfo:
                               mock_pending, mock_btc_addr,
                               mock_withdrawal_acct, mock_unwrap,
                               odin_project):
+        """Verify shows dust note."""
         mock_identity = MagicMock()
         mock_identity.sender.return_value = MagicMock(
             __str__=lambda s: "ctrl-principal"
@@ -300,6 +319,7 @@ class TestCollectBalances:
     def test_collects_all_data(self, mock_load, MockId, MockClient,
                                MockAgent, MockCanister, mock_cffi,
                                mock_siwb_auth):
+        """Verify collects all data."""
         mock_load.return_value = mock_siwb_auth
 
         # Mock Odin canister getBalance
@@ -338,11 +358,12 @@ class TestCollectBalances:
     @patch("iconfucius.cli.balance.Identity")
     @patch("iconfucius.cli.balance.siwb_login")
     @patch("iconfucius.cli.balance.load_session", return_value=None)
-    def test_falls_back_to_siwb_login(self, mock_load,
+    def test_falls_back_to_siwb_login(self, _mock_load,
                                        mock_login,
-                                       MockId, MockClient, MockAgent,
+                                       _MockId, _MockClient, _MockAgent,
                                        MockCanister, mock_cffi,
                                        mock_siwb_auth):
+        """Verify falls back to siwb login."""
         mock_login.return_value = mock_siwb_auth
         mock_odin = MagicMock()
         mock_odin.getBalance.return_value = [{"value": 0}]
@@ -440,8 +461,32 @@ class TestCollectBalances:
         assert isinstance(result, BotBalances)
         assert result.bot_name == "bot-1"
         assert result.has_odin_account is False
-        assert result.odin_sats == 0.0
-        assert result.token_holdings == []
+        assert result.odin_sats is None
+        assert result.token_holdings is None
+
+    @patch("iconfucius.cli.balance.siwb_login")
+    @patch("iconfucius.cli.balance.load_session", return_value=None)
+    def test_insufficient_funds_returns_note(self, _mock_load,
+                                              mock_login):
+        """InsufficientFunds during siwb_login returns BotBalances with funding note."""
+        mock_login.side_effect = RuntimeError(
+            "icrc2_approve for fee payment failed: {'InsufficientFunds': {'balance': 0}}"
+        )
+        result = collect_balances("bot-1", verbose=False)
+        assert isinstance(result, BotBalances)
+        assert result.bot_name == "bot-1"
+        assert result.bot_principal == ""
+        assert result.odin_sats is None
+        assert "how_to_fund_wallet" in result.note
+
+    @patch("iconfucius.cli.balance.siwb_login")
+    @patch("iconfucius.cli.balance.load_session", return_value=None)
+    def test_other_runtime_errors_propagate(self, _mock_load,
+                                             mock_login):
+        """RuntimeErrors not related to InsufficientFunds still propagate."""
+        mock_login.side_effect = RuntimeError("signBip322 failed: timeout")
+        with pytest.raises(RuntimeError, match="signBip322 failed"):
+            collect_balances("bot-1", verbose=False)
 
 
 # ---------------------------------------------------------------------------
@@ -449,7 +494,8 @@ class TestCollectBalances:
 # ---------------------------------------------------------------------------
 
 class TestRunAllBalances:
-    def test_no_wallet(self, odin_project_no_wallet):
+    def test_no_wallet(self, odin_project_no_wallet):  # noqa: ARG002
+        """Verify no wallet."""
         result = run_all_balances(bot_names=["bot-1"])
         assert result is None
 
@@ -459,6 +505,7 @@ class TestRunAllBalances:
     @patch("iconfucius.cli.balance._fetch_btc_usd_rate", return_value=100_000.0)
     def test_success(self, mock_rate, mock_collect, mock_wallet,
                      mock_holdings, odin_project):
+        """Verify success."""
         mock_wallet.return_value = (
             {"principal": "p", "btc_address": "bc1", "balance_sats": 50000,
              "pending_sats": 0, "withdrawal_balance_sats": 0,
@@ -466,6 +513,7 @@ class TestRunAllBalances:
             ["wallet line"],
         )
         mock_collect.return_value = BotBalances("bot-1", "abc", odin_sats=1000.0,
+                                                token_holdings=[],
                                                 has_odin_account=True)
 
         result = run_all_balances(bot_names=["bot-1"])
@@ -480,10 +528,10 @@ class TestRunAllBalances:
     @patch("iconfucius.cli.balance._collect_wallet_info")
     @patch("iconfucius.cli.balance.collect_balances")
     @patch("iconfucius.cli.balance._fetch_btc_usd_rate", return_value=100_000.0)
-    def test_failed_bot_has_no_odin_account(self, mock_rate, mock_collect,
-                                             mock_wallet, mock_holdings,
-                                             odin_project):
-        """A bot that fails balance collection appears with has_odin_account=False."""
+    def test_failed_bot_has_unknown_odin_account(self, mock_rate, mock_collect,
+                                                  mock_wallet, mock_holdings,
+                                                  odin_project):
+        """A bot that fails balance collection appears with has_odin_account=None."""
         mock_wallet.return_value = (
             {"principal": "p", "btc_address": "bc1", "balance_sats": 50000,
              "pending_sats": 0, "withdrawal_balance_sats": 0,
@@ -492,7 +540,8 @@ class TestRunAllBalances:
         )
         # bot-1 succeeds, bot-2 fails
         mock_collect.side_effect = [
-            BotBalances("bot-1", "abc", odin_sats=1000.0, has_odin_account=True),
+            BotBalances("bot-1", "abc", odin_sats=1000.0, token_holdings=[],
+                        has_odin_account=True),
             Exception("SIWB login failed"),
         ]
 
@@ -502,9 +551,11 @@ class TestRunAllBalances:
         assert len(bots) == 2
         assert bots[0]["name"] == "bot-1"
         assert bots[0]["has_odin_account"] is True
+        assert bots[0]["tokens"] == []
         assert bots[1]["name"] == "bot-2"
-        assert bots[1]["has_odin_account"] is False
-        assert bots[1]["odin_sats"] == 0
+        assert bots[1]["has_odin_account"] is None
+        assert bots[1]["odin_sats"] is None
+        assert bots[1]["tokens"] is None
 
     @patch("iconfucius.cli.balance._format_holdings_table", return_value="table")
     @patch("iconfucius.cli.balance._collect_wallet_info")
@@ -545,6 +596,7 @@ class TestRunAllBalances:
     @patch("iconfucius.cli.balance._fetch_btc_usd_rate", return_value=100_000.0)
     def test_handles_collection_error(self, mock_rate, mock_collect,
                                        mock_wallet, odin_project):
+        """Verify handles collection error."""
         mock_wallet.return_value = (
             {"principal": "p", "btc_address": "bc1", "balance_sats": 50000,
              "pending_sats": 0, "withdrawal_balance_sats": 0,

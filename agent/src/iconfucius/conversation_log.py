@@ -1,7 +1,6 @@
 """Conversation logging for AI interactions — JSONL files with JWT scrubbing.
 
-Two files per session:
-  {stamp}-ai-full.jsonl    — complete API payload + response, for replay
+One file per session:
   {stamp}-ai-cached.jsonl  — system+tools replaced with "[cached]" when
                              unchanged, for quick reading & cache review
 """
@@ -25,12 +24,12 @@ def _cache_key(system, tools) -> str:
 class ConversationLogger:
     """Logs AI interactions to timestamped JSONL files.
 
-    Two files per chat session under .logs/conversations/:
-      - ai-full:   every field, every call
+    One file per chat session under .logs/conversations/:
       - ai-cached: system+tools replaced with "[cached]" when unchanged
     """
 
     def __init__(self, base_dir: str | Path | None = None):
+        """Initialize the conversation logger and open a new JSONL log file for this session."""
         root = Path(base_dir) if base_dir else Path(
             os.environ.get("ICONFUCIUS_ROOT", ".")
         )
@@ -41,12 +40,7 @@ class ConversationLogger:
 
         stamp = get_session_stamp()
 
-        self._path_full = conv_dir / f"{stamp}-ai-full.jsonl"
         self._path_cached = conv_dir / f"{stamp}-ai-cached.jsonl"
-
-        fd_full = os.open(self._path_full,
-                          os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
-        self._file_full = os.fdopen(fd_full, "w")
 
         fd_cached = os.open(self._path_cached,
                             os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
@@ -54,6 +48,7 @@ class ConversationLogger:
 
         self._seq = 0
         self._prev_cache_key: str | None = None
+        self._prev_msg_count = 0
         self._cleanup(conv_dir)
 
     def log_interaction(
@@ -67,32 +62,13 @@ class ConversationLogger:
         response,
         duration_ms: int,
         error: str | None = None,
+        raw_openai_response: dict | None = None,
     ) -> None:
-        """Append one interaction record to both JSONL files."""
+        """Append one interaction record to the JSONL log file."""
         self._seq += 1
         ts = datetime.now(timezone.utc).isoformat()
 
-        # --- full entry (always complete) ---
-        full_entry: dict = {
-            "timestamp": ts,
-            "sequence": self._seq,
-            "call_type": call_type,
-            "model": model,
-            "system": system,
-            "messages": messages,
-        }
-        if tools is not None:
-            full_entry["tools"] = tools
-        full_entry["response"] = response
-        full_entry["duration_ms"] = duration_ms
-        full_entry["error"] = error
-
-        full_line = json.dumps(full_entry, default=str)
-        full_line = _JWT_PATTERN.sub("[JWT-REDACTED]", full_line)
-        self._file_full.write(full_line + "\n")
-        self._file_full.flush()
-
-        # --- cached entry (system+tools → "[cached]" when unchanged) ---
+        # system+tools → "[cached]" when unchanged from previous call
         current_key = _cache_key(system, tools)
         if self._prev_cache_key is not None and current_key == self._prev_cache_key:
             cached_system = "[cached]"
@@ -102,42 +78,47 @@ class ConversationLogger:
             cached_tools = tools
         self._prev_cache_key = current_key
 
-        cached_entry: dict = {
+        # Only log new messages since the last call
+        prev = self._prev_msg_count
+        if prev > 0 and len(messages) > prev:
+            cached_messages = [f"[cached {prev} messages]"] + messages[prev:]
+        else:
+            cached_messages = messages
+        self._prev_msg_count = len(messages)
+
+        entry: dict = {
             "timestamp": ts,
             "sequence": self._seq,
             "call_type": call_type,
             "model": model,
             "system": cached_system,
-            "messages": messages,
+            "messages": cached_messages,
         }
         if cached_tools is not None:
-            cached_entry["tools"] = cached_tools
-        cached_entry["response"] = response
-        cached_entry["duration_ms"] = duration_ms
-        cached_entry["error"] = error
+            entry["tools"] = cached_tools
+        entry["response"] = response
+        entry["duration_ms"] = duration_ms
+        entry["error"] = error
+        if raw_openai_response is not None:
+            entry["raw_openai_response"] = raw_openai_response
 
-        cached_line = json.dumps(cached_entry, default=str)
-        cached_line = _JWT_PATTERN.sub("[JWT-REDACTED]", cached_line)
-        self._file_cached.write(cached_line + "\n")
+        line = json.dumps(entry, default=str)
+        line = _JWT_PATTERN.sub("[JWT-REDACTED]", line)
+        self._file_cached.write(line + "\n")
         self._file_cached.flush()
 
     @staticmethod
     def _cleanup(conv_dir: Path) -> None:
-        """Delete oldest conversation logs beyond _MAX_LOG_FILES (per suffix)."""
-        for suffix in ("ai-full", "ai-cached"):
-            files = sorted(conv_dir.glob(f"*-{suffix}.jsonl"))
-            for old in files[:-_MAX_LOG_FILES]:
-                old.unlink()
+        """Delete oldest conversation logs beyond _MAX_LOG_FILES."""
+        files = sorted(conv_dir.glob("*-ai-cached.jsonl"))
+        for old in files[:-_MAX_LOG_FILES]:
+            old.unlink()
 
     def close(self) -> None:
-        """Flush and close both log files."""
-        self._file_full.close()
+        """Flush and close the log file."""
         self._file_cached.close()
 
     @property
-    def path_full(self) -> Path:
-        return self._path_full
-
-    @property
     def path_cached(self) -> Path:
+        """Return the file path of the cached conversation log."""
         return self._path_cached

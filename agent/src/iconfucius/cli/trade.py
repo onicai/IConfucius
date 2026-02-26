@@ -92,6 +92,7 @@ def run_trade(bot_name: str, action: str, token_id: str, amount: str,
         btc_usd_rate = None
 
     def _fmt(sats):
+        """Format a sats amount for display."""
         return fmt_sats(sats, btc_usd_rate)
 
     # Fetch token info (ticker name, price)

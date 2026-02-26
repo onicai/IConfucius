@@ -9,9 +9,11 @@ from iconfucius.skills.definitions import (
 
 class TestToolSchemas:
     def test_tools_not_empty(self):
+        """Verify tools not empty."""
         assert len(TOOLS) > 0
 
     def test_each_tool_has_required_fields(self):
+        """Verify each tool has required fields."""
         for t in TOOLS:
             assert "name" in t, f"Missing 'name' in {t}"
             assert "description" in t, f"Missing 'description' in {t.get('name')}"
@@ -20,12 +22,14 @@ class TestToolSchemas:
             assert "category" in t, f"Missing 'category' in {t['name']}"
 
     def test_categories_are_valid(self):
+        """Verify categories are valid."""
         for t in TOOLS:
             assert t["category"] in ("read", "write"), (
                 f"Invalid category '{t['category']}' for {t['name']}"
             )
 
     def test_write_tools_require_confirmation(self):
+        """Verify write tools require confirmation."""
         for t in TOOLS:
             if t["category"] == "write":
                 assert t["requires_confirmation"] is True, (
@@ -33,6 +37,7 @@ class TestToolSchemas:
                 )
 
     def test_read_tools_no_confirmation(self):
+        """Verify read tools no confirmation."""
         for t in TOOLS:
             if t["category"] == "read":
                 assert t["requires_confirmation"] is False, (
@@ -40,6 +45,7 @@ class TestToolSchemas:
                 )
 
     def test_input_schema_is_object_type(self):
+        """Verify input schema is object type."""
         for t in TOOLS:
             schema = t["input_schema"]
             assert schema["type"] == "object", (
@@ -47,18 +53,21 @@ class TestToolSchemas:
             )
 
     def test_unique_tool_names(self):
+        """Verify unique tool names."""
         names = [t["name"] for t in TOOLS]
         assert len(names) == len(set(names)), "Duplicate tool names found"
 
 
 class TestGetToolsForAnthropic:
     def test_strips_metadata(self):
+        """Verify strips metadata."""
         tools = get_tools_for_anthropic()
         for t in tools:
             assert "requires_confirmation" not in t
             assert "category" not in t
 
     def test_keeps_required_fields(self):
+        """Verify keeps required fields."""
         tools = get_tools_for_anthropic()
         for t in tools:
             assert "name" in t
@@ -66,20 +75,24 @@ class TestGetToolsForAnthropic:
             assert "input_schema" in t
 
     def test_same_count_as_tools(self):
+        """Verify same count as tools."""
         assert len(get_tools_for_anthropic()) == len(TOOLS)
 
 
 class TestGetToolMetadata:
     def test_finds_existing_tool(self):
+        """Verify finds existing tool."""
         meta = get_tool_metadata("wallet_balance")
         assert meta is not None
         assert meta["name"] == "wallet_balance"
         assert "requires_confirmation" in meta
 
     def test_returns_none_for_unknown(self):
+        """Verify returns none for unknown."""
         assert get_tool_metadata("nonexistent_tool") is None
 
     def test_finds_write_tool(self):
+        """Verify finds write tool."""
         meta = get_tool_metadata("trade_buy")
         assert meta is not None
         assert meta["requires_confirmation"] is True
@@ -88,30 +101,35 @@ class TestGetToolMetadata:
 
 class TestMemoryToolDefinitions:
     def test_memory_read_strategy_exists(self):
+        """Verify memory read strategy exists."""
         meta = get_tool_metadata("memory_read_strategy")
         assert meta is not None
         assert meta["requires_confirmation"] is False
         assert meta["category"] == "read"
 
     def test_memory_read_learnings_exists(self):
+        """Verify memory read learnings exists."""
         meta = get_tool_metadata("memory_read_learnings")
         assert meta is not None
         assert meta["requires_confirmation"] is False
         assert meta["category"] == "read"
 
     def test_memory_update_exists(self):
+        """Verify memory update exists."""
         meta = get_tool_metadata("memory_update")
         assert meta is not None
         assert meta["requires_confirmation"] is True
         assert meta["category"] == "write"
 
     def test_memory_update_schema_has_file_enum(self):
+        """Verify memory update schema has file enum."""
         meta = get_tool_metadata("memory_update")
         props = meta["input_schema"]["properties"]
         assert "file" in props
         assert props["file"]["enum"] == ["strategy", "learnings"]
 
     def test_memory_tools_in_anthropic_format(self):
+        """Verify memory tools in anthropic format."""
         tools = get_tools_for_anthropic()
         names = [t["name"] for t in tools]
         assert "memory_read_strategy" in names
@@ -123,18 +141,48 @@ class TestTokenPriceDefinition:
     """Tests for the token_price tool definition."""
 
     def test_token_price_exists(self):
+        """Verify token price exists."""
         meta = get_tool_metadata("token_price")
         assert meta is not None
         assert meta["requires_confirmation"] is False
         assert meta["category"] == "read"
 
     def test_token_price_schema_has_query(self):
+        """Verify token price schema has query."""
         meta = get_tool_metadata("token_price")
         props = meta["input_schema"]["properties"]
         assert "query" in props
         assert meta["input_schema"]["required"] == ["query"]
 
     def test_token_price_in_anthropic_format(self):
+        """Verify token price in anthropic format."""
         tools = get_tools_for_anthropic()
         names = [t["name"] for t in tools]
         assert "token_price" in names
+
+
+class TestHowToFundWalletDefinition:
+
+    def test_exists_with_correct_metadata(self):
+        """Verify exists with correct metadata."""
+        meta = get_tool_metadata("how_to_fund_wallet")
+        assert meta is not None
+        assert meta["requires_confirmation"] is False
+        assert meta["category"] == "read"
+
+    def test_description_mentions_empty_wallet(self):
+        """Verify description mentions empty wallet."""
+        meta = get_tool_metadata("how_to_fund_wallet")
+        assert meta is not None, "how_to_fund_wallet tool not found"
+        assert "empty" in meta["description"] or "insufficient" in meta["description"]
+
+    def test_wallet_receive_removed(self):
+        """wallet_receive was replaced by how_to_fund_wallet."""
+        assert get_tool_metadata("wallet_receive") is None
+
+    def test_in_anthropic_format(self):
+        """Verify in anthropic format."""
+        tools = get_tools_for_anthropic()
+        names = [t["name"] for t in tools]
+        assert "how_to_fund_wallet" in names
+        assert "wallet_receive" not in names

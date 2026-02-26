@@ -38,6 +38,7 @@ class TestSignWithFeeNoFees:
     @patch(f"{M}.log")
     @patch(f"{M}.unwrap", side_effect=lambda x: x)
     def test_sign_called_without_payment(self, mock_unwrap, mock_log):
+        """Verify sign called without payment."""
         mock_cksigner = MagicMock()
         mock_cksigner.getFeeTokens.return_value = _make_fee_tokens_response([])
         mock_cksigner.sign.return_value = _make_sign_ok()
@@ -59,6 +60,7 @@ class TestSignWithFeeNoFees:
     @patch(f"{M}.log")
     @patch(f"{M}.unwrap", side_effect=lambda x: x)
     def test_no_icrc2_approve_called(self, mock_unwrap, mock_log):
+        """Verify no icrc2 approve called."""
         mock_cksigner = MagicMock()
         mock_cksigner.getFeeTokens.return_value = _make_fee_tokens_response([])
         mock_cksigner.sign.return_value = _make_sign_ok()
@@ -80,6 +82,7 @@ class TestSignWithFeeCkbtcFee:
     def test_approve_and_sign_with_payment(
         self, MockCanister, MockPrincipal, mock_unwrap, mock_unwrap_cr, mock_log
     ):
+        """Verify approve and sign with payment."""
         mock_cksigner = MagicMock()
         mock_cksigner.getFeeTokens.return_value = _make_fee_tokens_response(
             [_make_ckbtc_fee_token(100)]
@@ -114,6 +117,7 @@ class TestSignWithFeeCkbtcFee:
     def test_token_ledger_passed_through(
         self, MockCanister, MockPrincipal, mock_unwrap, mock_unwrap_cr, mock_log
     ):
+        """Verify token ledger passed through."""
         mock_cksigner = MagicMock()
         mock_cksigner.getFeeTokens.return_value = _make_fee_tokens_response(
             [_make_ckbtc_fee_token(100)]
@@ -138,6 +142,7 @@ class TestSignWithFeeErrors:
     @patch(f"{M}.log")
     @patch(f"{M}.unwrap", side_effect=lambda x: x)
     def test_get_fee_tokens_error(self, mock_unwrap, mock_log):
+        """Verify get fee tokens error."""
         mock_cksigner = MagicMock()
         mock_cksigner.getFeeTokens.return_value = {"Err": {"Other": "canister error"}}
 
@@ -148,6 +153,7 @@ class TestSignWithFeeErrors:
     @patch(f"{M}.log")
     @patch(f"{M}.unwrap", side_effect=lambda x: x)
     def test_no_ckbtc_fee_token(self, mock_unwrap, mock_log):
+        """Verify no ckbtc fee token."""
         mock_cksigner = MagicMock()
         mock_cksigner.getFeeTokens.return_value = _make_fee_tokens_response(
             [{"tokenName": "ICP", "tokenLedger": "ryjl3-tyaaa-aaaaa-aaaba-cai", "fee": 50}]
@@ -165,6 +171,7 @@ class TestSignWithFeeErrors:
     def test_approve_failure(
         self, MockCanister, MockPrincipal, mock_unwrap, mock_unwrap_cr, mock_log
     ):
+        """Verify approve failure."""
         mock_cksigner = MagicMock()
         mock_cksigner.getFeeTokens.return_value = _make_fee_tokens_response(
             [_make_ckbtc_fee_token(100)]

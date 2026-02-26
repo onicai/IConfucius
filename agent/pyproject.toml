@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "iconfucius"
-version = "0.6.2"
+version = "0.7.0"
 description = "IConfucius | Wisdom for Bitcoin Markets"
 readme = "README.md"
 license = "MIT"
@@ -47,7 +47,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
-    "pytest-asyncio>=0.21",
+    "pytest-asyncio>=0.24.0",
     "build>=1.0",
     "twine>=5.0",
     "bitcoin-utils>=0.7.3",
@@ -76,3 +76,4 @@ iconfucius = ["py.typed", "*.toml", "personas/**/*.toml", "personas/**/*.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+asyncio_default_fixture_loop_scope = "function"

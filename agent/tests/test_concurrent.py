@@ -22,6 +22,7 @@ class TestRunPerBot:
     def test_handles_exceptions(self):
         """Per-bot exceptions are caught; other bots still succeed."""
         def _maybe_fail(name):
+            """Raise ValueError for bot-2, return ok string for others."""
             if name == "bot-2":
                 raise ValueError("boom")
             return f"ok-{name}"
@@ -54,6 +55,7 @@ class TestRunPerBot:
         time should be ~0.2s, not ~0.6s.
         """
         def _sleep(name):
+            """Sleep 0.2s and return the bot name."""
             time.sleep(0.2)
             return name
 
@@ -70,6 +72,7 @@ class TestRunPerBot:
         order = []
 
         def _track(name):
+            """Record start/end events to verify execution order."""
             order.append(f"start-{name}")
             time.sleep(0.05)
             order.append(f"end-{name}")
@@ -83,6 +86,7 @@ class TestRunPerBot:
     def test_all_fail(self):
         """All bots failing returns all exceptions."""
         def _fail(name):
+            """Always raise RuntimeError for the given bot name."""
             raise RuntimeError(f"fail-{name}")
 
         results = run_per_bot(_fail, ["bot-1", "bot-2"])
@@ -93,6 +97,7 @@ class TestRunPerBot:
     def test_return_types_preserved(self):
         """Complex return values (dicts, lists) are preserved."""
         def _complex(name):
+            """Return a dict with the bot name and a list of items."""
             return {"name": name, "items": [1, 2, 3]}
 
         results = run_per_bot(_complex, ["bot-1"])

@@ -41,6 +41,7 @@ class _JwtScrubFilter(logging.Filter):
     """Safety net: redact any JWT token that appears in a log message."""
 
     def filter(self, record: logging.LogRecord) -> bool:
+        """Scrub JWT tokens from log messages and allow the record to pass."""
         if isinstance(record.msg, str):
             record.msg = _JWT_PATTERN.sub("[JWT-REDACTED]", record.msg)
         return True

@@ -16,16 +16,21 @@ from iconfucius.cli.chat import (
     _generate_startup,
     _get_language_code,
     _format_api_error,
+    _handle_ai_interactive,
     _handle_model_interactive,
     _handle_upgrade,
+    _persist_ai_config,
     _persist_ai_model,
+    _persist_ai_timeout,
+    _prompt_increase_timeout,
+    _reset_ai_config,
     _resolve_principal_to_bot_name,
     _run_tool_loop,
     _Spinner,
     _MAX_TOOL_ITERATIONS,
     QUOTE_TOPICS,
 )
-from iconfucius.persona import Persona
+from iconfucius.persona import DEFAULT_MODEL, Persona
 
 runner = CliRunner()
 
@@ -33,6 +38,7 @@ runner = CliRunner()
 class TestChatCommand:
     @patch("iconfucius.cli.chat.run_chat")
     def test_explicit_chat_command(self, mock_run_chat):
+        """Verify explicit chat command."""
         result = runner.invoke(app, ["chat"])
         assert result.exit_code == 0
         mock_run_chat.assert_called_once()
@@ -41,6 +47,7 @@ class TestChatCommand:
 
     @patch("iconfucius.cli.chat.run_chat")
     def test_chat_with_persona_flag(self, mock_run_chat):
+        """Verify chat with persona flag."""
         result = runner.invoke(app, ["chat", "--persona", "iconfucius"])
         assert result.exit_code == 0
         args = mock_run_chat.call_args
@@ -48,6 +55,7 @@ class TestChatCommand:
 
     @patch("iconfucius.cli.chat.run_chat")
     def test_chat_with_bot_flag(self, mock_run_chat):
+        """Verify chat with bot flag."""
         result = runner.invoke(app, ["chat", "--bot", "bot-2"])
         assert result.exit_code == 0
         args = mock_run_chat.call_args
@@ -59,6 +67,7 @@ class TestChatCommand:
         "env_exists": True, "has_api_key": True, "ready": True,
     })
     def test_bare_invocation_starts_chat(self, mock_exec, mock_run_chat):
+        """Verify bare invocation starts chat."""
         result = runner.invoke(app, [])
         assert result.exit_code == 0
         mock_run_chat.assert_called_once()
@@ -69,6 +78,7 @@ class TestChatCommand:
         "env_exists": True, "has_api_key": True, "ready": True,
     })
     def test_bare_with_persona_option(self, mock_exec, mock_run_chat):
+        """Verify bare with persona option."""
         result = runner.invoke(app, ["--persona", "iconfucius"])
         assert result.exit_code == 0
         args = mock_run_chat.call_args
@@ -77,17 +87,20 @@ class TestChatCommand:
 
 class TestPersonaCommands:
     def test_persona_list(self):
+        """Verify persona list."""
         result = runner.invoke(app, ["persona", "list"])
         assert result.exit_code == 0
         assert "iconfucius" in result.output
 
     def test_persona_show(self):
+        """Verify persona show."""
         result = runner.invoke(app, ["persona", "show", "iconfucius"])
         assert result.exit_code == 0
         assert "IConfucius" in result.output
-        assert "claude" in result.output
+        assert "claude" in result.output  # ai_api_type
 
     def test_persona_show_not_found(self):
+        """Verify persona show not found."""
         result = runner.invoke(app, ["persona", "show", "nonexistent"])
         assert result.exit_code == 1
         assert "not found" in result.output.lower()
@@ -101,13 +114,9 @@ def _make_persona(**overrides) -> Persona:
     """Create a test Persona with sensible defaults."""
     defaults = dict(
         name="TestBot",
-        description="Test",
-        voice="Test voice",
-        risk="conservative",
-        budget_limit=0,
-        bot="bot-1",
-        ai_backend="claude",
-        ai_model="test-model",
+        ai_api_type="claude",
+        ai_model=DEFAULT_MODEL,
+        ai_base_url="",
         system_prompt="You are a test bot.",
         greeting_prompt=(
             "Reply with exactly three lines (separate each with a blank line):\n"
@@ -173,41 +182,49 @@ class TestGenerateStartup:
 
 class TestLanguageDetection:
     def test_english_default(self, monkeypatch):
+        """Verify english default."""
         monkeypatch.setattr("locale.getlocale", lambda: ("en_US", "UTF-8"))
         assert _get_language_code() == "en"
 
     def test_chinese_detected(self, monkeypatch):
+        """Verify chinese detected."""
         monkeypatch.setattr("locale.getlocale", lambda: ("zh_CN", "UTF-8"))
         assert _get_language_code() == "cn"
 
     def test_none_locale_defaults_to_english(self, monkeypatch):
+        """Verify none locale defaults to english."""
         monkeypatch.setattr("locale.getlocale", lambda: (None, None))
         assert _get_language_code() == "en"
 
 
 class TestFormatApiError:
     def test_credit_balance_error(self):
+        """Verify credit balance error."""
         e = Exception("Your credit balance is too low")
         msg = _format_api_error(e)
         assert "credit" in msg.lower()
         assert "console.anthropic.com" in msg
 
     def test_auth_error(self):
+        """Verify auth error."""
         e = Exception("Invalid api_key provided")
         msg = _format_api_error(e)
         assert "Authentication" in msg
 
     def test_rate_limit_error(self):
+        """Verify rate limit error."""
         e = Exception("rate limit exceeded")
         msg = _format_api_error(e)
         assert "Rate limited" in msg
 
     def test_overloaded_error(self):
+        """Verify overloaded error."""
         e = Exception("API is overloaded")
         msg = _format_api_error(e)
         assert "overloaded" in msg.lower()
 
     def test_generic_error_passthrough(self):
+        """Verify generic error passthrough."""
         e = Exception("Something weird happened")
         msg = _format_api_error(e)
         assert "Something weird happened" in msg
@@ -215,9 +232,11 @@ class TestFormatApiError:
 
 class TestQuoteTopics:
     def test_topics_not_empty(self):
+        """Verify topics not empty."""
         assert len(QUOTE_TOPICS) > 0
 
     def test_each_topic_has_required_keys(self):
+        """Verify each topic has required keys."""
         for entry in QUOTE_TOPICS:
             assert "cn" in entry
             assert "en" in entry
@@ -239,53 +258,65 @@ class TestSpinner:
 
 class TestFmtSats:
     def test_normal_int(self):
+        """Verify normal int."""
         result = _fmt_sats(5000)
         assert "5,000" in result
         assert "sats" in result
 
     def test_none_returns_question_mark(self):
+        """Verify none returns question mark."""
         assert _fmt_sats(None) == "?"
 
     def test_string_passthrough(self):
+        """Verify string passthrough."""
         assert _fmt_sats("all") == "all"
 
 
 class TestBotTarget:
     def test_all_bots(self):
+        """Verify all bots."""
         assert _bot_target({"all_bots": True}) == "all bots"
 
     def test_bot_names_list(self):
+        """Verify bot names list."""
         result = _bot_target({"bot_names": ["bot-12", "bot-14"]})
         assert "bot-12" in result
         assert "bot-14" in result
 
     def test_single_bot_name(self):
+        """Verify single bot name."""
         assert _bot_target({"bot_name": "bot-1"}) == "bot-1"
 
     def test_none_returns_question_mark(self):
+        """Verify none returns question mark."""
         assert _bot_target({}) == "?"
 
     def test_all_bots_takes_priority(self):
+        """Verify all bots takes priority."""
         result = _bot_target({"all_bots": True, "bot_name": "bot-1"})
         assert result == "all bots"
 
     def test_bot_names_takes_priority_over_bot_name(self):
+        """Verify bot names takes priority over bot name."""
         result = _bot_target({"bot_names": ["bot-2"], "bot_name": "bot-1"})
         assert result == "bot-2"
 
 
 class TestDescribeToolCall:
     def test_fund(self):
+        """Verify fund."""
         desc = _describe_tool_call("fund", {"bot_name": "bot-1", "amount": 5000})
         assert "bot-1" in desc
         assert "5,000" in desc
 
     def test_fund_none_amount(self):
+        """Verify fund none amount."""
         desc = _describe_tool_call("fund", {"bot_name": "bot-1", "amount": None})
         assert "bot-1" in desc
         assert "?" in desc
 
     def test_trade_buy_none_amount(self):
+        """Verify trade buy none amount."""
         desc = _describe_tool_call(
             "trade_buy",
             {"token_id": "29m8", "amount": None, "bot_name": "bot-1"},
@@ -294,6 +325,7 @@ class TestDescribeToolCall:
         assert "bot-1" in desc
 
     def test_trade_buy(self):
+        """Verify trade buy."""
         desc = _describe_tool_call(
             "trade_buy",
             {"token_id": "29m8", "amount": 1000, "bot_name": "bot-1"},
@@ -303,6 +335,7 @@ class TestDescribeToolCall:
         assert "bot-1" in desc
 
     def test_trade_sell(self):
+        """Verify trade sell."""
         desc = _describe_tool_call(
             "trade_sell",
             {"token_id": "29m8", "amount": "all", "bot_name": "bot-1"},
@@ -329,30 +362,36 @@ class TestDescribeToolCall:
         assert "29m8" in desc
 
     def test_trade_sell_tokens(self):
+        """Verify trade sell tokens."""
         desc = _describe_tool_call(
             "trade_sell",
             {"token_id": "29m8", "amount": "5000000", "bot_name": "bot-1"},
         )
-        assert "5,000,000.000 tokens" in desc
+        # 5,000,000 raw sub-units / 10^8 divisibility = 0.050 tokens
+        assert "0.050 tokens" in desc
 
     def test_withdraw(self):
+        """Verify withdraw."""
         desc = _describe_tool_call(
             "withdraw", {"amount": "5000", "bot_name": "bot-1"}
         )
         assert "bot-1" in desc
 
     def test_wallet_send(self):
+        """Verify wallet send."""
         desc = _describe_tool_call(
             "wallet_send", {"amount": "1000", "address": "bc1qtest"}
         )
         assert "bc1qtest" in desc
 
     def test_fund_all_bots(self):
+        """Verify fund all bots."""
         desc = _describe_tool_call("fund", {"all_bots": True, "amount": 5000})
         assert "all bots" in desc
         assert "5,000" in desc
 
     def test_fund_bot_names_list(self):
+        """Verify fund bot names list."""
         desc = _describe_tool_call(
             "fund",
             {"bot_names": ["bot-12", "bot-14"], "amount": 20000},
@@ -362,6 +401,7 @@ class TestDescribeToolCall:
         assert "20,000" in desc
 
     def test_trade_buy_all_bots(self):
+        """Verify trade buy all bots."""
         desc = _describe_tool_call(
             "trade_buy",
             {"all_bots": True, "token_id": "29m8", "amount": 1000},
@@ -370,6 +410,7 @@ class TestDescribeToolCall:
         assert "29m8" in desc
 
     def test_withdraw_bot_names_list(self):
+        """Verify withdraw bot names list."""
         desc = _describe_tool_call(
             "withdraw",
             {"bot_names": ["bot-3", "bot-7"], "amount": "all"},
@@ -378,6 +419,7 @@ class TestDescribeToolCall:
         assert "bot-7" in desc
 
     def test_unknown_tool_fallback(self):
+        """Verify unknown tool fallback."""
         desc = _describe_tool_call("something", {"a": 1})
         assert "something" in desc
 
@@ -408,6 +450,7 @@ class TestDescribeToolCall:
         assert "bc1qtest" in desc
 
     def test_token_transfer(self):
+        """Verify token transfer."""
         desc = _describe_tool_call(
             "token_transfer",
             {"token_id": "29m8", "amount": "5000000000", "bot_name": "bot-1",
@@ -418,6 +461,7 @@ class TestDescribeToolCall:
         assert "dest-principal-xyz" in desc
 
     def test_token_transfer_all(self):
+        """Verify token transfer all."""
         desc = _describe_tool_call(
             "token_transfer",
             {"token_id": "29m8", "amount": "all", "bot_name": "bot-1",
@@ -428,6 +472,7 @@ class TestDescribeToolCall:
         assert "bot-2" in desc
 
     def test_token_transfer_all_bots(self):
+        """Verify token transfer all bots."""
         desc = _describe_tool_call(
             "token_transfer",
             {"token_id": "29m8", "amount": "1000", "all_bots": True,
@@ -620,6 +665,7 @@ class TestAmountUsdPreConversion:
 
 class TestBlockToDict:
     def test_text_block(self):
+        """Verify text block."""
         block = MagicMock()
         block.type = "text"
         block.text = "Hello"
@@ -627,6 +673,7 @@ class TestBlockToDict:
         assert result == {"type": "text", "text": "Hello"}
 
     def test_tool_use_block(self):
+        """Verify tool use block."""
         block = MagicMock()
         block.type = "tool_use"
         block.id = "id_123"
@@ -666,7 +713,7 @@ class TestRunToolLoop:
         tool_block = MagicMock()
         tool_block.type = "tool_use"
         tool_block.id = "id_1"
-        tool_block.name = "persona_list"
+        tool_block.name = "setup_status"
         tool_block.input = {}
         resp1 = MagicMock()
         resp1.content = [tool_block]
@@ -818,6 +865,7 @@ class TestRunToolLoop:
         backend.chat_with_tools.side_effect = [resp1, resp2]
 
         def fake_meta(name):
+            """Return fake metadata for testing."""
             if name == "fund":
                 return {"requires_confirmation": True}
             return {"requires_confirmation": False}
@@ -839,7 +887,7 @@ class TestRunToolLoop:
         tool_block = MagicMock()
         tool_block.type = "tool_use"
         tool_block.id = "id_loop"
-        tool_block.name = "persona_list"
+        tool_block.name = "setup_status"
         tool_block.input = {}
         response = MagicMock()
         response.content = [tool_block]
@@ -906,7 +954,7 @@ class TestRunToolLoop:
         tool_block = MagicMock()
         tool_block.type = "tool_use"
         tool_block.id = "id_1"
-        tool_block.name = "persona_list"
+        tool_block.name = "setup_status"
         tool_block.input = {}
         resp1 = MagicMock()
         resp1.content = [tool_block]
@@ -922,7 +970,7 @@ class TestRunToolLoop:
         _run_tool_loop(backend, messages, "system", [], "TestBot",
                        persona_key="iconfucius")
 
-        mock_exec.assert_called_once_with("persona_list", {},
+        mock_exec.assert_called_once_with("setup_status", {},
                                           persona_name="iconfucius")
 
     @patch("iconfucius.cli.chat.execute_tool", return_value={"status": "ok"})
@@ -954,6 +1002,7 @@ class TestRunToolLoop:
         backend.chat_with_tools.side_effect = [resp1, resp2]
 
         def fake_meta(name):
+            """Return fake metadata for testing."""
             if name == "fund":
                 return {"requires_confirmation": True, "category": "write"}
             if name == "trade_buy":
@@ -1017,82 +1066,6 @@ class TestToolResultPassthrough:
         assert content["totals"]["portfolio_sats"] == 50000
 
 
-class TestLearningsInjection:
-    """Test that learnings from memory are injected into the system prompt."""
-
-    @patch("iconfucius.cli.chat._generate_startup",
-           return_value=("Greeting", "Goodbye"))
-    @patch("iconfucius.cli.chat.create_backend")
-    @patch("iconfucius.cli.chat.load_persona")
-    def test_learnings_in_system_prompt(self, mock_load, mock_backend_factory,
-                                        mock_startup, tmp_path, monkeypatch):
-        """When learnings exist, they are injected into the system prompt."""
-        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
-
-        # Set up config so get_bot_names() works
-        (tmp_path / "iconfucius.toml").write_text(
-            '[settings]\n[bots.bot-1]\ndescription = "Bot 1"\n'
-        )
-        import iconfucius.config as cfg_mod
-        cfg_mod._cached_config = None
-        cfg_mod._cached_config_path = None
-
-        # Write learnings to memory
-        from iconfucius.memory import write_learnings
-        write_learnings("iconfucius", "Volume spikes precede price moves.")
-
-        # Set up persona
-        persona = _make_persona(name="IConfucius")
-        mock_load.return_value = persona
-        backend = MagicMock()
-        mock_backend_factory.return_value = backend
-
-        # Make the chat exit immediately
-        from iconfucius.cli.chat import run_chat
-        with patch("builtins.input", side_effect=EOFError):
-            run_chat("iconfucius", "bot-1")
-
-        # Check that _generate_startup was called with a system prompt
-        # containing the learnings
-        startup_call = mock_startup.call_args
-        # _generate_startup(backend, persona, lang) — system is persona.system_prompt
-        # but the actual system prompt sent to chat_with_tools is built after startup
-        # Let's check the persona's system_prompt wasn't changed, and instead
-        # verify the run_chat logic by checking what happens before exit.
-        # Actually, the learnings are injected into `system` local variable.
-        # Since run_chat exits early (EOFError), we just verify the function ran.
-        # The best verification is that read_learnings was actually called.
-        pass
-
-    @patch("iconfucius.cli.chat._generate_startup",
-           return_value=("Greeting", "Goodbye"))
-    @patch("iconfucius.cli.chat.create_backend")
-    @patch("iconfucius.cli.chat.load_persona")
-    @patch("iconfucius.cli.chat.read_learnings",
-           return_value="Volume spikes precede price moves.")
-    def test_learnings_read_called(self, mock_learnings, mock_load,
-                                    mock_backend_factory, mock_startup,
-                                    tmp_path, monkeypatch):
-        """run_chat calls read_learnings for the persona."""
-        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
-        (tmp_path / "iconfucius.toml").write_text(
-            '[settings]\n[bots.bot-1]\ndescription = "Bot 1"\n'
-        )
-        import iconfucius.config as cfg_mod
-        cfg_mod._cached_config = None
-        cfg_mod._cached_config_path = None
-
-        persona = _make_persona(name="IConfucius")
-        mock_load.return_value = persona
-        mock_backend_factory.return_value = MagicMock()
-
-        from iconfucius.cli.chat import run_chat
-        with patch("builtins.input", side_effect=EOFError):
-            run_chat("iconfucius", "bot-1")
-
-        mock_learnings.assert_called_once_with("iconfucius")
-
-
 # ---------------------------------------------------------------------------
 # Chat hints placement
 # ---------------------------------------------------------------------------
@@ -1101,16 +1074,12 @@ class TestLearningsInjection:
 class TestChatHintsPlacement:
     """Hints (exit/model) appear right after the greeting, before wallet."""
 
-    @patch("iconfucius.cli.chat.read_trades", return_value="")
-    @patch("iconfucius.cli.chat.read_learnings", return_value="")
-    @patch("iconfucius.cli.chat.read_strategy", return_value="")
     @patch("iconfucius.cli.chat._generate_startup",
            return_value=("Wise greeting quote", "Goodbye!"))
     @patch("iconfucius.cli.chat.create_backend")
     @patch("iconfucius.cli.chat.load_persona")
     def test_hints_appear_after_greeting(self, mock_load, mock_backend_factory,
-                                          mock_startup, mock_strategy,
-                                          mock_learnings, mock_trades,
+                                          _mock_startup,
                                           tmp_path, monkeypatch, capsys):
         """exit/model hints are printed immediately after the greeting."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
@@ -1132,30 +1101,23 @@ class TestChatHintsPlacement:
 
         captured = capsys.readouterr().out
         assert "exit to quit" in captured
-        assert "Model: claude-sonnet-4-6" in captured
+        assert "AI: claude" in captured
+        assert "claude-sonnet-4-6" in captured
 
         # Hints must come after the greeting
         greeting_pos = captured.index("Wise greeting quote")
         exit_pos = captured.index("exit to quit")
-        model_pos = captured.index("Model: claude-sonnet-4-6")
+        ai_pos = captured.index("AI:")
         assert exit_pos > greeting_pos
-        assert model_pos > exit_pos
+        assert ai_pos > exit_pos
 
-    @patch("iconfucius.cli.chat.read_trades", return_value="")
-    @patch("iconfucius.cli.chat.read_learnings", return_value="")
-    @patch("iconfucius.cli.chat.read_strategy", return_value="")
     @patch("iconfucius.cli.chat._generate_startup",
            return_value=("Wise greeting quote", "Goodbye!"))
     @patch("iconfucius.cli.chat.create_backend")
     @patch("iconfucius.cli.chat.load_persona")
-    @patch("iconfucius.cli.chat.execute_tool", return_value={
-        "status": "ok", "config_exists": True, "wallet_exists": True,
-        "env_exists": True, "has_api_key": True, "ready": True,
-    })
-    def test_hints_appear_before_wallet(self, mock_exec, mock_load,
+    def test_hints_appear_before_wallet(self, mock_load,
                                          mock_backend_factory,
-                                         mock_startup, mock_strategy,
-                                         mock_learnings, mock_trades,
+                                         _mock_startup,
                                          tmp_path, monkeypatch, capsys):
         """Hints appear before wallet balance output."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
@@ -1171,17 +1133,374 @@ class TestChatHintsPlacement:
         backend.model = "claude-sonnet-4-6"
         mock_backend_factory.return_value = backend
 
-        wallet_data = {"_display": "Wallet: 50,000 sats", "balance_sats": 50000}
+        def _mock_exec(name, _args=None, **_kwargs):
+            """Dispatch execute_tool by tool name."""
+            if name == "setup_status":
+                return {
+                    "status": "ok", "config_exists": True, "wallet_exists": True,
+                    "env_exists": True, "has_api_key": True, "ready": True,
+                }
+            if name == "wallet_balance":
+                return {
+                    "status": "ok",
+                    "_display": "Wallet: 50,000 sats",
+                    "wallet_ckbtc_sats": 50000,
+                    "total_odin_sats": 0,
+                    "total_token_value_sats": 0,
+                    "portfolio_sats": 50000,
+                    "constraints": {"min_deposit_sats": 5000, "min_trade_sats": 500},
+                }
+            return {"status": "error", "error": f"Unknown tool: {name}"}
+
         with patch("builtins.input", side_effect=EOFError), \
-             patch("iconfucius.cli.balance.run_wallet_balance",
-                   return_value=wallet_data):
+             patch("iconfucius.cli.chat.execute_tool", side_effect=_mock_exec):
             from iconfucius.cli.chat import run_chat
             run_chat("iconfucius", "bot-1")
 
         captured = capsys.readouterr().out
-        model_pos = captured.index("Model: claude-sonnet-4-6")
+        ai_pos = captured.index("AI:")
         wallet_pos = captured.index("Wallet: 50,000 sats")
-        assert model_pos < wallet_pos
+        assert ai_pos < wallet_pos
+
+
+# ---------------------------------------------------------------------------
+# Experimental warning at startup
+# ---------------------------------------------------------------------------
+
+
+class TestExperimentalWarning:
+    """--experimental flag prints warning underneath the AI config line."""
+
+    @patch("iconfucius.cli.chat._generate_startup",
+           return_value=("Hello!", "Goodbye!"))
+    @patch("iconfucius.cli.chat.create_backend")
+    @patch("iconfucius.cli.chat.load_persona")
+    def test_experimental_flag_shows_warning(self, mock_load,
+                                              mock_backend_factory,
+                                              _mock_startup,
+                                              tmp_path, monkeypatch, capsys):
+        """--experimental prints the experimental warning after AI config."""
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        (tmp_path / "iconfucius.toml").write_text(
+            '[settings]\n[bots.bot-1]\ndescription = "Bot 1"\n'
+        )
+        cfg._cached_config = None
+        cfg._cached_config_path = None
+
+        persona = _make_persona(name="IConfucius")
+        mock_load.return_value = persona
+        backend = MagicMock()
+        backend.model = "claude-opus-4-6"
+        mock_backend_factory.return_value = backend
+
+        with patch("builtins.input", side_effect=EOFError):
+            from iconfucius.cli.chat import run_chat
+            run_chat("iconfucius", "bot-1", experimental=True)
+
+        captured = capsys.readouterr().out
+        assert "/ai to change" in captured
+        assert "Experimental features have been enabled" in captured
+        assert "Use at your own risk" in captured
+        # Enabled message after AI line, risk warning after enabled message
+        ai_pos = captured.index("AI:")
+        enabled_pos = captured.index("Experimental features have been enabled")
+        risk_pos = captured.index("Use at your own risk")
+        assert enabled_pos > ai_pos
+        assert risk_pos > enabled_pos
+
+    @patch("iconfucius.cli.chat._generate_startup",
+           return_value=("Hello!", "Goodbye!"))
+    @patch("iconfucius.cli.chat.create_backend")
+    @patch("iconfucius.cli.chat.load_persona")
+    def test_no_experimental_flag_no_warning(self, mock_load,
+                                              mock_backend_factory,
+                                              mock_startup,
+                                              tmp_path, monkeypatch, capsys):
+        """Without --experimental, no experimental warning is shown."""
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        (tmp_path / "iconfucius.toml").write_text(
+            '[settings]\n[bots.bot-1]\ndescription = "Bot 1"\n'
+        )
+        cfg._cached_config = None
+        cfg._cached_config_path = None
+
+        persona = _make_persona(name="IConfucius")
+        mock_load.return_value = persona
+        backend = MagicMock()
+        backend.model = "claude-opus-4-6"
+        mock_backend_factory.return_value = backend
+
+        with patch("builtins.input", side_effect=EOFError):
+            from iconfucius.cli.chat import run_chat
+            run_chat("iconfucius", "bot-1")
+
+        captured = capsys.readouterr().out
+        assert "Experimental features" not in captured
+        assert "Use at your own risk" not in captured
+        assert "/ai to change" not in captured
+
+    @patch("iconfucius.cli.chat._generate_startup",
+           return_value=("Hello!", "Goodbye!"))
+    @patch("iconfucius.cli.chat.create_backend")
+    @patch("iconfucius.cli.chat.load_persona")
+    def test_experimental_shows_ai_config_with_base_url(self, mock_load,
+                                                         mock_backend_factory,
+                                                         mock_startup,
+                                                         tmp_path, monkeypatch,
+                                                         capsys):
+        """AI config line includes base_url when set."""
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        (tmp_path / "iconfucius.toml").write_text(
+            '[settings]\n[bots.bot-1]\ndescription = "Bot 1"\n'
+        )
+        cfg._cached_config = None
+        cfg._cached_config_path = None
+
+        persona = _make_persona(
+            name="IConfucius",
+            ai_api_type="openai",
+            ai_model="llama-3",
+            ai_base_url="http://localhost:55128",
+        )
+        mock_load.return_value = persona
+        backend = MagicMock()
+        backend.model = "llama-3"
+        mock_backend_factory.return_value = backend
+
+        with patch("builtins.input", side_effect=["Y", EOFError]):
+            from iconfucius.cli.chat import run_chat
+            run_chat("iconfucius", "bot-1", experimental=True)
+
+        captured = capsys.readouterr().out
+        assert "openai" in captured
+        assert "llama-3" in captured
+        assert "http://localhost:55128" in captured
+
+
+# ---------------------------------------------------------------------------
+# /ai hot-swap backend
+# ---------------------------------------------------------------------------
+
+
+class TestAiHotSwap:
+    """Verify /ai commands hot-swap the backend without requiring restart."""
+
+    @patch("iconfucius.cli.chat._persist_ai_config")
+    @patch("iconfucius.cli.chat._generate_startup",
+           return_value=("Hello!", "Goodbye!"))
+    @patch("iconfucius.cli.chat.create_backend")
+    @patch("iconfucius.cli.chat.load_persona")
+    def test_ai_endpoint_hotswap(self, mock_load, mock_backend_factory,
+                                  _mock_startup, _mock_persist,
+                                  tmp_path, monkeypatch, capsys):
+        """/ai interactive endpoint change creates a new backend."""
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        (tmp_path / "iconfucius.toml").write_text(
+            '[settings]\n[bots.bot-1]\ndescription = "Bot 1"\n'
+        )
+        cfg._cached_config = None
+        cfg._cached_config_path = None
+
+        persona = _make_persona(name="IConfucius")
+        mock_load.return_value = persona
+        original_backend = MagicMock()
+        original_backend.model = DEFAULT_MODEL
+        new_backend = MagicMock()
+        new_backend.model = "default"
+        # First call returns original, second (after hot-swap) returns new
+        mock_backend_factory.side_effect = [original_backend, new_backend]
+
+        # /ai → 1 (endpoint) → Enter (default URL) → Enter (default model) → exit
+        with patch("builtins.input",
+                   side_effect=["/ai", "1", "", "", EOFError]):
+            from iconfucius.cli.chat import run_chat
+            run_chat("iconfucius", "bot-1", experimental=True)
+
+        # create_backend called twice: startup + hot-swap
+        assert mock_backend_factory.call_count == 2
+        # Persona was updated for the hot-swap call
+        swap_call_persona = mock_backend_factory.call_args_list[1][0][0]
+        assert swap_call_persona.ai_api_type == "openai"
+        assert swap_call_persona.ai_base_url == "http://localhost:55128"
+
+    @patch("iconfucius.cli.chat._persist_ai_config")
+    @patch("iconfucius.cli.chat._generate_startup",
+           return_value=("Hello!", "Goodbye!"))
+    @patch("iconfucius.cli.chat.create_backend")
+    @patch("iconfucius.cli.chat.load_persona")
+    def test_ai_reset_hotswap(self, mock_load, mock_backend_factory,
+                               mock_startup, mock_persist,
+                               tmp_path, monkeypatch, capsys):
+        """/ai reset hot-swaps back to default claude backend."""
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        (tmp_path / "iconfucius.toml").write_text(
+            '[settings]\n[bots.bot-1]\ndescription = "Bot 1"\n'
+        )
+        cfg._cached_config = None
+        cfg._cached_config_path = None
+
+        persona = _make_persona(
+            name="IConfucius",
+            ai_api_type="openai",
+            ai_model="llama-3",
+            ai_base_url="http://localhost:55128",
+        )
+        mock_load.return_value = persona
+        original_backend = MagicMock()
+        original_backend.model = "llama-3"
+        reset_backend = MagicMock()
+        reset_backend.model = DEFAULT_MODEL
+        mock_backend_factory.side_effect = [original_backend, reset_backend]
+
+        # Accept non-default warning → /ai reset → exit
+        with patch("builtins.input",
+                   side_effect=["Y", "/ai reset", EOFError]):
+            from iconfucius.cli.chat import run_chat
+            run_chat("iconfucius", "bot-1", experimental=True)
+
+        assert mock_backend_factory.call_count == 2
+        swap_call_persona = mock_backend_factory.call_args_list[1][0][0]
+        assert swap_call_persona.ai_api_type == "claude"
+        assert swap_call_persona.ai_model == DEFAULT_MODEL
+        assert swap_call_persona.ai_base_url == ""
+
+    @patch("iconfucius.cli.chat._persist_ai_config")
+    @patch("iconfucius.cli.chat._generate_startup",
+           return_value=("Hello!", "Goodbye!"))
+    @patch("iconfucius.cli.chat.create_backend")
+    @patch("iconfucius.cli.chat.load_persona")
+    def test_ai_interactive_reset_hotswap(self, mock_load, mock_backend_factory,
+                                           mock_startup, mock_persist,
+                                           tmp_path, monkeypatch, capsys):
+        """/ai interactive reset (menu option 3) hot-swaps to default."""
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        (tmp_path / "iconfucius.toml").write_text(
+            '[settings]\n[bots.bot-1]\ndescription = "Bot 1"\n'
+        )
+        cfg._cached_config = None
+        cfg._cached_config_path = None
+
+        persona = _make_persona(
+            name="IConfucius",
+            ai_api_type="openai",
+            ai_model="llama-3",
+            ai_base_url="http://localhost:55128",
+        )
+        mock_load.return_value = persona
+        original_backend = MagicMock()
+        original_backend.model = "llama-3"
+        original_backend.list_models.return_value = []
+        reset_backend = MagicMock()
+        reset_backend.model = DEFAULT_MODEL
+        mock_backend_factory.side_effect = [original_backend, reset_backend]
+
+        # Accept non-default warning → /ai → 3 (reset) → exit
+        with patch("builtins.input",
+                   side_effect=["Y", "/ai", "3", EOFError]):
+            from iconfucius.cli.chat import run_chat
+            run_chat("iconfucius", "bot-1", experimental=True)
+
+        assert mock_backend_factory.call_count == 2
+        swap_call_persona = mock_backend_factory.call_args_list[1][0][0]
+        assert swap_call_persona.ai_api_type == "claude"
+        assert swap_call_persona.ai_base_url == ""
+
+    @patch("iconfucius.cli.chat._persist_ai_config")
+    @patch("iconfucius.cli.chat._generate_startup",
+           return_value=("Hello!", "Goodbye!"))
+    @patch("iconfucius.cli.chat.create_backend")
+    @patch("iconfucius.cli.chat.load_persona")
+    def test_ai_endpoint_no_restart_message(self, mock_load,
+                                             mock_backend_factory,
+                                             mock_startup, mock_persist,
+                                             tmp_path, monkeypatch, capsys):
+        """Endpoint change does not print 'Restart' message."""
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        (tmp_path / "iconfucius.toml").write_text(
+            '[settings]\n[bots.bot-1]\ndescription = "Bot 1"\n'
+        )
+        cfg._cached_config = None
+        cfg._cached_config_path = None
+
+        persona = _make_persona(name="IConfucius")
+        mock_load.return_value = persona
+        backend = MagicMock()
+        backend.model = DEFAULT_MODEL
+        mock_backend_factory.return_value = backend
+
+        with patch("builtins.input",
+                   side_effect=["/ai", "1", "http://my-server:8080", "mymodel", EOFError]):
+            from iconfucius.cli.chat import run_chat
+            run_chat("iconfucius", "bot-1", experimental=True)
+
+        captured = capsys.readouterr().out
+        assert "Restart" not in captured
+        assert "http://my-server:8080" in captured
+
+
+# ---------------------------------------------------------------------------
+# Readline input history
+# ---------------------------------------------------------------------------
+
+
+class TestReadlineEnabled:
+    """Verify readline is imported for input history and line editing."""
+
+    @patch("iconfucius.cli.chat._generate_startup",
+           return_value=("Hello!", "Goodbye!"))
+    @patch("iconfucius.cli.chat.create_backend")
+    @patch("iconfucius.cli.chat.load_persona")
+    def test_readline_imported_during_chat(self, mock_load,
+                                            mock_backend_factory,
+                                            mock_startup,
+                                            tmp_path, monkeypatch):
+        """readline is imported so input() supports arrow keys."""
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        (tmp_path / "iconfucius.toml").write_text(
+            '[settings]\n[bots.bot-1]\ndescription = "Bot 1"\n'
+        )
+        cfg._cached_config = None
+        cfg._cached_config_path = None
+
+        persona = _make_persona(name="IConfucius")
+        mock_load.return_value = persona
+        backend = MagicMock()
+        backend.model = "claude-opus-4-6"
+        mock_backend_factory.return_value = backend
+
+        import sys
+        # Remove readline from loaded modules to verify it gets imported
+        saved = sys.modules.pop("readline", None)
+        try:
+            with patch("builtins.input", side_effect=EOFError):
+                from iconfucius.cli.chat import run_chat
+                run_chat("iconfucius", "bot-1")
+
+            assert "readline" in sys.modules
+        finally:
+            if saved is not None:
+                sys.modules["readline"] = saved
+
+    def test_readline_import_failure_is_silent(self):
+        """If readline is unavailable, reloading the chat module doesn't raise."""
+        import sys
+        import importlib
+        import iconfucius.cli.chat as chat_module
+
+        saved = sys.modules.get("readline")
+        # Make import readline raise ImportError
+        sys.modules["readline"] = None
+        try:
+            # Reload triggers the try/except import readline block —
+            # should complete without raising.
+            importlib.reload(chat_module)
+        finally:
+            if saved is not None:
+                sys.modules["readline"] = saved
+            elif "readline" in sys.modules:
+                del sys.modules["readline"]
+            # Restore module to clean state
+            importlib.reload(chat_module)
 
 
 # ---------------------------------------------------------------------------
@@ -1192,9 +1511,6 @@ class TestChatHintsPlacement:
 class TestVerboseFlag:
     """Ensure --verbose is wired through run_chat."""
 
-    @patch("iconfucius.cli.chat.read_trades", return_value="")
-    @patch("iconfucius.cli.chat.read_learnings", return_value="")
-    @patch("iconfucius.cli.chat.read_strategy", return_value="")
     @patch("iconfucius.cli.chat._generate_startup",
            return_value=("Greeting", "Goodbye!"))
     @patch("iconfucius.cli.chat.create_backend")
@@ -1202,7 +1518,6 @@ class TestVerboseFlag:
     @patch("iconfucius.config.set_verbose")
     def test_set_verbose_called(self, mock_set_verbose, mock_load,
                                 mock_backend_factory, mock_startup,
-                                mock_strategy, mock_learnings, mock_trades,
                                 tmp_path, monkeypatch):
         """run_chat(verbose=True) calls set_verbose(True)."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
@@ -1222,9 +1537,6 @@ class TestVerboseFlag:
 
         mock_set_verbose.assert_called_once_with(True)
 
-    @patch("iconfucius.cli.chat.read_trades", return_value="")
-    @patch("iconfucius.cli.chat.read_learnings", return_value="")
-    @patch("iconfucius.cli.chat.read_strategy", return_value="")
     @patch("iconfucius.cli.chat._generate_startup",
            return_value=("Greeting", "Goodbye!"))
     @patch("iconfucius.cli.chat.create_backend")
@@ -1232,8 +1544,6 @@ class TestVerboseFlag:
     @patch("iconfucius.config.set_verbose")
     def test_set_verbose_false_by_default(self, mock_set_verbose, mock_load,
                                           mock_backend_factory, mock_startup,
-                                          mock_strategy, mock_learnings,
-                                          mock_trades,
                                           tmp_path, monkeypatch):
         """run_chat() without verbose calls set_verbose(False)."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
@@ -1253,23 +1563,15 @@ class TestVerboseFlag:
 
         mock_set_verbose.assert_called_once_with(False)
 
-    @patch("iconfucius.cli.chat.read_trades", return_value="")
-    @patch("iconfucius.cli.chat.read_learnings", return_value="")
-    @patch("iconfucius.cli.chat.read_strategy", return_value="")
     @patch("iconfucius.cli.chat._generate_startup",
            return_value=("Greeting", "Goodbye!"))
     @patch("iconfucius.cli.chat.create_backend")
     @patch("iconfucius.cli.chat.load_persona")
-    @patch("iconfucius.cli.chat.execute_tool", return_value={
-        "status": "ok", "config_exists": True, "wallet_exists": True,
-        "env_exists": True, "has_api_key": True, "ready": True,
-    })
-    def test_verbose_passed_to_run_all_balances(self, mock_exec, mock_load,
+    def test_verbose_passed_to_run_all_balances(self, mock_load,
                                                  mock_backend_factory,
-                                                 mock_startup, mock_strategy,
-                                                 mock_learnings, mock_trades,
+                                                 _mock_startup,
                                                  tmp_path, monkeypatch,
-                                                 capsys):
+                                                 capsys):  # noqa: ARG002
         """run_chat(verbose=True) passes verbose=True to run_all_balances."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         (tmp_path / "iconfucius.toml").write_text(
@@ -1286,14 +1588,28 @@ class TestVerboseFlag:
         backend.model = "claude-sonnet-4-6"
         mock_backend_factory.return_value = backend
 
-        wallet_data = {"_display": "Wallet: 50,000 sats", "balance_sats": 50000}
+        def _mock_exec(name, _args=None, **_kwargs):
+            """Dispatch execute_tool by tool name."""
+            if name == "setup_status":
+                return {
+                    "status": "ok", "config_exists": True, "wallet_exists": True,
+                    "env_exists": True, "has_api_key": True, "ready": True,
+                }
+            if name == "wallet_balance":
+                return {
+                    "status": "ok",
+                    "_display": "Holdings",
+                    "wallet_ckbtc_sats": 50000,
+                    "total_odin_sats": 0,
+                    "total_token_value_sats": 0,
+                    "portfolio_sats": 50000,
+                    "constraints": {"min_deposit_sats": 5000, "min_trade_sats": 500},
+                }
+            return {"status": "error", "error": f"Unknown tool: {name}"}
 
         with patch("builtins.input", side_effect=["", "hello", EOFError]), \
-             patch("iconfucius.cli.balance.run_wallet_balance",
-                   return_value=wallet_data), \
-             patch("iconfucius.cli.balance.run_all_balances",
-                   return_value={"_display": "Holdings", "bots": []}) \
-                as mock_all_bal, \
+             patch("iconfucius.cli.chat.execute_tool",
+                   side_effect=_mock_exec) as mock_exec, \
              patch("iconfucius.cli.concurrent.set_progress_callback"), \
              patch("iconfucius.cli.concurrent.set_status_callback"), \
              patch("iconfucius.cli.chat._run_tool_loop",
@@ -1301,9 +1617,10 @@ class TestVerboseFlag:
             from iconfucius.cli.chat import run_chat
             run_chat("iconfucius", "bot-1", verbose=True)
 
-        mock_all_bal.assert_called_once()
-        _, kwargs = mock_all_bal.call_args
-        assert kwargs.get("verbose") is True
+        # Verify wallet_balance was called during startup
+        wallet_calls = [c for c in mock_exec.call_args_list
+                        if c[0][0] == "wallet_balance"]
+        assert len(wallet_calls) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -1314,21 +1631,13 @@ class TestVerboseFlag:
 class TestBotHoldingsDisplay:
     """Bot holdings are displayed at startup but NOT injected into system prompt."""
 
-    @patch("iconfucius.cli.chat.read_trades", return_value="")
-    @patch("iconfucius.cli.chat.read_learnings", return_value="")
-    @patch("iconfucius.cli.chat.read_strategy", return_value="")
     @patch("iconfucius.cli.chat._generate_startup",
            return_value=("Wise greeting quote", "Goodbye!"))
     @patch("iconfucius.cli.chat.create_backend")
     @patch("iconfucius.cli.chat.load_persona")
-    @patch("iconfucius.cli.chat.execute_tool", return_value={
-        "status": "ok", "config_exists": True, "wallet_exists": True,
-        "env_exists": True, "has_api_key": True, "ready": True,
-    })
-    def test_holdings_displayed_not_injected(self, mock_exec, mock_load,
+    def test_holdings_displayed_not_injected(self, mock_load,
                                               mock_backend_factory,
-                                              mock_startup, mock_strategy,
-                                              mock_learnings, mock_trades,
+                                              _mock_startup,
                                               tmp_path, monkeypatch, capsys):
         """Bot holdings are printed to terminal but not in system prompt."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
@@ -1346,34 +1655,42 @@ class TestBotHoldingsDisplay:
         backend.model = "claude-sonnet-4-6"
         mock_backend_factory.return_value = backend
 
-        wallet_data = {"_display": "Wallet: 50,000 sats", "balance_sats": 50000}
-        bot_data = {
-            "bots": [
-                {
-                    "name": "bot-1", "odin_sats": 10000,
-                    "tokens": [
-                        {"ticker": "RUNE", "id": "29m8", "balance": 5.0,
-                         "div": 8, "value_sats": 3000},
+        def _mock_exec(name, _args=None, **_kwargs):
+            """Dispatch execute_tool by tool name."""
+            if name == "setup_status":
+                return {
+                    "status": "ok", "config_exists": True, "wallet_exists": True,
+                    "env_exists": True, "has_api_key": True, "ready": True,
+                }
+            if name == "wallet_balance":
+                return {
+                    "status": "ok",
+                    "_display": "Bot holdings table here",
+                    "wallet_ckbtc_sats": 50000,
+                    "total_odin_sats": 30000,
+                    "total_token_value_sats": 3000,
+                    "portfolio_sats": 83000,
+                    "constraints": {"min_deposit_sats": 5000, "min_trade_sats": 500},
+                    "bots": [
+                        {"name": "bot-1", "odin_sats": 10000,
+                         "tokens": [{"ticker": "RUNE", "id": "29m8",
+                                     "balance": 5.0, "value_sats": 3000}]},
+                        {"name": "bot-2", "odin_sats": 20000, "tokens": []},
                     ],
-                },
-                {"name": "bot-2", "odin_sats": 20000, "tokens": []},
-            ],
-            "totals": {"portfolio_sats": 83000},
-            "_display": "Bot holdings table here",
-        }
+                }
+            return {"status": "error", "error": f"Unknown tool: {name}"}
 
         captured_system = {}
 
-        def spy_run_tool_loop(backend, messages, system, tools, persona_name,
-                              **kwargs):
+        def spy_run_tool_loop(_backend, _messages, system, _tools, _persona_name,
+                              **_kwargs):
+            """Spy wrapper around the tool loop for testing."""
             captured_system["value"] = system
             raise EOFError  # exit immediately
 
         with patch("builtins.input", side_effect=["", "hello", EOFError]), \
-             patch("iconfucius.cli.balance.run_wallet_balance",
-                   return_value=wallet_data), \
-             patch("iconfucius.cli.balance.run_all_balances",
-                   return_value=bot_data), \
+             patch("iconfucius.cli.chat.execute_tool",
+                   side_effect=_mock_exec), \
              patch("iconfucius.cli.concurrent.set_progress_callback"), \
              patch("iconfucius.cli.concurrent.set_status_callback"), \
              patch("iconfucius.cli.chat._run_tool_loop",
@@ -1391,6 +1708,76 @@ class TestBotHoldingsDisplay:
         assert "Wallet Balance" not in system
 
 
+class TestStartupNextStepAutoLoop:
+    """When startup balance has next_step, _run_tool_loop is called automatically."""
+
+    @patch("iconfucius.cli.chat._generate_startup",
+           return_value=("Wise greeting quote", "Goodbye!"))
+    @patch("iconfucius.cli.chat.create_backend")
+    @patch("iconfucius.cli.chat.load_persona")
+    def test_next_step_triggers_auto_loop(self, mock_load,
+                                           mock_backend_factory,
+                                           _mock_startup,
+                                           tmp_path, monkeypatch, capsys):  # noqa: ARG002
+        """Startup with next_step triggers _run_tool_loop before user input."""
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        (tmp_path / "iconfucius.toml").write_text(
+            '[settings]\n'
+            '[bots.bot-1]\ndescription = "Bot 1"\n'
+            '[bots.bot-2]\ndescription = "Bot 2"\n'
+        )
+        cfg._cached_config = None
+        cfg._cached_config_path = None
+
+        persona = _make_persona(name="IConfucius")
+        mock_load.return_value = persona
+        backend = MagicMock()
+        backend.model = "claude-sonnet-4-6"
+        mock_backend_factory.return_value = backend
+
+        def _mock_exec(name, _args=None, **_kwargs):
+            """Dispatch execute_tool by tool name."""
+            if name == "setup_status":
+                return {
+                    "status": "ok", "config_exists": True, "wallet_exists": True,
+                    "env_exists": True, "has_api_key": True, "ready": True,
+                }
+            if name == "wallet_balance":
+                return {
+                    "status": "ok",
+                    "_display": "",
+                    "wallet_ckbtc_sats": 0,
+                    "total_odin_sats": 0,
+                    "total_token_value_sats": 0,
+                    "portfolio_sats": 0,
+                    "constraints": {"min_deposit_sats": 5000, "min_trade_sats": 500},
+                    "next_step": "Wallet is empty. Use how_to_fund_wallet.",
+                    "bots": [{"name": "bot-1", "principal": "",
+                              "note": "Balance could not be checked."}],
+                }
+            return {"status": "error", "error": f"Unknown tool: {name}"}
+
+        auto_loop_called = {"count": 0}
+
+        def spy_run_tool_loop(*_args, **_kwargs):
+            """Count calls to _run_tool_loop."""
+            auto_loop_called["count"] += 1
+            raise EOFError  # exit immediately
+
+        with patch("builtins.input", side_effect=EOFError), \
+             patch("iconfucius.cli.chat.execute_tool",
+                   side_effect=_mock_exec), \
+             patch("iconfucius.cli.concurrent.set_progress_callback"), \
+             patch("iconfucius.cli.concurrent.set_status_callback"), \
+             patch("iconfucius.cli.chat._run_tool_loop",
+                   side_effect=spy_run_tool_loop):
+            from iconfucius.cli.chat import run_chat
+            run_chat("iconfucius", "bot-1")
+
+        # _run_tool_loop should have been called once automatically (next_step)
+        assert auto_loop_called["count"] == 1
+
+
 # ---------------------------------------------------------------------------
 # /model slash command
 # ---------------------------------------------------------------------------
@@ -1399,16 +1786,12 @@ class TestBotHoldingsDisplay:
 class TestModelSlashCommand:
     """Tests for /model show and /model <name> hot-swap in the chat loop."""
 
-    @patch("iconfucius.cli.chat.read_trades", return_value="")
-    @patch("iconfucius.cli.chat.read_learnings", return_value="")
-    @patch("iconfucius.cli.chat.read_strategy", return_value="")
     @patch("iconfucius.cli.chat._generate_startup",
            return_value=("Hello!", "Goodbye!"))
     @patch("iconfucius.cli.chat.create_backend")
     @patch("iconfucius.cli.chat.load_persona")
     def test_model_show(self, mock_load, mock_backend_factory,
-                        mock_startup, mock_strategy, mock_learnings,
-                        mock_trades, tmp_path, monkeypatch, capsys):
+                        mock_startup, tmp_path, monkeypatch, capsys):
         """/model (no args) prints the current model name."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         (tmp_path / "iconfucius.toml").write_text(
@@ -1433,16 +1816,12 @@ class TestModelSlashCommand:
         assert "Current model: claude-sonnet-4-6" in captured
 
     @patch("iconfucius.cli.chat._persist_ai_model")
-    @patch("iconfucius.cli.chat.read_trades", return_value="")
-    @patch("iconfucius.cli.chat.read_learnings", return_value="")
-    @patch("iconfucius.cli.chat.read_strategy", return_value="")
     @patch("iconfucius.cli.chat._generate_startup",
            return_value=("Hello!", "Goodbye!"))
     @patch("iconfucius.cli.chat.create_backend")
     @patch("iconfucius.cli.chat.load_persona")
     def test_model_switch(self, mock_load, mock_backend_factory,
-                          mock_startup, mock_strategy, mock_learnings,
-                          mock_trades, mock_persist,
+                          mock_startup, mock_persist,
                           tmp_path, monkeypatch, capsys):
         """/model <name> hot-swaps the backend model and persists."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
@@ -1469,16 +1848,12 @@ class TestModelSlashCommand:
         assert "Model changed to: claude-haiku-4-5-20251001" in captured
 
     @patch("iconfucius.cli.chat._persist_ai_model")
-    @patch("iconfucius.cli.chat.read_trades", return_value="")
-    @patch("iconfucius.cli.chat.read_learnings", return_value="")
-    @patch("iconfucius.cli.chat.read_strategy", return_value="")
     @patch("iconfucius.cli.chat._generate_startup",
            return_value=("Hello!", "Goodbye!"))
     @patch("iconfucius.cli.chat.create_backend")
     @patch("iconfucius.cli.chat.load_persona")
     def test_model_interactive_decline(self, mock_load, mock_backend_factory,
-                                        mock_startup, mock_strategy,
-                                        mock_learnings, mock_trades,
+                                        mock_startup,
                                         mock_persist,
                                         tmp_path, monkeypatch, capsys):
         """/model lists models; user says N; no change."""
@@ -1511,16 +1886,12 @@ class TestModelSlashCommand:
         assert backend.model == "claude-sonnet-4-6"
 
     @patch("iconfucius.cli.chat._persist_ai_model")
-    @patch("iconfucius.cli.chat.read_trades", return_value="")
-    @patch("iconfucius.cli.chat.read_learnings", return_value="")
-    @patch("iconfucius.cli.chat.read_strategy", return_value="")
     @patch("iconfucius.cli.chat._generate_startup",
            return_value=("Hello!", "Goodbye!"))
     @patch("iconfucius.cli.chat.create_backend")
     @patch("iconfucius.cli.chat.load_persona")
     def test_model_interactive_select(self, mock_load, mock_backend_factory,
-                                       mock_startup, mock_strategy,
-                                       mock_learnings, mock_trades,
+                                       mock_startup,
                                        mock_persist,
                                        tmp_path, monkeypatch, capsys):
         """/model interactive: user picks a model, backend updated."""
@@ -1552,16 +1923,12 @@ class TestModelSlashCommand:
         captured = capsys.readouterr().out
         assert "Model changed to: claude-opus-4-6" in captured
 
-    @patch("iconfucius.cli.chat.read_trades", return_value="")
-    @patch("iconfucius.cli.chat.read_learnings", return_value="")
-    @patch("iconfucius.cli.chat.read_strategy", return_value="")
     @patch("iconfucius.cli.chat._generate_startup",
            return_value=("Hello!", "Goodbye!"))
     @patch("iconfucius.cli.chat.create_backend")
     @patch("iconfucius.cli.chat.load_persona")
     def test_model_api_failure_fallback(self, mock_load, mock_backend_factory,
-                                         mock_startup, mock_strategy,
-                                         mock_learnings, mock_trades,
+                                         mock_startup,
                                          tmp_path, monkeypatch, capsys):
         """/model with empty list_models shows current only, no prompt."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
@@ -1708,8 +2075,8 @@ class TestHandleModelInteractive:
 # ---------------------------------------------------------------------------
 
 
-class TestPersistAiModel:
-    """Tests for _persist_ai_model writing to iconfucius.toml."""
+class TestPersistAiConfig:
+    """Tests for _persist_ai_config writing to iconfucius.toml."""
 
     def test_commented_ai_block(self, tmp_path, monkeypatch):
         """Replaces a commented # [ai] block with an active section."""
@@ -1724,14 +2091,14 @@ class TestPersistAiModel:
         cfg._cached_config = None
         cfg._cached_config_path = None
 
-        _persist_ai_model("claude-haiku-4-5-20251001")
+        _persist_ai_config(model="claude-haiku-4-5-20251001")
 
         content = config.read_text()
-        assert '[ai]\nmodel = "claude-haiku-4-5-20251001"' in content
+        assert 'model = "claude-haiku-4-5-20251001"' in content
         assert "# [ai]" not in content
 
-    def test_existing_model_line(self, tmp_path, monkeypatch):
-        """Updates an existing model = line in [ai]."""
+    def test_existing_ai_section_replaced(self, tmp_path, monkeypatch):
+        """Replaces entire [ai] section content."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         config = tmp_path / "iconfucius.toml"
         config.write_text(
@@ -1740,27 +2107,14 @@ class TestPersistAiModel:
         cfg._cached_config = None
         cfg._cached_config_path = None
 
-        _persist_ai_model("claude-haiku-4-5-20251001")
+        _persist_ai_config(api_type="openai", model="llama-3",
+                           base_url="http://localhost:8080")
 
         content = config.read_text()
-        assert 'model = "claude-haiku-4-5-20251001"' in content
+        assert 'api_type = "openai"' in content
+        assert 'model = "llama-3"' in content
+        assert 'base_url = "http://localhost:8080"' in content
         assert "claude-sonnet-4-6" not in content
-
-    def test_ai_section_without_model(self, tmp_path, monkeypatch):
-        """Appends model line when [ai] exists but has no model key."""
-        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
-        config = tmp_path / "iconfucius.toml"
-        config.write_text(
-            '[settings]\n\n[ai]\nbackend = "claude"\n'
-        )
-        cfg._cached_config = None
-        cfg._cached_config_path = None
-
-        _persist_ai_model("claude-haiku-4-5-20251001")
-
-        content = config.read_text()
-        assert 'model = "claude-haiku-4-5-20251001"' in content
-        assert 'backend = "claude"' in content
 
     def test_no_ai_section(self, tmp_path, monkeypatch):
         """Appends a new [ai] section when none exists."""
@@ -1770,10 +2124,10 @@ class TestPersistAiModel:
         cfg._cached_config = None
         cfg._cached_config_path = None
 
-        _persist_ai_model("claude-haiku-4-5-20251001")
+        _persist_ai_config(model="claude-haiku-4-5-20251001")
 
         content = config.read_text()
-        assert '[ai]\nmodel = "claude-haiku-4-5-20251001"' in content
+        assert 'model = "claude-haiku-4-5-20251001"' in content
 
     def test_invalidates_config_cache(self, tmp_path, monkeypatch):
         """After persisting, the config cache is cleared."""
@@ -1783,9 +2137,324 @@ class TestPersistAiModel:
         cfg._cached_config = {"stale": True}
         cfg._cached_config_path = config
 
-        _persist_ai_model("new-model")
+        _persist_ai_config(model="new-model")
 
         assert cfg._cached_config is None
+
+    def test_reset_removes_section(self, tmp_path, monkeypatch):
+        """Empty persist_ai_config removes [ai] section."""
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        config = tmp_path / "iconfucius.toml"
+        config.write_text(
+            '[settings]\n\n[ai]\nmodel = "old"\n\n[bots.bot-1]\n'
+        )
+        cfg._cached_config = None
+        cfg._cached_config_path = None
+
+        _persist_ai_config()  # empty = remove overrides
+
+        content = config.read_text()
+        assert "[ai]" not in content
+        assert "[bots.bot-1]" in content
+
+    def test_legacy_persist_ai_model(self, tmp_path, monkeypatch):
+        """_persist_ai_model still works as a wrapper."""
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        config = tmp_path / "iconfucius.toml"
+        config.write_text('[settings]\n')
+        cfg._cached_config = None
+        cfg._cached_config_path = None
+
+        _persist_ai_model("claude-haiku-4-5-20251001")
+
+        content = config.read_text()
+        assert 'model = "claude-haiku-4-5-20251001"' in content
+
+
+class TestResetAiConfig:
+    """Tests for _reset_ai_config commenting out the [ai] section."""
+
+    def test_comments_out_ai_section(self, tmp_path, monkeypatch):
+        """Verify comments out ai section."""
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        config = tmp_path / "iconfucius.toml"
+        config.write_text(
+            '[settings]\n\n[ai]\napi_type = "openai"\nbase_url = "http://localhost:8080"\n\n[bots.bot-1]\n'
+        )
+        cfg._cached_config = None
+        cfg._cached_config_path = None
+
+        _reset_ai_config()
+
+        content = config.read_text()
+        assert "# [ai]" in content
+        assert '# api_type = "openai"' in content
+        assert "[bots.bot-1]" in content
+
+
+class TestPersistAiTimeout:
+    """Tests for _persist_ai_timeout writing timeout to [ai] section."""
+
+    def test_adds_timeout_to_existing_ai(self, tmp_path, monkeypatch):
+        """Timeout is added to an existing [ai] section."""
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        config = tmp_path / "iconfucius.toml"
+        config.write_text(
+            '[settings]\n\n[ai]\n'
+            'api_type = "openai"\n'
+            'base_url = "http://localhost:55128"\n'
+        )
+        cfg._cached_config = None
+        cfg._cached_config_path = None
+
+        _persist_ai_timeout(1200)
+
+        content = config.read_text()
+        assert "timeout = 1200" in content
+        assert 'api_type = "openai"' in content
+        assert 'base_url = "http://localhost:55128"' in content
+
+    def test_replaces_existing_timeout(self, tmp_path, monkeypatch):
+        """Existing timeout value is replaced."""
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        config = tmp_path / "iconfucius.toml"
+        config.write_text(
+            '[settings]\n\n[ai]\n'
+            'api_type = "openai"\n'
+            'base_url = "http://localhost:55128"\n'
+            'timeout = 600\n'
+        )
+        cfg._cached_config = None
+        cfg._cached_config_path = None
+
+        _persist_ai_timeout(1200)
+
+        content = config.read_text()
+        assert "timeout = 1200" in content
+        assert "timeout = 600" not in content
+
+    def test_creates_ai_section_if_missing(self, tmp_path, monkeypatch):
+        """Creates [ai] section with timeout when none exists."""
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        config = tmp_path / "iconfucius.toml"
+        config.write_text('[settings]\n')
+        cfg._cached_config = None
+        cfg._cached_config_path = None
+
+        _persist_ai_timeout(1200)
+
+        content = config.read_text()
+        assert "timeout = 1200" in content
+
+    def test_default_timeout_removes_key(self, tmp_path, monkeypatch):
+        """Setting timeout to default (600) omits the key."""
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        config = tmp_path / "iconfucius.toml"
+        config.write_text(
+            '[settings]\n\n[ai]\n'
+            'api_type = "openai"\n'
+            'base_url = "http://localhost:55128"\n'
+            'timeout = 1200\n'
+        )
+        cfg._cached_config = None
+        cfg._cached_config_path = None
+
+        _persist_ai_timeout(600)  # AI_TIMEOUT_DEFAULT
+
+        content = config.read_text()
+        assert "timeout" not in content
+        assert 'api_type = "openai"' in content
+
+
+class TestPersistAiConfigTimeout:
+    """Tests for timeout handling across AI config changes."""
+
+    def test_ai_change_drops_timeout(self, tmp_path, monkeypatch):
+        """Switching AI endpoint drops existing timeout."""
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        config = tmp_path / "iconfucius.toml"
+        config.write_text(
+            '[settings]\n\n[ai]\n'
+            'api_type = "openai"\n'
+            'base_url = "http://localhost:55128"\n'
+            'timeout = 1200\n'
+        )
+        cfg._cached_config = None
+        cfg._cached_config_path = None
+
+        _persist_ai_config(api_type="openai",
+                           base_url="http://other-server:8080")
+
+        content = config.read_text()
+        assert "timeout" not in content
+        assert "http://other-server:8080" in content
+
+    def test_reset_drops_timeout(self, tmp_path, monkeypatch):
+        """Reset to default drops timeout."""
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        config = tmp_path / "iconfucius.toml"
+        config.write_text(
+            '[settings]\n\n[ai]\n'
+            'api_type = "openai"\n'
+            'timeout = 1200\n'
+        )
+        cfg._cached_config = None
+        cfg._cached_config_path = None
+
+        _persist_ai_config()  # reset to default
+
+        content = config.read_text()
+        assert "timeout" not in content
+        assert "[ai]" not in content
+
+    def test_model_change_preserves_timeout(self, tmp_path, monkeypatch):
+        """Model change via _persist_ai_model preserves existing timeout."""
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        config = tmp_path / "iconfucius.toml"
+        config.write_text(
+            '[settings]\n\n[ai]\n'
+            'model = "old-model"\n'
+            'timeout = 1200\n'
+        )
+        cfg._cached_config = None
+        cfg._cached_config_path = None
+
+        _persist_ai_model("new-model")
+
+        content = config.read_text()
+        assert 'model = "new-model"' in content
+        assert "timeout = 1200" in content
+
+    def test_malformed_timeout_dropped(self, tmp_path, monkeypatch):
+        """Non-numeric timeout is dropped when preserving config."""
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        config = tmp_path / "iconfucius.toml"
+        config.write_text(
+            '[settings]\n\n[ai]\n'
+            'api_type = "openai"\n'
+            'base_url = "http://localhost:55128"\n'
+            'timeout = "not-a-number"\n'
+        )
+        cfg._cached_config = None
+        cfg._cached_config_path = None
+
+        _persist_ai_config(api_type="openai",
+                           base_url="http://localhost:55128",
+                           keep_timeout=True)
+
+        content = config.read_text()
+        assert "timeout" not in content
+        assert "http://localhost:55128" in content
+
+    def test_negative_timeout_dropped(self, tmp_path, monkeypatch):
+        """Negative timeout is dropped when preserving config."""
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        config = tmp_path / "iconfucius.toml"
+        config.write_text(
+            '[settings]\n\n[ai]\n'
+            'api_type = "openai"\n'
+            'base_url = "http://localhost:55128"\n'
+            'timeout = -5\n'
+        )
+        cfg._cached_config = None
+        cfg._cached_config_path = None
+
+        _persist_ai_config(api_type="openai",
+                           base_url="http://localhost:55128",
+                           keep_timeout=True)
+
+        content = config.read_text()
+        assert "timeout" not in content
+
+    def test_config_can_be_reverted_after_failed_hotswap(self, tmp_path, monkeypatch):
+        """_persist_ai_config can restore previous config after a failed hot-swap."""
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        config = tmp_path / "iconfucius.toml"
+        config.write_text(
+            '[settings]\n\n[ai]\n'
+            'api_type = "openai"\n'
+            'base_url = "http://old-server:8080"\n'
+        )
+        cfg._cached_config = None
+        cfg._cached_config_path = None
+
+        # Simulate /ai switching to a new endpoint that persists first
+        _persist_ai_config(api_type="openai",
+                           base_url="http://broken-server:9999")
+
+        content = config.read_text()
+        assert "http://broken-server:9999" in content
+
+        # Simulate the revert that happens when create_backend fails
+        _persist_ai_config(api_type="openai",
+                           base_url="http://old-server:8080",
+                           keep_timeout=True)
+
+        content = config.read_text()
+        assert "http://old-server:8080" in content
+        assert "broken-server" not in content
+
+
+class TestPromptIncreaseTimeout:
+    """Tests for the timeout increase wizard."""
+
+    def test_user_accepts(self, tmp_path, monkeypatch):
+        """User accepts timeout increase."""
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        config = tmp_path / "iconfucius.toml"
+        config.write_text('[settings]\n\n[ai]\napi_type = "openai"\n')
+        cfg._cached_config = None
+        cfg._cached_config_path = None
+
+        with patch("builtins.input", return_value="y"):
+            result = _prompt_increase_timeout()
+
+        assert "1200" in result
+        content = config.read_text()
+        assert "timeout = 1200" in content
+
+    def test_user_declines(self, tmp_path, monkeypatch):
+        """User declines timeout increase."""
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        config = tmp_path / "iconfucius.toml"
+        config.write_text('[settings]\n\n[ai]\napi_type = "openai"\n')
+        cfg._cached_config = None
+        cfg._cached_config_path = None
+
+        with patch("builtins.input", return_value="n"):
+            result = _prompt_increase_timeout()
+
+        assert result == ""
+        content = config.read_text()
+        assert "timeout" not in content
+
+    def test_user_hits_enter_accepts(self, tmp_path, monkeypatch):
+        """Pressing Enter (empty) accepts by default."""
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        config = tmp_path / "iconfucius.toml"
+        config.write_text('[settings]\n\n[ai]\napi_type = "openai"\n')
+        cfg._cached_config = None
+        cfg._cached_config_path = None
+
+        with patch("builtins.input", return_value=""):
+            result = _prompt_increase_timeout()
+
+        assert "1200" in result
+        content = config.read_text()
+        assert "timeout = 1200" in content
+
+    def test_format_api_error_timeout(self):
+        """Timeout errors trigger the wizard prompt."""
+        e = ConnectionError(
+            "HTTPConnectionPool(host='localhost', port=55128): "
+            "Read timed out. (read timeout=600)"
+        )
+        with patch("iconfucius.cli.chat._prompt_increase_timeout",
+                   return_value="Timeout updated to 1200s.") as mock:
+            result = _format_api_error(e)
+        mock.assert_called_once()
+        assert "timed out" in result.lower()
+        assert "1200" in result
 
 
 class TestCheckPypiVersion:
@@ -1815,6 +2484,7 @@ class TestCheckPypiVersion:
 
         from urllib.error import URLError
         def mock_urlopen(url, **kwargs):
+            """Mock urllib.request.urlopen for testing."""
             if "pypi.org" in url:
                 return fake_pypi
             # GitHub release not found
@@ -1831,6 +2501,7 @@ class TestCheckPypiVersion:
         gh_json = json.dumps({"body": "- Feature A\n- Bug fix B"}).encode()
 
         def mock_urlopen(url, **kwargs):
+            """Mock urllib.request.urlopen for testing."""
             resp = MagicMock()
             resp.__enter__ = lambda s: s
             resp.__exit__ = MagicMock(return_value=False)

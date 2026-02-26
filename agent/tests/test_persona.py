@@ -4,11 +4,13 @@ import pytest
 
 import iconfucius.config as cfg
 from iconfucius.persona import (
+    DEFAULT_MODEL,
     Persona,
     PersonaNotFoundError,
     get_builtin_personas_dir,
     list_personas,
     load_persona,
+    resolve_ai_config,
     _deep_merge,
 )
 
@@ -19,6 +21,7 @@ from iconfucius.persona import (
 
 class TestBuiltinPersonas:
     def test_builtin_dir_exists(self):
+        """Verify builtin dir exists."""
         d = get_builtin_personas_dir()
         assert d.is_dir()
         assert (d / "iconfucius" / "persona.toml").exists()
@@ -27,23 +30,26 @@ class TestBuiltinPersonas:
         assert (d / "iconfucius" / "goodbye-prompt.md").exists()
 
     def test_list_personas_includes_iconfucius(self):
+        """Verify list personas includes iconfucius."""
         names = list_personas()
         assert "iconfucius" in names
 
     def test_load_builtin_iconfucius(self):
+        """Verify load builtin iconfucius."""
         p = load_persona("iconfucius")
         assert isinstance(p, Persona)
         assert p.name == "IConfucius"
-        assert p.ai_backend == "claude"
-        assert p.risk == "conservative"
+        assert p.ai_api_type == "claude"
         assert len(p.system_prompt) > 0
 
     def test_builtin_greeting_prompt_has_placeholders(self):
+        """Verify builtin greeting prompt has placeholders."""
         p = load_persona("iconfucius")
         assert "{icon}" in p.greeting_prompt
         assert "{topic}" in p.greeting_prompt
 
     def test_builtin_goodbye_prompt_loaded(self):
+        """Verify builtin goodbye prompt loaded."""
         p = load_persona("iconfucius")
         assert len(p.goodbye_prompt) > 0
 
@@ -54,6 +60,7 @@ class TestBuiltinPersonas:
 
 class TestPersonaNotFound:
     def test_raises_for_unknown_name(self):
+        """Verify raises for unknown name."""
         with pytest.raises(PersonaNotFoundError, match="nonexistent"):
             load_persona("nonexistent")
 
@@ -64,15 +71,18 @@ class TestPersonaNotFound:
 
 class TestDeepMerge:
     def test_flat_override(self):
+        """Verify flat override."""
         assert _deep_merge({"a": 1}, {"a": 2}) == {"a": 2}
 
     def test_nested_override(self):
+        """Verify nested override."""
         base = {"ai": {"backend": "claude", "model": "old"}}
         override = {"ai": {"model": "new"}}
         result = _deep_merge(base, override)
         assert result == {"ai": {"backend": "claude", "model": "new"}}
 
     def test_add_new_key(self):
+        """Verify add new key."""
         assert _deep_merge({"a": 1}, {"b": 2}) == {"a": 1, "b": 2}
 
 
@@ -91,7 +101,7 @@ class TestPersonaOverride:
         global_dir = tmp_path / ".iconfucius-global" / "personas" / "iconfucius"
         global_dir.mkdir(parents=True)
         (global_dir / "persona.toml").write_text(
-            '[defaults]\nrisk = "aggressive"\n'
+            '[persona]\nname = "GlobalConfucius"\n'
         )
         monkeypatch.setattr(
             "iconfucius.persona.get_global_personas_dir",
@@ -99,10 +109,9 @@ class TestPersonaOverride:
         )
 
         p = load_persona("iconfucius")
-        assert p.risk == "aggressive"
+        assert p.name == "GlobalConfucius"
         # Other fields still come from built-in
-        assert p.name == "IConfucius"
-        assert p.ai_backend == "claude"
+        assert p.ai_api_type == "claude"
 
         cfg._cached_config = None
         cfg._cached_config_path = None
@@ -117,11 +126,11 @@ class TestPersonaOverride:
         local_dir = tmp_path / "personas" / "iconfucius"
         local_dir.mkdir(parents=True)
         (local_dir / "persona.toml").write_text(
-            '[defaults]\nbudget_limit = 50000\n'
+            '[ai]\nmodel = "claude-haiku-4-5-20251001"\n'
         )
 
         p = load_persona("iconfucius")
-        assert p.budget_limit == 50000
+        assert p.ai_model == "claude-haiku-4-5-20251001"
         # Other fields still come from built-in
         assert p.name == "IConfucius"
 
@@ -181,6 +190,92 @@ class TestPersonaOverride:
 # AI config override from iconfucius.toml
 # ---------------------------------------------------------------------------
 
+class TestResolveAiConfig:
+    """Tests for resolve_ai_config() with all resolution table rows."""
+
+    def test_empty_config(self):
+        """Verify empty config."""
+        api_type, model, base_url = resolve_ai_config({})
+        assert api_type == "claude"
+        assert model == DEFAULT_MODEL
+        assert base_url == ""
+
+    def test_model_only_claude(self):
+        """Verify model only claude."""
+        api_type, model, base_url = resolve_ai_config({"model": "claude-sonnet-4-6"})
+        assert api_type == "claude"
+        assert model == "claude-sonnet-4-6"
+        assert base_url == ""
+
+    def test_openai_with_base_url(self):
+        """Verify openai with base url."""
+        api_type, model, base_url = resolve_ai_config({
+            "api_type": "openai",
+            "base_url": "http://localhost:55128",
+        })
+        assert api_type == "openai"
+        assert model == "default"
+        assert base_url == "http://localhost:55128"
+
+    def test_openai_with_model_and_url(self):
+        """Verify openai with model and url."""
+        api_type, model, base_url = resolve_ai_config({
+            "api_type": "openai",
+            "model": "meta-llama/Llama-3-70b",
+            "base_url": "https://api.together.xyz/v1",
+        })
+        assert api_type == "openai"
+        assert model == "meta-llama/Llama-3-70b"
+        assert base_url == "https://api.together.xyz/v1"
+
+    def test_auto_detect_openai_from_base_url(self):
+        """base_url set without api_type → auto-detect openai."""
+        api_type, model, base_url = resolve_ai_config({
+            "base_url": "http://localhost:8080",
+        })
+        assert api_type == "openai"
+        assert model == "default"
+        assert base_url == "http://localhost:8080"
+
+    def test_auto_detect_claude_from_model(self):
+        """model starts with 'claude-' without api_type → auto-detect claude."""
+        api_type, model, base_url = resolve_ai_config({
+            "model": "claude-haiku-4-5-20251001",
+        })
+        assert api_type == "claude"
+        assert model == "claude-haiku-4-5-20251001"
+        assert base_url == ""
+
+    def test_legacy_backend_key(self):
+        """Legacy 'backend' key is still supported."""
+        api_type, model, _base_url = resolve_ai_config({
+            "backend": "claude",
+            "model": "claude-sonnet-4-6",
+        })
+        assert api_type == "claude"
+        assert model == "claude-sonnet-4-6"
+
+    def test_openai_resets_inherited_claude_model(self):
+        """DEFAULT_MODEL inherited from persona is reset to 'default' for openai."""
+        api_type, model, base_url = resolve_ai_config({
+            "api_type": "openai",
+            "model": DEFAULT_MODEL,
+            "base_url": "http://localhost:55128",
+        })
+        assert api_type == "openai"
+        assert model == "default"
+        assert base_url == "http://localhost:55128"
+
+    def test_claude_keeps_default_model(self):
+        """DEFAULT_MODEL is preserved for claude api_type."""
+        api_type, model, _base_url = resolve_ai_config({
+            "api_type": "claude",
+            "model": DEFAULT_MODEL,
+        })
+        assert api_type == "claude"
+        assert model == DEFAULT_MODEL
+
+
 class TestAIConfigOverride:
     def test_project_ai_overrides_persona(self, tmp_path, monkeypatch):
         """iconfucius.toml [ai] overrides persona's [ai] section."""
@@ -189,14 +284,16 @@ class TestAIConfigOverride:
         cfg._cached_config_path = None
 
         (tmp_path / "iconfucius.toml").write_text(
-            '[settings]\n\n[ai]\nbackend = "gemini"\nmodel = "gemini-pro"\n\n'
+            '[settings]\n\n[ai]\napi_type = "openai"\nmodel = "llama-3"\n'
+            'base_url = "http://localhost:8080"\n\n'
             '[bots.bot-1]\ndescription = "Bot 1"\n'
         )
         cfg._cached_config = None
 
         p = load_persona("iconfucius")
-        assert p.ai_backend == "gemini"
-        assert p.ai_model == "gemini-pro"
+        assert p.ai_api_type == "openai"
+        assert p.ai_model == "llama-3"
+        assert p.ai_base_url == "http://localhost:8080"
 
         cfg._cached_config = None
         cfg._cached_config_path = None

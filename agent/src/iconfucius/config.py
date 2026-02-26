@@ -4,6 +4,7 @@ Loads configuration from iconfucius.toml in the project root.
 """
 
 import os
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -52,6 +53,32 @@ ODIN_API_URL = "https://api.odin.fun/v1"
 MIN_DEPOSIT_SATS = 5000   # minimum ckBTC deposit into Odin.Fun
 MIN_TRADE_SATS = 500      # minimum BTC-equivalent for buy/sell on Odin.Fun
 MIN_BTC_WITHDRAWAL_SATS = 50_000  # minimum BTC withdrawal via ckBTC minter
+WALLET_RESERVE_SATS = 1000  # minimum ckBTC to keep in wallet after deposits (for signing fees)
+
+
+# Bech32 mainnet: bc1q (segwit v0, 42 chars) or bc1p (taproot v1, 62 chars).
+# Bech32 charset (after the separator '1'): qpzry9x8gf2tvdw0s3jn54khce6mua7l
+# Notably missing: b, i, o, 1 — these are excluded to avoid visual ambiguity.
+# IC principals (e.g. rrkah-fqaaa-aaaaa-aaaaq-cai) contain dashes and don't
+# start with bc1, so they are guaranteed to never match this pattern.
+_BECH32_CHARS = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
+_BECH32_BTC_ADDRESS_RE = re.compile(rf"^bc1[qp][{_BECH32_CHARS}]{{38,58}}$")
+
+
+def is_bech32_btc_address(address: str) -> bool:
+    """Check if a string looks like a Bitcoin bech32 mainnet address.
+
+    The ckBTC minter only supports bech32 (bc1…) addresses. This check also
+    serves to cleanly separate BTC addresses from IC principals — principals
+    contain dashes and never start with bc1, so they are 100% rejected.
+    """
+    return isinstance(address, str) and _BECH32_BTC_ADDRESS_RE.match(address) is not None
+
+# ---------------------------------------------------------------------------
+# AI defaults
+# ---------------------------------------------------------------------------
+
+AI_TIMEOUT_DEFAULT = 600  # seconds
 
 # ---------------------------------------------------------------------------
 # BTC/USD rate & sats formatting
@@ -81,20 +108,21 @@ def fmt_sats(sats, btc_usd_rate) -> str:
 
 
 def fmt_tokens(count, token_id: str) -> str:
-    """Format a human-readable token count with USD value.
+    """Format a raw token balance with USD value for display.
 
     Args:
-        count: Token count (human-readable, e.g. 1000.0).
+        count: Token count in raw sub-units (as returned by canister getBalance).
         token_id: Odin token ID (e.g. '29m8').
 
     Returns:
-        e.g. '1,000.00 tokens ($5.00)' or '1,000.00 tokens' on failure.
+        e.g. '1,000.000 tokens ($5.00)' or '1,000.000 tokens' on failure.
     """
+    from decimal import Decimal
+
     try:
-        amount = float(count)
+        raw_amount = int(count)
     except (TypeError, ValueError):
         return f"{count} tokens"
-    label = f"{amount:,.3f} tokens"
     try:
         from curl_cffi import requests as cffi_requests
         resp = cffi_requests.get(
@@ -104,18 +132,21 @@ def fmt_tokens(count, token_id: str) -> str:
             timeout=10,
         )
         if resp.status_code != 200:
-            return label
+            return f"{count} tokens"
         info = resp.json()
-        price = info.get("price", 0)
-        divisibility = info.get("divisibility", 8)
+        price = Decimal(str(info.get("price", 0)))
+        divisibility = int(info.get("divisibility", 8))
+        # Convert raw sub-units to human-readable token count for display
+        scale = Decimal(10) ** divisibility
+        display_amount = Decimal(raw_amount) / scale if divisibility > 0 else Decimal(raw_amount)
+        label = f"{display_amount:,.3f} tokens"
         btc_usd_rate = get_btc_to_usd_rate()
-        # amount * price gives value in microsats (divisibility cancels out)
-        value_microsats = amount * price
+        value_microsats = (Decimal(raw_amount) * price) / scale
         value_sats = value_microsats / 1_000_000
-        usd = (value_sats / 100_000_000) * btc_usd_rate
+        usd = (value_sats / Decimal(100_000_000)) * Decimal(str(btc_usd_rate))
         return f"{label} (${usd:,.3f})"
     except Exception:
-        return label
+        return f"{count} tokens"
 
 
 # ---------------------------------------------------------------------------
@@ -336,6 +367,26 @@ def get_ai_config() -> dict:
     return config.get("ai", {})
 
 
+def get_ai_timeout() -> int:
+    """Return AI request timeout in seconds from config or default.
+
+    Resolution order:
+    1. ``timeout`` in [ai] section of iconfucius.toml
+    2. AI_TIMEOUT_DEFAULT (600)
+    """
+    config = load_config()
+    val = config.get("ai", {}).get("timeout")
+    if val is not None:
+        try:
+            timeout = int(val)
+        except (TypeError, ValueError):
+            return AI_TIMEOUT_DEFAULT
+        if timeout > 0:
+            return timeout
+        return AI_TIMEOUT_DEFAULT
+    return AI_TIMEOUT_DEFAULT
+
+
 def get_bot_persona(bot_name: str) -> str:
     """Return the persona assigned to a bot, or default persona."""
     config = load_config()
@@ -362,11 +413,26 @@ verify_certificates = false
 cache_sessions = true
 default_persona = "iconfucius"
 
-# AI backend (overrides persona defaults)
-# API key via env var: ANTHROPIC_API_KEY, GEMINI_API_KEY, etc.
+# AI configuration (overrides persona defaults)
+# Default: Claude with claude-opus-4-6 (API key via ANTHROPIC_API_KEY env var)
+#
+# Claude with a different model:
 # [ai]
-# backend = "claude"
 # model = "claude-sonnet-4-6"
+#
+# Any OpenAI-compatible endpoint (llama.cpp, Ollama, vLLM, LM Studio, etc.):
+# [ai]
+# api_type = "openai"
+# base_url = "http://localhost:55128"
+# # API key via OPENAI_API_KEY env var (optional for local servers)
+#
+# Start llama.cpp server:
+#   llama-server --jinja --port 55128 -hf bartowski/Mistral-Nemo-Instruct-2407-GGUF:Q4_K_M
+#
+# Recommended local models for tool calling (Q4_K_M quantization):
+#   ~7.5GB  Mistral-NeMo-12B    bartowski/Mistral-Nemo-Instruct-2407-GGUF:Q4_K_M
+#   ~9 GB   Qwen2.5-14B         bartowski/Qwen2.5-14B-Instruct-GGUF:Q4_K_M
+#   ~15GB   Mistral-Small-24B   bartowski/Mistral-Small-24B-Instruct-2501-GGUF:Q4_K_M
 
 # Bot definitions
 # Each bot gets its own trading identity on Odin.Fun.
