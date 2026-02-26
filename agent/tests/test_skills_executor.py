@@ -808,7 +808,7 @@ class TestWalletBalanceResult:
             "min_trade_sats": 500,
         }
 
-    def test_none_data_returns_error(self):
+    def test_none_data_returns_error_with_funding_hint(self):
         with patch("iconfucius.cli.balance.run_all_balances",
                     return_value=None):
             with patch("iconfucius.config.require_wallet", return_value=True):
@@ -816,6 +816,32 @@ class TestWalletBalanceResult:
                             return_value=["bot-1"]):
                     result = execute_tool("wallet_balance", {})
         assert result["status"] == "error"
+        assert "how_to_fund_wallet" in result["error"]
+        assert "funding" in result["error"].lower() or "fund" in result["error"].lower()
+
+    def test_bot_note_passed_through(self):
+        """Bot-level note (e.g. unfunded wallet) is passed through to result."""
+        fake_data = {
+            "wallet_ckbtc_sats": 0,
+            "totals": {"odin_sats": 0, "token_value_sats": 0, "portfolio_sats": 0},
+            "bots": [{
+                "name": "bot-1",
+                "principal": "",
+                "odin_sats": 0,
+                "tokens": [],
+                "has_odin_account": False,
+                "note": "Wallet needs funding for signing fees.",
+            }],
+            "_display": "",
+        }
+        with patch("iconfucius.cli.balance.run_all_balances",
+                    return_value=fake_data):
+            with patch("iconfucius.config.require_wallet", return_value=True):
+                with patch("iconfucius.config.get_bot_names",
+                            return_value=["bot-1"]):
+                    result = execute_tool("wallet_balance", {})
+        assert result["status"] == "ok"
+        assert result["bots"][0]["note"] == "Wallet needs funding for signing fees."
 
 
 class TestTokenDiscoverExecutor:
