@@ -1708,6 +1708,76 @@ class TestBotHoldingsDisplay:
         assert "Wallet Balance" not in system
 
 
+class TestStartupNextStepAutoLoop:
+    """When startup balance has next_step, _run_tool_loop is called automatically."""
+
+    @patch("iconfucius.cli.chat._generate_startup",
+           return_value=("Wise greeting quote", "Goodbye!"))
+    @patch("iconfucius.cli.chat.create_backend")
+    @patch("iconfucius.cli.chat.load_persona")
+    def test_next_step_triggers_auto_loop(self, mock_load,
+                                           mock_backend_factory,
+                                           _mock_startup,
+                                           tmp_path, monkeypatch, capsys):  # noqa: ARG002
+        """Startup with next_step triggers _run_tool_loop before user input."""
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        (tmp_path / "iconfucius.toml").write_text(
+            '[settings]\n'
+            '[bots.bot-1]\ndescription = "Bot 1"\n'
+            '[bots.bot-2]\ndescription = "Bot 2"\n'
+        )
+        cfg._cached_config = None
+        cfg._cached_config_path = None
+
+        persona = _make_persona(name="IConfucius")
+        mock_load.return_value = persona
+        backend = MagicMock()
+        backend.model = "claude-sonnet-4-6"
+        mock_backend_factory.return_value = backend
+
+        def _mock_exec(name, _args=None, **_kwargs):
+            """Dispatch execute_tool by tool name."""
+            if name == "setup_status":
+                return {
+                    "status": "ok", "config_exists": True, "wallet_exists": True,
+                    "env_exists": True, "has_api_key": True, "ready": True,
+                }
+            if name == "wallet_balance":
+                return {
+                    "status": "ok",
+                    "_display": "",
+                    "wallet_ckbtc_sats": 0,
+                    "total_odin_sats": 0,
+                    "total_token_value_sats": 0,
+                    "portfolio_sats": 0,
+                    "constraints": {"min_deposit_sats": 5000, "min_trade_sats": 500},
+                    "next_step": "Wallet is empty. Use how_to_fund_wallet.",
+                    "bots": [{"name": "bot-1", "principal": "",
+                              "note": "Balance could not be checked."}],
+                }
+            return {"status": "error", "error": f"Unknown tool: {name}"}
+
+        auto_loop_called = {"count": 0}
+
+        def spy_run_tool_loop(*_args, **_kwargs):
+            """Count calls to _run_tool_loop."""
+            auto_loop_called["count"] += 1
+            raise EOFError  # exit immediately
+
+        with patch("builtins.input", side_effect=EOFError), \
+             patch("iconfucius.cli.chat.execute_tool",
+                   side_effect=_mock_exec), \
+             patch("iconfucius.cli.concurrent.set_progress_callback"), \
+             patch("iconfucius.cli.concurrent.set_status_callback"), \
+             patch("iconfucius.cli.chat._run_tool_loop",
+                   side_effect=spy_run_tool_loop):
+            from iconfucius.cli.chat import run_chat
+            run_chat("iconfucius", "bot-1")
+
+        # _run_tool_loop should have been called once automatically (next_step)
+        assert auto_loop_called["count"] == 1
+
+
 # ---------------------------------------------------------------------------
 # /model slash command
 # ---------------------------------------------------------------------------

@@ -157,6 +157,29 @@ class _Spinner:
             time.sleep(0.08)
 
 
+def _run_with_spinner(label: str, func, *args, **kwargs):
+    """Run *func* inside a spinner with progress/status callbacks wired up."""
+    from iconfucius.cli.concurrent import set_progress_callback, set_status_callback
+
+    with _Spinner(label) as sp:
+        def _on_progress(done, total):
+            w = 20
+            filled = int(w * done / total)
+            bar = "█" * filled + "░" * (w - filled)
+            sp.update(f"{label} [{bar}] {done}/{total}")
+
+        def _on_status(msg):
+            sp.update(f"{label} {msg}")
+
+        set_progress_callback(_on_progress)
+        set_status_callback(_on_status)
+        try:
+            return func(*args, **kwargs)
+        finally:
+            set_progress_callback(None)
+            set_status_callback(None)
+
+
 def _get_language_code() -> str:
     """Detect system language. Returns 'cn' for Chinese, 'en' otherwise."""
     try:
@@ -833,33 +856,11 @@ def _run_tool_loop(backend, messages: list[dict], system: str,
             )
 
             if use_spinner:
-                with _Spinner(f"Running {block.name}...") as spinner:
-                    from iconfucius.cli.concurrent import (
-                        set_progress_callback,
-                        set_status_callback,
-                    )
-
-                    def _on_progress(done, total):
-                        """Handle a progress update callback."""
-                        width = 20
-                        filled = int(width * done / total)
-                        bar = "█" * filled + "░" * (width - filled)
-                        spinner.update(
-                            f"Running {block.name}... [{bar}] {done}/{total}"
-                        )
-
-                    def _on_status(message):
-                        """Handle a status update callback."""
-                        spinner.update(f"Running {block.name}... {message}")
-
-                    set_progress_callback(_on_progress)
-                    set_status_callback(_on_status)
-                    try:
-                        result = execute_tool(block.name, block.input,
-                                              persona_name=persona_key)
-                    finally:
-                        set_progress_callback(None)
-                        set_status_callback(None)
+                result = _run_with_spinner(
+                    f"Running {block.name}...",
+                    execute_tool, block.name, block.input,
+                    persona_name=persona_key,
+                )
             else:
                 result = execute_tool(block.name, block.input,
                                       persona_name=persona_key)
@@ -1122,32 +1123,11 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False,
     startup_balance_result = None
     if setup.get("wallet_exists"):
         try:
-            from iconfucius.cli.concurrent import (
-                set_progress_callback,
-                set_status_callback,
+            startup_balance_result = _run_with_spinner(
+                "Checking balances...",
+                execute_tool, "wallet_balance", {},
+                persona_name=persona_name,
             )
-            with _Spinner("Checking balances...") as sp:
-                def _on_progress(done, total):
-                    """Handle a progress update callback."""
-                    w = 20
-                    filled = int(w * done / total)
-                    bar = "█" * filled + "░" * (w - filled)
-                    sp.update(f"Checking balances... [{bar}] {done}/{total}")
-
-                def _on_status(msg):
-                    """Handle a status update callback."""
-                    sp.update(f"Checking balances... {msg}")
-
-                set_progress_callback(_on_progress)
-                set_status_callback(_on_status)
-                try:
-                    startup_balance_result = execute_tool(
-                        "wallet_balance", {},
-                        persona_name=persona_name,
-                    )
-                finally:
-                    set_progress_callback(None)
-                    set_status_callback(None)
             if startup_balance_result and startup_balance_result.get("status") == "ok":
                 display_text = startup_balance_result.pop("_display", "")
                 if display_text:
