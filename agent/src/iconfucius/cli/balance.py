@@ -737,14 +737,12 @@ def _format_holdings_table(all_data: list, btc_usd_rate: float | None,
     headers = ["Bot", "ckBTC"] + token_headers
     rows = []
     total_odin_sats = 0
-    any_odin_unknown = False
     total_token_balances = {ticker: 0 for ticker in all_tickers}
     total_token_divisibility = {ticker: 0 for ticker in all_tickers}
     total_token_value_sats = {ticker: 0.0 for ticker in all_tickers}
 
     for d in all_data:
         if d.odin_sats is None:
-            any_odin_unknown = True
             bot_odin = 0
         else:
             bot_odin = int(d.odin_sats)

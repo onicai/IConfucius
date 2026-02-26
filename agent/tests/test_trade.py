@@ -196,14 +196,14 @@ class TestRunTradeErrors:
         assert result["status"] == "error"
         assert "wallet" in result["error"].lower()
 
-    def test_invalid_action(self, odin_project):
+    def test_invalid_action(self, odin_project):  # noqa: ARG002
         """Verify invalid action."""
         from iconfucius.cli.trade import run_trade
         result = run_trade(bot_name="bot-1", action="hold", token_id="29m8", amount="1000")
         assert result["status"] == "error"
         assert "must be 'buy' or 'sell'" in result["error"]
 
-    def test_buy_all_rejected(self, odin_project):
+    def test_buy_all_rejected(self, odin_project):  # noqa: ARG002
         """Verify buy all rejected."""
         from iconfucius.cli.trade import run_trade
         result = run_trade(bot_name="bot-1", action="buy", token_id="29m8", amount="all")

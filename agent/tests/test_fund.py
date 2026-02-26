@@ -10,7 +10,7 @@ M = "iconfucius.cli.fund"
 def _make_mock_identity(principal_str="controller-principal"):
     """Create a mock identity for testing."""
     identity = MagicMock()
-    identity.sender.return_value = MagicMock(__str__=lambda s: principal_str)
+    identity.sender.return_value = MagicMock(__str__=lambda _: principal_str)
     return identity
 
 
@@ -202,7 +202,7 @@ class TestRunFundErrors:
         assert result["status"] == "error"
         assert "No wallet found" in result["error"]
 
-    def test_zero_amount(self, odin_project):
+    def test_zero_amount(self, odin_project):  # noqa: ARG002
         """Verify zero amount."""
         from iconfucius.cli.fund import run_fund
         result = run_fund(bot_names=["bot-1"], amount=0)

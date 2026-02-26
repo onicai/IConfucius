@@ -1133,7 +1133,7 @@ class TestChatHintsPlacement:
         backend.model = "claude-sonnet-4-6"
         mock_backend_factory.return_value = backend
 
-        def _mock_exec(name, args=None, **kwargs):
+        def _mock_exec(name, _args=None, **_kwargs):
             """Dispatch execute_tool by tool name."""
             if name == "setup_status":
                 return {
@@ -1588,7 +1588,7 @@ class TestVerboseFlag:
         backend.model = "claude-sonnet-4-6"
         mock_backend_factory.return_value = backend
 
-        def _mock_exec(name, args=None, **kwargs):
+        def _mock_exec(name, _args=None, **_kwargs):
             """Dispatch execute_tool by tool name."""
             if name == "setup_status":
                 return {
@@ -1655,7 +1655,7 @@ class TestBotHoldingsDisplay:
         backend.model = "claude-sonnet-4-6"
         mock_backend_factory.return_value = backend
 
-        def _mock_exec(name, args=None, **kwargs):
+        def _mock_exec(name, _args=None, **_kwargs):
             """Dispatch execute_tool by tool name."""
             if name == "setup_status":
                 return {
@@ -1682,8 +1682,8 @@ class TestBotHoldingsDisplay:
 
         captured_system = {}
 
-        def spy_run_tool_loop(backend, messages, system, tools, persona_name,
-                              **kwargs):
+        def spy_run_tool_loop(_backend, _messages, system, _tools, _persona_name,
+                              **_kwargs):
             """Spy wrapper around the tool loop for testing."""
             captured_system["value"] = system
             raise EOFError  # exit immediately

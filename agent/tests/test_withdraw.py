@@ -10,7 +10,7 @@ M = "iconfucius.cli.withdraw"
 def _make_mock_identity(principal_str="controller-principal"):
     """Create a mock identity for testing."""
     identity = MagicMock()
-    identity.sender.return_value = MagicMock(__str__=lambda s: principal_str)
+    identity.sender.return_value = MagicMock(__str__=lambda _: principal_str)
     return identity
 
 

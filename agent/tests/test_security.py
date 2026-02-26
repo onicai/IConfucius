@@ -566,7 +566,7 @@ class TestBotResolutionSecurity:
         from iconfucius.skills.executor import _resolve_bot_names
         assert _resolve_bot_names({"all_bots": False}) == []
 
-    def test_all_bots_true_resolves_all(self, odin_project):
+    def test_all_bots_true_resolves_all(self, odin_project):  # noqa: ARG002
         """Verify all bots true resolves all."""
         from iconfucius.skills.executor import _resolve_bot_names
         result = _resolve_bot_names({"all_bots": True})
@@ -905,7 +905,7 @@ class TestFundLowLevelAmounts:
         assert result["status"] == "error"
         assert "positive" in result["error"].lower()
 
-    def test_negative_amount(self, odin_project):
+    def test_negative_amount(self, odin_project):  # noqa: ARG002
         """Verify negative amount."""
         from iconfucius.cli.fund import run_fund
         result = run_fund(bot_names=["bot-1"], amount=-5000)

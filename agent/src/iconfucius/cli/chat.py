@@ -1155,7 +1155,8 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False,
         except (KeyboardInterrupt, EOFError):
             print()  # user cancelled — continue to chat
         except Exception:
-            pass  # non-critical — don't block chat startup
+            from iconfucius.logging_config import get_logger
+            get_logger().debug("Startup balance check failed", exc_info=True)
 
     tools = get_tools_for_anthropic()
     messages: list[dict] = []
@@ -1205,7 +1206,8 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False,
             _run_tool_loop(backend, messages, system, tools, persona.name,
                            persona_key=persona_name)
         except Exception:
-            pass  # non-critical — don't block chat startup
+            from iconfucius.logging_config import get_logger
+            get_logger().debug("Startup auto next_step failed", exc_info=True)
 
     def _prompt_banner() -> None:
         """Print separator lines with optional upgrade notice."""
