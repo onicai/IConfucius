@@ -136,7 +136,7 @@ LM Studio, Together AI, etc.). The `base_url` defaults to
 In a second terminal:
 
 ```bash
-iconfucius --experimental
+iconfucius --experimental   # enables /ai command to switch models at runtime
 ```
 
 ## Project Layout
@@ -186,9 +186,9 @@ The software and hosted services are provided "as is", without warranty of any k
 - ✅ Self-upgrade: `/upgrade` command updates and restarts the CLI in-place
 - ✅ Version awareness: shows running version in prompt, notifies when updates are available
 - ✅ Conversation logs: `ai-cached` JSONL with system/tools deduplication for quick reading
-- ✅ Prompt caching: system prompt, tools, and messages cached with Anthropic's ephemeral cache for lower latency and cost
+- ✅ Prompt caching: system prompt, tools, and messages cached with Anthropic's ephemeral cache for lower latency and cost (Claude backend only)
 - ✅ Default AI model: Claude opus-4-6 with `/ai` command to switch at runtime (experimental)
-- ✅ OpenAI-compatible backend: llama.cpp, Ollama, vLLM, LM Studio, Together AI, etc.
+- ✅ OpenAI-compatible API backend: llama.cpp, Ollama, vLLM, LM Studio, Together AI, etc.
 
 ## Coming Next
 

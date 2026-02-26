@@ -150,6 +150,7 @@ class TestHowToFundWalletDefinition:
 
     def test_description_mentions_empty_wallet(self):
         meta = get_tool_metadata("how_to_fund_wallet")
+        assert meta is not None, "how_to_fund_wallet tool not found"
         assert "empty" in meta["description"] or "insufficient" in meta["description"]
 
     def test_wallet_receive_removed(self):

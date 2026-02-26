@@ -117,8 +117,10 @@ def fmt_tokens(count, token_id: str) -> str:
     Returns:
         e.g. '1,000.000 tokens ($5.00)' or '1,000.000 tokens' on failure.
     """
+    from decimal import Decimal
+
     try:
-        raw_amount = float(count)
+        raw_amount = int(count)
     except (TypeError, ValueError):
         return f"{count} tokens"
     try:
@@ -132,15 +134,16 @@ def fmt_tokens(count, token_id: str) -> str:
         if resp.status_code != 200:
             return f"{count} tokens"
         info = resp.json()
-        price = info.get("price", 0)
-        divisibility = info.get("divisibility", 8)
+        price = Decimal(str(info.get("price", 0)))
+        divisibility = int(info.get("divisibility", 8))
         # Convert raw sub-units to human-readable token count for display
-        display_amount = raw_amount / (10 ** divisibility) if divisibility > 0 else raw_amount
+        scale = Decimal(10) ** divisibility
+        display_amount = Decimal(raw_amount) / scale if divisibility > 0 else Decimal(raw_amount)
         label = f"{display_amount:,.3f} tokens"
         btc_usd_rate = get_btc_to_usd_rate()
-        value_microsats = (raw_amount * price) / (10 ** divisibility)
+        value_microsats = (Decimal(raw_amount) * price) / scale
         value_sats = value_microsats / 1_000_000
-        usd = (value_sats / 100_000_000) * btc_usd_rate
+        usd = (value_sats / Decimal(100_000_000)) * Decimal(str(btc_usd_rate))
         return f"{label} (${usd:,.3f})"
     except Exception:
         return f"{count} tokens"

@@ -235,7 +235,7 @@ class TestResolveAiConfig:
 
     def test_legacy_backend_key(self):
         """Legacy 'backend' key is still supported."""
-        api_type, model, base_url = resolve_ai_config({
+        api_type, model, _base_url = resolve_ai_config({
             "backend": "claude",
             "model": "claude-sonnet-4-6",
         })
@@ -255,7 +255,7 @@ class TestResolveAiConfig:
 
     def test_claude_keeps_default_model(self):
         """DEFAULT_MODEL is preserved for claude api_type."""
-        api_type, model, base_url = resolve_ai_config({
+        api_type, model, _base_url = resolve_ai_config({
             "api_type": "claude",
             "model": DEFAULT_MODEL,
         })

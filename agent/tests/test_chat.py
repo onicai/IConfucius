@@ -1422,25 +1422,25 @@ class TestReadlineEnabled:
                 sys.modules["readline"] = saved
 
     def test_readline_import_failure_is_silent(self):
-        """If readline is unavailable, no error is raised."""
+        """If readline is unavailable, reloading the chat module doesn't raise."""
         import sys
         import importlib
+        import iconfucius.cli.chat as chat_module
 
         saved = sys.modules.get("readline")
-        # Simulate missing readline
-        sys.modules["readline"] = None  # blocks import
+        # Make import readline raise ImportError
+        sys.modules["readline"] = None
         try:
-            # This should not raise — the try/except handles ImportError
-            # We verify the pattern directly:
-            try:
-                import readline  # noqa: F401
-            except ImportError:
-                pass  # expected path
+            # Reload triggers the try/except import readline block —
+            # should complete without raising.
+            importlib.reload(chat_module)
         finally:
             if saved is not None:
                 sys.modules["readline"] = saved
             elif "readline" in sys.modules:
                 del sys.modules["readline"]
+            # Restore module to clean state
+            importlib.reload(chat_module)
 
 
 # ---------------------------------------------------------------------------
@@ -2220,8 +2220,8 @@ class TestPersistAiConfigTimeout:
         content = config.read_text()
         assert "timeout" not in content
 
-    def test_hotswap_failure_reverts_config_file(self, tmp_path, monkeypatch):
-        """Backend hot-swap failure must revert the persisted config file."""
+    def test_config_can_be_reverted_after_failed_hotswap(self, tmp_path, monkeypatch):
+        """_persist_ai_config can restore previous config after a failed hot-swap."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         config = tmp_path / "iconfucius.toml"
         config.write_text(

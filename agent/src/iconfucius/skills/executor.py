@@ -8,6 +8,10 @@ import json
 import os
 from pathlib import Path
 
+from iconfucius.logging_config import get_logger
+
+_log = get_logger()
+
 
 # Session-level flag for experimental features (set by enable_experimental tool)
 _experimental_enabled = False
@@ -394,7 +398,8 @@ def _handle_how_to_fund_wallet(args: dict) -> dict:
         rate = None
 
     balance_str = fmt_sats(balance, rate)
-    min_deposit = fmt_sats(10_000, rate)
+    from iconfucius.config import MIN_DEPOSIT_SATS
+    min_deposit = fmt_sats(MIN_DEPOSIT_SATS, rate)
     display = (
         f"Wallet balance: {balance_str}\n"
         f"\n"
@@ -1089,7 +1094,6 @@ def _handle_trade_buy(args: dict) -> dict:
     if amount_usd is not None and not amount:
         try:
             amount = _usd_to_sats(amount_usd)
-            args["amount"] = amount  # write back for _record_trade
         except Exception as e:
             return {"status": "error", "error": f"USD conversion failed: {e}"}
 
@@ -1124,7 +1128,6 @@ def _handle_trade_sell(args: dict) -> dict:
         try:
             amount = _usd_to_tokens(amount_usd, token_id)
             amount_is_subunits = True
-            args["amount"] = amount  # write back for _record_trade
         except Exception as e:
             return {"status": "error", "error": f"USD conversion failed: {e}"}
 
@@ -1251,7 +1254,7 @@ def _handle_withdraw(args: dict) -> dict:
 
     # Include updated wallet balance so the AI knows how much is available
     try:
-        from iconfucius.config import get_btc_to_usd_rate, fmt_sats
+        from iconfucius.config import get_btc_to_usd_rate, get_pem_file, fmt_sats
         from iconfucius.transfers import create_icrc1_canister, get_balance, IC_HOST
         from icp_agent import Agent, Client
         from icp_identity import Identity
@@ -1259,9 +1262,7 @@ def _handle_withdraw(args: dict) -> dict:
         client = Client(url=IC_HOST)
         anon_agent = Agent(Identity(anonymous=True), client)
         canister = create_icrc1_canister(anon_agent)
-        identity = Identity.from_pem_file(
-            str(require_wallet())
-        )
+        identity = Identity.from_pem_file(get_pem_file())
         wallet_sats = get_balance(canister, str(identity.sender()))
         try:
             rate = get_btc_to_usd_rate()
@@ -1269,8 +1270,8 @@ def _handle_withdraw(args: dict) -> dict:
             rate = None
         resp["wallet_balance_sats"] = wallet_sats
         resp["wallet_balance_display"] = fmt_sats(wallet_sats, rate)
-    except Exception:
-        pass  # best-effort
+    except Exception as exc:
+        _log.debug("Skipping wallet balance enrichment: %s", exc)
 
     return resp
 
@@ -1366,7 +1367,7 @@ def _handle_wallet_send(args: dict) -> dict:
             wallet_sats = 0
             wallet_display = "unknown"
             try:
-                from iconfucius.config import fmt_sats, get_btc_to_usd_rate
+                from iconfucius.config import fmt_sats, get_btc_to_usd_rate, get_pem_file
                 from iconfucius.transfers import (
                     create_icrc1_canister, get_balance, IC_HOST,
                 )
@@ -1376,7 +1377,7 @@ def _handle_wallet_send(args: dict) -> dict:
                 client = Client(url=IC_HOST)
                 anon_agent = Agent(Identity(anonymous=True), client)
                 canister = create_icrc1_canister(anon_agent)
-                identity = Identity.from_pem_file(str(require_wallet()))
+                identity = Identity.from_pem_file(get_pem_file())
                 wallet_sats = get_balance(canister, str(identity.sender()))
                 try:
                     rate = get_btc_to_usd_rate()
@@ -1497,8 +1498,8 @@ def _record_trade(tool_name: str, args: dict, result: dict,
 
     try:
         append_trade(persona_name, entry)
-    except Exception:
-        pass  # best-effort
+    except Exception as exc:
+        _log.debug("Skipping trade recording: %s", exc)
 
 
 # ---------------------------------------------------------------------------
@@ -1540,8 +1541,8 @@ def _record_balance_snapshot(result: dict, persona_name: str) -> None:
 
     try:
         append_balance_snapshot(persona_name, snapshot)
-    except Exception:
-        pass  # best-effort
+    except Exception as exc:
+        _log.debug("Skipping balance snapshot: %s", exc)
 
 
 # ---------------------------------------------------------------------------

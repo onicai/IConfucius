@@ -454,7 +454,7 @@ def _start_chat():
         # Show deposit address and funding instructions
         addr_result = execute_tool("how_to_fund_wallet", {})
         if addr_result.get("status") == "ok":
-            print(addr_result["display"])
+            print(addr_result.get("display", ""))
             print()
         setup = execute_tool("setup_status", {})
 

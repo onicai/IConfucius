@@ -1107,6 +1107,33 @@ class TestTradeUsdAmount:
         assert result["status"] == "ok"
         assert result["succeeded"] == 1
 
+    @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100000.0)
+    def test_buy_usd_does_not_mutate_args(self, _mock_usd, tmp_path, monkeypatch):
+        """trade_buy with amount_usd must not write back into args dict."""
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        fake_results = [("bot-1", {"status": "ok", "action": "buy"})]
+        args = {"token_id": "29m8", "amount_usd": 20.0, "bot_name": "bot-1"}
+        with patch("iconfucius.config.require_wallet", return_value=True):
+            with patch("iconfucius.cli.concurrent.run_per_bot",
+                        return_value=fake_results):
+                execute_tool("trade_buy", args)
+        assert "amount" not in args
+
+    @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100000.0)
+    @patch("iconfucius.tokens.fetch_token_data",
+           return_value={"price": 1500, "divisibility": 8})
+    def test_sell_usd_does_not_mutate_args(self, _mock_fetch, _mock_usd,
+                                            tmp_path, monkeypatch):
+        """trade_sell with amount_usd must not write raw subunits into args."""
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        fake_results = [("bot-1", {"status": "ok", "action": "sell"})]
+        args = {"token_id": "29m8", "amount_usd": 5.0, "bot_name": "bot-1"}
+        with patch("iconfucius.config.require_wallet", return_value=True):
+            with patch("iconfucius.cli.concurrent.run_per_bot",
+                        return_value=fake_results):
+                execute_tool("trade_sell", args)
+        assert "amount" not in args
+
     def test_buy_no_amount_returns_error(self):
         """trade_buy without amount or amount_usd returns error."""
         with patch("iconfucius.config.require_wallet", return_value=True):

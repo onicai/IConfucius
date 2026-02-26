@@ -6,12 +6,14 @@ from unittest.mock import patch
 import pytest
 
 from iconfucius.config import (
+    AI_TIMEOUT_DEFAULT,
     CONFIG_FILENAME,
     PEM_FILE,
     _project_root,
     add_bots_to_config,
     create_default_config,
     find_config,
+    get_ai_timeout,
     get_bot_description,
     get_bot_names,
     get_pem_file,
@@ -342,7 +344,6 @@ class TestGetAiTimeout:
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         cfg._cached_config = None
         cfg._cached_config_path = None
-        from iconfucius.config import AI_TIMEOUT_DEFAULT, get_ai_timeout
         assert get_ai_timeout() == AI_TIMEOUT_DEFAULT
 
     def test_valid_timeout(self, tmp_path, monkeypatch):
@@ -350,7 +351,6 @@ class TestGetAiTimeout:
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         cfg._cached_config = None
         cfg._cached_config_path = None
-        from iconfucius.config import get_ai_timeout
         assert get_ai_timeout() == 300
 
     def test_malformed_timeout_falls_back(self, tmp_path, monkeypatch):
@@ -358,7 +358,6 @@ class TestGetAiTimeout:
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         cfg._cached_config = None
         cfg._cached_config_path = None
-        from iconfucius.config import AI_TIMEOUT_DEFAULT, get_ai_timeout
         assert get_ai_timeout() == AI_TIMEOUT_DEFAULT
 
     def test_negative_timeout_falls_back(self, tmp_path, monkeypatch):
@@ -366,7 +365,6 @@ class TestGetAiTimeout:
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         cfg._cached_config = None
         cfg._cached_config_path = None
-        from iconfucius.config import AI_TIMEOUT_DEFAULT, get_ai_timeout
         assert get_ai_timeout() == AI_TIMEOUT_DEFAULT
 
     def test_zero_timeout_falls_back(self, tmp_path, monkeypatch):
@@ -374,7 +372,6 @@ class TestGetAiTimeout:
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         cfg._cached_config = None
         cfg._cached_config_path = None
-        from iconfucius.config import AI_TIMEOUT_DEFAULT, get_ai_timeout
         assert get_ai_timeout() == AI_TIMEOUT_DEFAULT
 
 

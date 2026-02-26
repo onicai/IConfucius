@@ -534,7 +534,10 @@ def _handle_ai_interactive(backend, persona) -> tuple:
         return ("openai", model, base_url)
 
     if action == "model":
+        old_model = backend.model
         _handle_model_interactive(backend)
+        if backend.model != old_model:
+            persona.ai_model = backend.model
         return None
 
     if action == "reset":
@@ -1154,8 +1157,9 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False,
                                     "bots": bot_data.get("bots", []),
                                 }
                                 _record_balance_snapshot(snapshot_result, persona_name)
-                            except Exception:
-                                pass
+                            except Exception as exc:
+                                from iconfucius.logging_config import get_logger
+                                get_logger().debug("Skipping balance snapshot: %s", exc)
                     except (KeyboardInterrupt, EOFError):
                         print()  # user cancelled — continue to chat
         except Exception:
@@ -1223,11 +1227,13 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False,
             elif parts[1].strip().startswith("model "):
                 new_model = parts[1].strip()[6:].strip()
                 backend.model = new_model
+                persona.ai_model = new_model
                 _persist_ai_model(new_model)
                 print(f"\n  Model changed to: {new_model}\n")
             else:
                 new_model = parts[1].strip()
                 backend.model = new_model
+                persona.ai_model = new_model
                 _persist_ai_model(new_model)
                 print(f"\n  Model changed to: {new_model}\n")
             # Hot-swap backend when api_type or base_url changed
