@@ -459,7 +459,8 @@ def send(
     )
 
     # Detect address type
-    is_btc_address = address.startswith("bc1")
+    from iconfucius.config import is_bech32_btc_address
+    is_btc = is_bech32_btc_address(address)
 
     # Load wallet identity (PEM)
     identity = _load_identity()
@@ -481,7 +482,7 @@ def send(
     wallet_balance = get_balance(icrc1_canister__anon, wallet_principal)
     print(f"Wallet balance: {fmt_sats(wallet_balance, btc_usd_rate)}")
 
-    if is_btc_address:
+    if is_btc:
         result = _send_btc(
             amount, address, wallet_principal, wallet_balance,
             auth_agent, anon_agent, icrc1_canister__anon, icrc1_canister__wallet,

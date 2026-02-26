@@ -17,6 +17,7 @@ from iconfucius.config import (
     get_pem_file,
     get_cache_sessions,
     get_verify_certificates,
+    is_bech32_btc_address,
     load_config,
     remove_bots_from_config,
     require_wallet,
@@ -375,3 +376,89 @@ class TestGetAiTimeout:
         cfg._cached_config_path = None
         from iconfucius.config import AI_TIMEOUT_DEFAULT, get_ai_timeout
         assert get_ai_timeout() == AI_TIMEOUT_DEFAULT
+
+
+class TestIsBech32BtcAddress:
+    """Tests for is_bech32_btc_address() bech32 regex validation."""
+
+    # --- Valid bech32 addresses ---
+
+    def test_segwit_v0_address(self):
+        """bc1q… (P2WPKH, 42 chars) is a valid BTC address."""
+        addr = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"
+        assert is_bech32_btc_address(addr) is True
+
+    def test_taproot_v1_address(self):
+        """bc1p… (P2TR, 62 chars) is a valid BTC address."""
+        addr = "bc1p5d7rjq7g6rdk2yhzks9smlaqtedr4dekq08ge8ztwac72sfr9rusxg3s7p"
+        assert is_bech32_btc_address(addr) is True
+
+    def test_segwit_v0_p2wsh(self):
+        """bc1q… (P2WSH, 62 chars) is a valid BTC address."""
+        # 62-char bc1q address (same length as taproot)
+        addr = "bc1qwqdg6squsna38e46795at95yu9atm8azzmyvckulcc7kytlcckxswvvzej"
+        assert is_bech32_btc_address(addr) is True
+
+    # --- IC principals (must never match) ---
+
+    def test_ic_principal_rejected(self):
+        """IC principals contain dashes and are never BTC addresses."""
+        assert is_bech32_btc_address("rrkah-fqaaa-aaaaa-aaaaq-cai") is False
+
+    def test_ic_principal_short(self):
+        assert is_bech32_btc_address("2vxsx-fae") is False
+
+    def test_ic_principal_user(self):
+        """Typical user principal from Ed25519 identity."""
+        assert is_bech32_btc_address("un4fu-tqaaa-aaaab-qadjq-cai") is False
+
+    # --- Legacy BTC formats (not supported by ckBTC minter) ---
+
+    def test_legacy_p2pkh_rejected(self):
+        """Legacy 1… addresses are not supported by ckBTC minter."""
+        assert is_bech32_btc_address("1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa") is False
+
+    def test_legacy_p2sh_rejected(self):
+        """Legacy 3… addresses are not supported by ckBTC minter."""
+        assert is_bech32_btc_address("3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy") is False
+
+    # --- Edge cases ---
+
+    def test_empty_string(self):
+        assert is_bech32_btc_address("") is False
+
+    def test_none_rejected(self):
+        assert is_bech32_btc_address(None) is False
+
+    def test_integer_rejected(self):
+        assert is_bech32_btc_address(12345) is False
+
+    def test_bc1_prefix_only(self):
+        """Just 'bc1' with no payload is not a valid address."""
+        assert is_bech32_btc_address("bc1") is False
+
+    def test_bc1q_too_short(self):
+        """bc1q with insufficient characters."""
+        assert is_bech32_btc_address("bc1q123") is False
+
+    def test_bc1_wrong_version(self):
+        """bc1x… (invalid version character) rejected."""
+        assert is_bech32_btc_address("bc1xw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4") is False
+
+    def test_uppercase_rejected(self):
+        """Bech32 addresses must be lowercase."""
+        addr = "BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T4"
+        assert is_bech32_btc_address(addr) is False
+
+    def test_mixed_case_rejected(self):
+        addr = "bc1Qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"
+        assert is_bech32_btc_address(addr) is False
+
+    def test_testnet_address_rejected(self):
+        """tb1… (testnet) is not mainnet and should be rejected."""
+        assert is_bech32_btc_address("tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx") is False
+
+    def test_invalid_chars_rejected(self):
+        """Bech32 doesn't use letters b, i, o (after prefix)."""
+        addr = "bc1qw508b6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"
+        assert is_bech32_btc_address(addr) is False

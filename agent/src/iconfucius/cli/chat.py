@@ -320,7 +320,13 @@ def _persist_ai_config(api_type: str = "", model: str = "",
     # Preserve existing timeout if requested
     existing_timeout = None
     if keep_timeout:
-        existing_timeout = cfg.load_config().get("ai", {}).get("timeout")
+        raw_timeout = cfg.load_config().get("ai", {}).get("timeout")
+        if raw_timeout is not None:
+            try:
+                parsed = int(raw_timeout)
+            except (TypeError, ValueError):
+                parsed = None
+            existing_timeout = parsed if parsed and parsed > 0 else None
 
     # Build the new [ai] section content
     lines = ["[ai]"]
@@ -1240,6 +1246,12 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False,
                     persona.ai_api_type = prev_api_type
                     persona.ai_model = prev_model
                     persona.ai_base_url = prev_base_url
+                    _persist_ai_config(
+                        api_type=prev_api_type,
+                        model=prev_model,
+                        base_url=prev_base_url,
+                        keep_timeout=True,
+                    )
                     continue
                 backend = LoggingBackend(new_backend, conv_logger)
                 non_default = _is_non_default_ai(persona)

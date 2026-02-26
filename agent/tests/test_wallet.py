@@ -16,6 +16,9 @@ AG = "icp_agent.Agent"
 CL = "icp_agent.Client"
 TR = "iconfucius.transfers"
 
+# Valid bech32 address for tests that go through is_bech32_btc_address()
+_BTC_ADDR = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"
+
 
 # ---------------------------------------------------------------------------
 # wallet create
@@ -413,7 +416,7 @@ class TestWalletSendBtc:
 
         mock_get_bal.side_effect = [100_000, 40_000]
 
-        result = runner.invoke(app, ["wallet", "send", "50000", "bc1qtest123"])
+        result = runner.invoke(app, ["wallet", "send", "50000", _BTC_ADDR])
         assert result.exit_code == 0
         assert "BTC withdrawal initiated" in result.output
 
@@ -444,7 +447,7 @@ class TestWalletSendBtc:
         mock_ckbtc.icrc1_balance_of.return_value = 0
         mock_create_icrc1.side_effect = [mock_ckbtc, mock_ckbtc]
 
-        result = runner.invoke(app, ["wallet", "send", "5000", "bc1qtest123"])
+        result = runner.invoke(app, ["wallet", "send", "5000", _BTC_ADDR])
         assert result.exit_code == 1
         assert "withdrawal amount too low" in result.output.lower()
         assert "50,000" in result.output

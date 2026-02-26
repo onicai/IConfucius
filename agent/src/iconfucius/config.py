@@ -4,6 +4,7 @@ Loads configuration from iconfucius.toml in the project root.
 """
 
 import os
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -53,6 +54,25 @@ MIN_DEPOSIT_SATS = 5000   # minimum ckBTC deposit into Odin.Fun
 MIN_TRADE_SATS = 500      # minimum BTC-equivalent for buy/sell on Odin.Fun
 MIN_BTC_WITHDRAWAL_SATS = 50_000  # minimum BTC withdrawal via ckBTC minter
 WALLET_RESERVE_SATS = 1000  # minimum ckBTC to keep in wallet after deposits (for signing fees)
+
+
+# Bech32 mainnet: bc1q (segwit v0, 42 chars) or bc1p (taproot v1, 62 chars).
+# Bech32 charset (after the separator '1'): qpzry9x8gf2tvdw0s3jn54khce6mua7l
+# Notably missing: b, i, o, 1 — these are excluded to avoid visual ambiguity.
+# IC principals (e.g. rrkah-fqaaa-aaaaa-aaaaq-cai) contain dashes and don't
+# start with bc1, so they are guaranteed to never match this pattern.
+_BECH32_CHARS = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
+_BECH32_BTC_ADDRESS_RE = re.compile(rf"^bc1[qp][{_BECH32_CHARS}]{{38,58}}$")
+
+
+def is_bech32_btc_address(address: str) -> bool:
+    """Check if a string looks like a Bitcoin bech32 mainnet address.
+
+    The ckBTC minter only supports bech32 (bc1…) addresses. This check also
+    serves to cleanly separate BTC addresses from IC principals — principals
+    contain dashes and never start with bc1, so they are 100% rejected.
+    """
+    return isinstance(address, str) and _BECH32_BTC_ADDRESS_RE.match(address) is not None
 
 # ---------------------------------------------------------------------------
 # AI defaults

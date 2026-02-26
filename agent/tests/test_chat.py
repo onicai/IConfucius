@@ -2179,6 +2179,75 @@ class TestPersistAiConfigTimeout:
         assert 'model = "new-model"' in content
         assert "timeout = 1200" in content
 
+    def test_malformed_timeout_dropped(self, tmp_path, monkeypatch):
+        """Non-numeric timeout is dropped when preserving config."""
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        config = tmp_path / "iconfucius.toml"
+        config.write_text(
+            '[settings]\n\n[ai]\n'
+            'api_type = "openai"\n'
+            'base_url = "http://localhost:55128"\n'
+            'timeout = "not-a-number"\n'
+        )
+        cfg._cached_config = None
+        cfg._cached_config_path = None
+
+        _persist_ai_config(api_type="openai",
+                           base_url="http://localhost:55128",
+                           keep_timeout=True)
+
+        content = config.read_text()
+        assert "timeout" not in content
+        assert "http://localhost:55128" in content
+
+    def test_negative_timeout_dropped(self, tmp_path, monkeypatch):
+        """Negative timeout is dropped when preserving config."""
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        config = tmp_path / "iconfucius.toml"
+        config.write_text(
+            '[settings]\n\n[ai]\n'
+            'api_type = "openai"\n'
+            'base_url = "http://localhost:55128"\n'
+            'timeout = -5\n'
+        )
+        cfg._cached_config = None
+        cfg._cached_config_path = None
+
+        _persist_ai_config(api_type="openai",
+                           base_url="http://localhost:55128",
+                           keep_timeout=True)
+
+        content = config.read_text()
+        assert "timeout" not in content
+
+    def test_hotswap_failure_reverts_config_file(self, tmp_path, monkeypatch):
+        """Backend hot-swap failure must revert the persisted config file."""
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        config = tmp_path / "iconfucius.toml"
+        config.write_text(
+            '[settings]\n\n[ai]\n'
+            'api_type = "openai"\n'
+            'base_url = "http://old-server:8080"\n'
+        )
+        cfg._cached_config = None
+        cfg._cached_config_path = None
+
+        # Simulate /ai switching to a new endpoint that persists first
+        _persist_ai_config(api_type="openai",
+                           base_url="http://broken-server:9999")
+
+        content = config.read_text()
+        assert "http://broken-server:9999" in content
+
+        # Simulate the revert that happens when create_backend fails
+        _persist_ai_config(api_type="openai",
+                           base_url="http://old-server:8080",
+                           keep_timeout=True)
+
+        content = config.read_text()
+        assert "http://old-server:8080" in content
+        assert "broken-server" not in content
+
 
 class TestPromptIncreaseTimeout:
     """Tests for the timeout increase wizard."""

@@ -1353,8 +1353,9 @@ def _handle_wallet_send(args: dict) -> dict:
         return {"status": "error", "error": "Both 'amount' (or 'amount_usd') and 'address' are required."}
 
     # Early validation: BTC address sends must meet the minimum
-    is_btc_address = isinstance(address, str) and address.startswith("bc1")
-    if is_btc_address and str(amount).lower() != "all":
+    from iconfucius.config import is_bech32_btc_address
+    is_btc = is_bech32_btc_address(address)
+    if is_btc and str(amount).lower() != "all":
         from iconfucius.config import MIN_BTC_WITHDRAWAL_SATS
         try:
             send_sats = int(amount)
