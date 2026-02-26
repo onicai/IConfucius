@@ -35,11 +35,10 @@ class TestConversationLogger:
         assert mode == 0o700
         logger.close()
 
-    def test_creates_files_with_0600(self, tmp_path):
+    def test_creates_file_with_0600(self, tmp_path):
         logger = ConversationLogger(base_dir=tmp_path)
-        for p in (logger.path_full, logger.path_cached):
-            mode = stat.S_IMODE(p.stat().st_mode)
-            assert mode == 0o600
+        mode = stat.S_IMODE(logger.path_cached.stat().st_mode)
+        assert mode == 0o600
         logger.close()
 
     def test_writes_valid_jsonl(self, tmp_path):
@@ -64,14 +63,13 @@ class TestConversationLogger:
         )
         logger.close()
 
-        for p in (logger.path_full, logger.path_cached):
-            lines = p.read_text().strip().split("\n")
-            assert len(lines) == 2
-            for line in lines:
-                data = json.loads(line)
-                assert "timestamp" in data
-                assert "sequence" in data
-                assert "call_type" in data
+        lines = logger.path_cached.read_text().strip().split("\n")
+        assert len(lines) == 2
+        for line in lines:
+            data = json.loads(line)
+            assert "timestamp" in data
+            assert "sequence" in data
+            assert "call_type" in data
 
     def test_jwt_scrubbed(self, tmp_path):
         logger = ConversationLogger(base_dir=tmp_path)
@@ -86,10 +84,9 @@ class TestConversationLogger:
         )
         logger.close()
 
-        for p in (logger.path_full, logger.path_cached):
-            content = p.read_text()
-            assert "eyJ" not in content
-            assert "[JWT-REDACTED]" in content
+        content = logger.path_cached.read_text()
+        assert "eyJ" not in content
+        assert "[JWT-REDACTED]" in content
 
     def test_sequence_increments(self, tmp_path):
         logger = ConversationLogger(base_dir=tmp_path)
@@ -105,7 +102,7 @@ class TestConversationLogger:
             )
         logger.close()
 
-        lines = logger.path_full.read_text().strip().split("\n")
+        lines = logger.path_cached.read_text().strip().split("\n")
         seqs = [json.loads(line)["sequence"] for line in lines]
         assert seqs == [1, 2, 3]
 
@@ -122,7 +119,7 @@ class TestConversationLogger:
         )
         logger.close()
 
-        data = json.loads(logger.path_full.read_text().strip())
+        data = json.loads(logger.path_cached.read_text().strip())
         assert "tools" not in data
 
     def test_cleanup_keeps_max_files(self, tmp_path):
@@ -130,36 +127,31 @@ class TestConversationLogger:
         conv_dir.mkdir(parents=True)
         extra = 3
         for i in range(_MAX_LOG_FILES + extra):
-            (conv_dir / f"20260101-{i:06d}-ai-full.jsonl").write_text("")
             (conv_dir / f"20260101-{i:06d}-ai-cached.jsonl").write_text("")
 
-        assert len(list(conv_dir.glob("*-ai-full.jsonl"))) == _MAX_LOG_FILES + extra
         assert len(list(conv_dir.glob("*-ai-cached.jsonl"))) == _MAX_LOG_FILES + extra
 
         # Creating a new logger triggers cleanup
         logger = ConversationLogger(base_dir=tmp_path)
         logger.close()
 
-        for suffix in ("ai-full", "ai-cached"):
-            remaining = sorted(conv_dir.glob(f"*-{suffix}.jsonl"))
-            assert len(remaining) == _MAX_LOG_FILES
-            names = {f.name for f in remaining}
-            for i in range(extra):
-                assert f"20260101-{i:06d}-{suffix}.jsonl" not in names
+        remaining = sorted(conv_dir.glob("*-ai-cached.jsonl"))
+        assert len(remaining) == _MAX_LOG_FILES
+        names = {f.name for f in remaining}
+        for i in range(extra):
+            assert f"20260101-{i:06d}-ai-cached.jsonl" not in names
 
     def test_cleanup_noop_under_limit(self, tmp_path):
         conv_dir = tmp_path / ".logs" / "conversations"
         conv_dir.mkdir(parents=True)
         for i in range(5):
-            (conv_dir / f"20260101-{i:06d}-ai-full.jsonl").write_text("")
             (conv_dir / f"20260101-{i:06d}-ai-cached.jsonl").write_text("")
 
         logger = ConversationLogger(base_dir=tmp_path)
         logger.close()
 
-        for suffix in ("ai-full", "ai-cached"):
-            remaining = list(conv_dir.glob(f"*-{suffix}.jsonl"))
-            assert len(remaining) == 6  # 5 pre-existing + 1 new
+        remaining = list(conv_dir.glob("*-ai-cached.jsonl"))
+        assert len(remaining) == 6  # 5 pre-existing + 1 new
 
     def test_tools_included_for_chat_with_tools(self, tmp_path):
         logger = ConversationLogger(base_dir=tmp_path)
@@ -175,8 +167,63 @@ class TestConversationLogger:
         )
         logger.close()
 
-        data = json.loads(logger.path_full.read_text().strip())
+        data = json.loads(logger.path_cached.read_text().strip())
         assert data["tools"] == [{"name": "test_tool"}]
+
+    def test_raw_openai_response_logged(self, tmp_path):
+        """raw_openai_response is included in log entry when provided."""
+        logger = ConversationLogger(base_dir=tmp_path)
+        raw = {"choices": [{"message": {"content": "hi"}}]}
+        logger.log_interaction(
+            call_type="chat_with_tools",
+            model="m",
+            system="s",
+            messages=[],
+            tools=[{"name": "t"}],
+            response={"content": []},
+            duration_ms=0,
+            error=None,
+            raw_openai_response=raw,
+        )
+        logger.close()
+
+        data = json.loads(logger.path_cached.read_text().strip())
+        assert data["raw_openai_response"] == raw
+
+    def test_raw_openai_response_omitted_when_none(self, tmp_path):
+        """raw_openai_response is not in log entry when None."""
+        logger = ConversationLogger(base_dir=tmp_path)
+        logger.log_interaction(
+            call_type="chat",
+            model="m",
+            system="s",
+            messages=[],
+            response="r",
+            duration_ms=0,
+            error=None,
+        )
+        logger.close()
+
+        data = json.loads(logger.path_cached.read_text().strip())
+        assert "raw_openai_response" not in data
+
+    def test_no_full_file_created(self, tmp_path):
+        """Only the cached log file is created, no full file."""
+        logger = ConversationLogger(base_dir=tmp_path)
+        logger.log_interaction(
+            call_type="chat",
+            model="m",
+            system="s",
+            messages=[],
+            response="r",
+            duration_ms=0,
+            error=None,
+        )
+        logger.close()
+
+        conv_dir = tmp_path / ".logs" / "conversations"
+        assert list(conv_dir.glob("*-ai-full.jsonl")) == []
+        assert len(list(conv_dir.glob("*-ai-cached.jsonl"))) == 1
 
 
 # --- Fake backend for LoggingBackend tests ---
@@ -209,7 +256,7 @@ class TestLoggingBackend:
         assert result == "fake response"
         logger.close()
 
-        data = json.loads(logger.path_full.read_text().strip())
+        data = json.loads(logger.path_cached.read_text().strip())
         assert data["call_type"] == "chat"
         assert data["response"] == "fake response"
         assert data["error"] is None
@@ -228,7 +275,7 @@ class TestLoggingBackend:
         assert result.model_dump(mode="json") == {"id": "msg_test", "content": []}
         logger.close()
 
-        data = json.loads(logger.path_full.read_text().strip())
+        data = json.loads(logger.path_cached.read_text().strip())
         assert data["call_type"] == "chat_with_tools"
         assert data["response"] == {"id": "msg_test", "content": []}
         assert "tools" in data
@@ -247,7 +294,7 @@ class TestLoggingBackend:
             backend.chat([], system="sys")
         logger.close()
 
-        data = json.loads(logger.path_full.read_text().strip())
+        data = json.loads(logger.path_cached.read_text().strip())
         assert data["error"] == "API down"
         assert data["response"] is None
 
@@ -292,7 +339,7 @@ class TestPromptCaching:
         )
         logger.close()
 
-        data = json.loads(logger.path_full.read_text().strip())
+        data = json.loads(logger.path_cached.read_text().strip())
         # system should now be API-format: list of content blocks with cache_control
         assert isinstance(data["system"], list)
         assert data["system"] == cached_system("test system prompt")
@@ -320,14 +367,9 @@ class TestCachedLogFile:
         )
         logger.close()
 
-        full_data = json.loads(logger.path_full.read_text().strip())
-        cached_data = json.loads(logger.path_cached.read_text().strip())
-
-        # Both files should contain the full system and tools on first call
-        assert full_data["system"] == system
-        assert cached_data["system"] == system
-        assert full_data["tools"] == tools
-        assert cached_data["tools"] == tools
+        data = json.loads(logger.path_cached.read_text().strip())
+        assert data["system"] == system
+        assert data["tools"] == tools
 
     def test_second_identical_call_uses_cached_placeholder(self, tmp_path):
         logger = ConversationLogger(base_dir=tmp_path)
@@ -347,20 +389,14 @@ class TestCachedLogFile:
             )
         logger.close()
 
-        full_lines = logger.path_full.read_text().strip().split("\n")
         cached_lines = logger.path_cached.read_text().strip().split("\n")
 
-        # Full file: both calls have real system+tools
-        for line in full_lines:
-            d = json.loads(line)
-            assert d["system"] == system
-            assert d["tools"] == tools
-
-        # Cached file: first call full, second call "[cached]"
+        # First call: full system+tools
         first = json.loads(cached_lines[0])
         assert first["system"] == system
         assert first["tools"] == tools
 
+        # Second call: "[cached]"
         second = json.loads(cached_lines[1])
         assert second["system"] == "[cached]"
         assert second["tools"] == "[cached]"
@@ -425,3 +461,194 @@ class TestCachedLogFile:
 
         assert second["system"] == "[cached]"
         assert "tools" not in second
+
+
+class TestCachedMessages:
+    """Tests for message deduplication in the cached log file."""
+
+    def test_first_call_logs_all_messages(self, tmp_path):
+        logger = ConversationLogger(base_dir=tmp_path)
+        msgs = [{"role": "user", "content": "hello"}]
+        logger.log_interaction(
+            call_type="chat", model="m", system="s",
+            messages=msgs, response="r", duration_ms=0, error=None,
+        )
+        logger.close()
+
+        data = json.loads(logger.path_cached.read_text().strip())
+        assert data["messages"] == msgs
+
+    def test_second_call_caches_prior_messages(self, tmp_path):
+        logger = ConversationLogger(base_dir=tmp_path)
+
+        msgs1 = [{"role": "user", "content": "hello"}]
+        logger.log_interaction(
+            call_type="chat", model="m", system="s",
+            messages=msgs1, response="r", duration_ms=0, error=None,
+        )
+
+        msgs2 = [
+            {"role": "user", "content": "hello"},
+            {"role": "assistant", "content": "hi"},
+            {"role": "user", "content": "bye"},
+        ]
+        logger.log_interaction(
+            call_type="chat", model="m", system="s",
+            messages=msgs2, response="r", duration_ms=0, error=None,
+        )
+        logger.close()
+
+        lines = logger.path_cached.read_text().strip().split("\n")
+        first = json.loads(lines[0])
+        second = json.loads(lines[1])
+
+        # First call: full messages
+        assert first["messages"] == msgs1
+
+        # Second call: cached placeholder + only new messages
+        assert second["messages"][0] == "[cached 1 messages]"
+        assert second["messages"][1:] == msgs2[1:]
+
+    def test_growing_conversation(self, tmp_path):
+        """Simulate 3 turns of a growing conversation."""
+        logger = ConversationLogger(base_dir=tmp_path)
+
+        turn1 = [{"role": "user", "content": "a"}]
+        turn2 = turn1 + [{"role": "assistant", "content": "b"},
+                         {"role": "user", "content": "c"}]
+        turn3 = turn2 + [{"role": "assistant", "content": "d"},
+                         {"role": "user", "content": "e"}]
+
+        for msgs in [turn1, turn2, turn3]:
+            logger.log_interaction(
+                call_type="chat", model="m", system="s",
+                messages=msgs, response="r", duration_ms=0, error=None,
+            )
+        logger.close()
+
+        lines = logger.path_cached.read_text().strip().split("\n")
+        d1 = json.loads(lines[0])
+        d2 = json.loads(lines[1])
+        d3 = json.loads(lines[2])
+
+        assert d1["messages"] == turn1                         # 1 msg, all new
+        assert d2["messages"][0] == "[cached 1 messages]"      # prior 1 cached
+        assert len(d2["messages"]) == 3                        # placeholder + 2 new
+        assert d3["messages"][0] == "[cached 3 messages]"      # prior 3 cached
+        assert len(d3["messages"]) == 3                        # placeholder + 2 new
+
+
+class TestLoggingBackendMessageCaching:
+    """End-to-end: LoggingBackend passes cached_messages() to ConversationLogger.
+
+    Simulates the real flow: LoggingBackend.chat() wraps messages with
+    cached_messages() before logging. The logger should still deduplicate
+    the growing message array even though cached_messages() transforms
+    string content into list content blocks with cache_control markers.
+    """
+
+    def test_chat_caches_messages_across_turns(self, tmp_path):
+        """Simulate 3 chat turns — logger should only log new messages."""
+        logger = ConversationLogger(base_dir=tmp_path)
+        backend = LoggingBackend(_FakeBackend(), logger)
+
+        # Turn 1: user sends first message
+        turn1 = [{"role": "user", "content": "hello"}]
+        backend.chat(turn1, system="sys")
+
+        # Turn 2: conversation grows (user + assistant + user)
+        turn2 = [
+            {"role": "user", "content": "hello"},
+            {"role": "assistant", "content": "hi there"},
+            {"role": "user", "content": "how are you?"},
+        ]
+        backend.chat(turn2, system="sys")
+
+        # Turn 3: conversation grows more
+        turn3 = [
+            {"role": "user", "content": "hello"},
+            {"role": "assistant", "content": "hi there"},
+            {"role": "user", "content": "how are you?"},
+            {"role": "assistant", "content": "I am well"},
+            {"role": "user", "content": "goodbye"},
+        ]
+        backend.chat(turn3, system="sys")
+        logger.close()
+
+        lines = logger.path_cached.read_text().strip().split("\n")
+        assert len(lines) == 3
+
+        d1 = json.loads(lines[0])
+        d2 = json.loads(lines[1])
+        d3 = json.loads(lines[2])
+
+        # Turn 1: 1 message, all new (no caching possible)
+        assert len(d1["messages"]) == 1
+        assert isinstance(d1["messages"][0], dict)
+
+        # Turn 2: 3 messages total, but first 1 is cached
+        assert d2["messages"][0] == "[cached 1 messages]"
+        assert len(d2["messages"]) == 3   # placeholder + 2 new
+        # The new messages should have cache_control on the second-to-last
+        # (from cached_messages()), but that's fine — they're still logged
+
+        # Turn 3: 5 messages total, but first 3 are cached
+        assert d3["messages"][0] == "[cached 3 messages]"
+        assert len(d3["messages"]) == 3   # placeholder + 2 new
+
+    def test_chat_with_tools_caches_messages(self, tmp_path):
+        """Same test but with chat_with_tools, which includes tool_use blocks."""
+        logger = ConversationLogger(base_dir=tmp_path)
+        backend = LoggingBackend(_FakeBackend(), logger)
+
+        # Turn 1
+        turn1 = [{"role": "user", "content": "check balance"}]
+        backend.chat_with_tools(turn1, system="sys",
+                                tools=[{"name": "balance"}])
+
+        # Turn 2: includes tool_result blocks (list content)
+        turn2 = [
+            {"role": "user", "content": "check balance"},
+            {"role": "assistant", "content": [
+                {"type": "tool_use", "id": "t1", "name": "balance", "input": {}},
+            ]},
+            {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "t1",
+                 "content": '{"sats": 50000}'},
+            ]},
+        ]
+        backend.chat_with_tools(turn2, system="sys",
+                                tools=[{"name": "balance"}])
+        logger.close()
+
+        lines = logger.path_cached.read_text().strip().split("\n")
+        d1 = json.loads(lines[0])
+        d2 = json.loads(lines[1])
+
+        # Turn 1: full messages
+        assert len(d1["messages"]) == 1
+        assert isinstance(d1["messages"][0], dict)
+
+        # Turn 2: first message cached
+        assert d2["messages"][0] == "[cached 1 messages]"
+        assert len(d2["messages"]) == 3  # placeholder + 2 new
+
+    def test_single_message_turn_not_cached(self, tmp_path):
+        """First call and calls with same message count should not cache."""
+        logger = ConversationLogger(base_dir=tmp_path)
+        backend = LoggingBackend(_FakeBackend(), logger)
+
+        # Two separate single-message turns (e.g. greeting + first user msg)
+        backend.chat([{"role": "user", "content": "greeting"}], system="sys")
+        backend.chat([{"role": "user", "content": "hello"}], system="sys")
+        logger.close()
+
+        lines = logger.path_cached.read_text().strip().split("\n")
+        d1 = json.loads(lines[0])
+        d2 = json.loads(lines[1])
+
+        # Both should log full messages (1 msg each, no growth)
+        assert isinstance(d1["messages"][0], dict)
+        assert isinstance(d2["messages"][0], dict)
+        # Second turn has same count (1), so no caching applies
+        assert len(d2["messages"]) == 1

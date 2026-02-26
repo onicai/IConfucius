@@ -13,6 +13,10 @@ from iconfucius.skills.executor import (
     _usd_to_tokens,
     execute_tool,
 )
+
+# Valid bech32 address for tests that go through is_bech32_btc_address()
+_BTC_ADDR = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"
+_FAKE_PEM = "fake.pem"
 from iconfucius.cli.chat import (
     _describe_tool_call,
     _run_tool_loop,
@@ -293,6 +297,58 @@ class TestWalletSendHandlerValidation:
                 "amount": "5000", "address": "bc1qtest",
             })
         assert result["status"] == "error"
+
+
+class TestWalletSendBtcMinimum:
+    """Test that wallet_send rejects BTC sends below 50,000 sats."""
+
+    def test_below_minimum_returns_error(self):
+        """14,437 sats is below 50,000 minimum for bc1 addresses."""
+        with patch("iconfucius.config.require_wallet", return_value=_FAKE_PEM):
+            result = execute_tool("wallet_send", {
+                "amount": "14437", "address": _BTC_ADDR,
+            })
+        assert result["status"] == "error"
+        assert result["minimum_sats"] == 50_000
+        assert "14,437" in result["error"]
+
+    def test_exact_minimum_passes_validation(self):
+        """50,000 sats should pass the minimum check (may fail later at CLI)."""
+        with patch("iconfucius.config.require_wallet", return_value=_FAKE_PEM):
+            result = execute_tool("wallet_send", {
+                "amount": "50000", "address": _BTC_ADDR,
+            })
+        # Should NOT be the minimum error
+        assert "minimum_sats" not in result
+
+    def test_ic_principal_no_minimum_check(self):
+        """Sends to IC principals should not enforce the BTC minimum."""
+        with patch("iconfucius.config.require_wallet", return_value=_FAKE_PEM):
+            result = execute_tool("wallet_send", {
+                "amount": "5000",
+                "address": "rrkah-fqaaa-aaaaa-aaaaq-cai",
+            })
+        assert "minimum_sats" not in result
+
+    def test_amount_all_bypasses_minimum(self):
+        """'all' should bypass the minimum check (minter handles it)."""
+        with patch("iconfucius.config.require_wallet", return_value=_FAKE_PEM):
+            result = execute_tool("wallet_send", {
+                "amount": "all", "address": _BTC_ADDR,
+            })
+        assert "minimum_sats" not in result
+
+    def test_usd_amount_below_minimum_returns_error(self):
+        """$10 at ~$69,200/BTC converts to ~14,450 sats — below 50,000 minimum."""
+        with (
+            patch("iconfucius.config.require_wallet", return_value=_FAKE_PEM),
+            patch("iconfucius.config.get_btc_to_usd_rate", return_value=69_200.0),
+        ):
+            result = execute_tool("wallet_send", {
+                "amount_usd": 10.0, "address": _BTC_ADDR,
+            })
+        assert result["status"] == "error"
+        assert result["minimum_sats"] == 50_000
 
 
 class TestTradeBuyHandlerValidation:

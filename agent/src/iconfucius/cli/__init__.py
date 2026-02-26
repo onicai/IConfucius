@@ -226,9 +226,10 @@ def _cleanup_obsolete_files() -> None:
 class State:
     bot_name: Optional[str] = None  # None = not specified
     all_bots: bool = False
-    verbose: bool = False
+    verbose: bool = True
     network: str = "prd"
     persona: Optional[str] = None
+    experimental: bool = False
 
 
 state = State()
@@ -285,13 +286,16 @@ def main_callback(
         False, "--all-bots", help="Target all bots"
     ),
     verbose: bool = typer.Option(
-        False, "--verbose", "-v", help="Show verbose output"
+        True, "--verbose/--quiet", "-v/-q", help="Show verbose output"
     ),
     network: str = typer.Option(
         "prd", "--network", help="PoAIW network of ckSigner: prd, testing, development"
     ),
     persona: Optional[str] = typer.Option(
         None, "--persona", "-p", help="Persona to use for chat"
+    ),
+    experimental: bool = typer.Option(
+        False, "--experimental", "-x", help="Enable experimental features (e.g. /ai command)"
     ),
     version: bool = typer.Option(
         False, "--version", "-V", help="Show version and exit",
@@ -306,6 +310,7 @@ def main_callback(
     state.verbose = verbose
     state.network = network
     state.persona = persona
+    state.experimental = experimental
     set_network(network)
     if ctx.invoked_subcommand is None:
         # Bare invocation: start chat with default persona
@@ -359,13 +364,10 @@ def persona_show(
         raise typer.Exit(1)
 
     print(f"Name:        {p.name}")
-    print(f"Description: {p.description}")
-    print(f"Voice:       {p.voice}")
-    print(f"Risk:        {p.risk}")
-    print(f"Budget:      {'unlimited' if p.budget_limit == 0 else _fmt_sats(p.budget_limit)}")
-    print(f"Default bot: {p.bot}")
-    print(f"AI backend:  {p.ai_backend}")
+    print(f"AI type:     {p.ai_api_type}")
     print(f"AI model:    {p.ai_model}")
+    if p.ai_base_url:
+        print(f"AI base URL: {p.ai_base_url}")
 
 
 # ---------------------------------------------------------------------------
@@ -450,14 +452,9 @@ def _start_chat():
         print("Wallet created.")
         print()
         # Show deposit address and funding instructions
-        addr_result = execute_tool("wallet_receive", {})
+        addr_result = execute_tool("how_to_fund_wallet", {})
         if addr_result.get("status") == "ok":
-            print(f"  Principal:       {addr_result['wallet_principal']}")
-            print(f"  Deposit address: {addr_result['btc_deposit_address']}")
-            print(f"  Balance:         {addr_result['balance_display']}")
-            print()
-            print("  To start trading, send ckBTC or BTC to the deposit address above.")
-            print(f"  BTC deposits require min {_fmt_sats(10_000)} and ~6 confirmations.")
+            print(addr_result.get("display", ""))
             print()
         setup = execute_tool("setup_status", {})
 
@@ -465,7 +462,8 @@ def _start_chat():
 
     persona_name = state.persona or get_default_persona()
     bot_name = state.bot_name or "bot-1"
-    run_chat(persona_name=persona_name, bot_name=bot_name, verbose=state.verbose)
+    run_chat(persona_name=persona_name, bot_name=bot_name, verbose=state.verbose,
+             experimental=state.experimental)
 
 
 def _save_api_key(api_key: str) -> None:
@@ -525,7 +523,8 @@ def chat(
 
     persona_name = persona or state.persona or get_default_persona()
     bot_name = bot or state.bot_name or "bot-1"
-    run_chat(persona_name=persona_name, bot_name=bot_name, verbose=state.verbose)
+    run_chat(persona_name=persona_name, bot_name=bot_name, verbose=state.verbose,
+             experimental=state.experimental)
 
 
 ENV_TEMPLATE = (
