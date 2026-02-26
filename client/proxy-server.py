@@ -638,6 +638,30 @@ def _handle_wallet_balances(*, bypass_cache=False):
     return resp
 
 
+def _handle_wallet_trades():
+    if not _HAS_ICONFUCIUS:
+        return 503, {"error": "iconfucius SDK not installed"}
+    _sync_project_root()
+    _chdir_to_root()
+    from iconfucius.memory import read_trades
+    import re as _re
+    persona = "iconfucius"
+    raw = read_trades(persona, last_n=50)
+    if not raw:
+        return 200, {"trades": []}
+    entries = _re.split(r"(?=^## )", raw, flags=_re.MULTILINE)
+    trades = []
+    for entry in entries:
+        entry = entry.strip()
+        if not entry:
+            continue
+        heading = entry.split("\n", 1)[0].lstrip("# ").strip()
+        body = entry.split("\n", 1)[1].strip() if "\n" in entry else ""
+        trades.append({"heading": heading, "body": body})
+    trades.reverse()
+    return 200, {"trades": trades}
+
+
 def _require_sdk():
     if not _HAS_ICONFUCIUS:
         return 503, {"error": "iconfucius SDK not installed. Run: pip install -e agent/"}
@@ -788,6 +812,15 @@ class ProxyHandler(BaseHTTPRequestHandler):
         if path == "/api/wallet/balances":
             try:
                 status, data = _handle_wallet_balances(bypass_cache=refresh)
+            except Exception as e:
+                traceback.print_exc()
+                status, data = 500, {"error": str(e)}
+            _json_response(self, status, data)
+            return
+
+        if path == "/api/wallet/trades":
+            try:
+                status, data = _handle_wallet_trades()
             except Exception as e:
                 traceback.print_exc()
                 status, data = 500, {"error": str(e)}

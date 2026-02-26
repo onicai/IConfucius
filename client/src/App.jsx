@@ -22,7 +22,7 @@ class ViewErrorBoundary extends Component {
   }
 }
 
-const SERVICES = [
+const PRIMARY = [
   {
     id: "bots", label: "Bots", icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -38,18 +38,21 @@ const SERVICES = [
     ), desc: "ckBTC balance & addresses",
   },
   {
+    id: "trades", label: "Trades", icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/>
+      </svg>
+    ), desc: "Your trade history",
+  },
+];
+
+const EXPLORE = [
+  {
     id: "tokens", label: "Tokens", icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="12" cy="12" r="10"/><path d="M12 6v12"/><path d="M8 10h8"/><path d="M8 14h8"/>
       </svg>
     ), desc: "Market data & trending",
-  },
-  {
-    id: "trades", label: "Trades", icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/>
-      </svg>
-    ), desc: "Recent trades feed",
   },
   {
     id: "search", label: "Search", icon: (
@@ -59,6 +62,43 @@ const SERVICES = [
     ), desc: "Find tokens by name or ID",
   },
 ];
+
+const ALL_SERVICES = [...PRIMARY, ...EXPLORE];
+
+const GRID_COLS = { 2: "grid-cols-2", 3: "grid-cols-3", 5: "grid-cols-5" };
+
+function renderTileGroup(items, active, onToggle) {
+  const hasActive = active !== null;
+  const colsCls = hasActive ? (GRID_COLS[items.length] || "grid-cols-3") : "grid-cols-2 sm:grid-cols-3";
+  return (
+    <div className={`grid gap-2 mb-3 ${colsCls}`}>
+      {items.map((s) => {
+        const isActive = active === s.id;
+        return (
+          <button
+            key={s.id}
+            onClick={() => onToggle(s.id)}
+            className={`group relative flex items-center gap-2.5 rounded-xl border transition-all duration-200 cursor-pointer text-left
+              ${hasActive && !isActive
+                ? "px-3 py-2 bg-surface/50 border-border/50 hover:bg-surface hover:border-border"
+                : isActive
+                  ? "px-3 py-2 bg-accent-dim border-accent text-accent shadow-[0_0_12px_rgba(247,147,26,0.08)]"
+                  : "flex-col px-4 py-4 bg-surface border-border hover:border-accent/40 hover:bg-surface-hover"
+              }`}
+          >
+            <span className={`shrink-0 ${isActive ? "text-accent" : "text-dim group-hover:text-accent"} transition-colors`}>
+              {s.icon}
+            </span>
+            <div className="min-w-0">
+              <div className={`font-semibold truncate ${hasActive ? "text-xs" : "text-sm"}`}>{s.label}</div>
+              {!hasActive && <div className="text-[0.65rem] text-dim mt-0.5 leading-tight">{s.desc}</div>}
+            </div>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 function StatusDot({ ok }) {
   const cls = ok === true ? "bg-green shadow-[0_0_6px_var(--color-green)]"
@@ -98,7 +138,7 @@ export default function App() {
       case "wallet": return <WalletView btcUsd={btcUsd} refreshKey={refreshKey} />;
       case "bots":   return <BotsView btcUsd={btcUsd} refreshKey={refreshKey} />;
       case "tokens":  return <TokensView btcUsd={btcUsd} />;
-      case "trades":  return <TradesView btcUsd={btcUsd} />;
+      case "trades":  return <TradesView btcUsd={btcUsd} refreshKey={refreshKey} />;
       case "search":  return <SearchView btcUsd={btcUsd} />;
       default: return null;
     }
@@ -142,34 +182,14 @@ export default function App() {
       <div className="flex-1 flex min-h-0">
         {/* Left content area */}
         <main className="flex-1 min-w-0 flex flex-col overflow-y-auto scrollbar-thin p-4 lg:p-6">
-          {/* Service tiles grid */}
-          <div className={`grid gap-2 mb-4 ${active ? "grid-cols-5 sm:grid-cols-5" : "grid-cols-2 sm:grid-cols-3 lg:grid-cols-5"}`}>
-            {SERVICES.map((s) => {
-              const isActive = active === s.id;
-              const hasActive = active !== null;
-              return (
-                <button
-                  key={s.id}
-                  onClick={() => toggleService(s.id)}
-                  className={`group relative flex items-center gap-2.5 rounded-xl border transition-all duration-200 cursor-pointer text-left
-                    ${hasActive && !isActive
-                      ? "px-3 py-2 bg-surface/50 border-border/50 hover:bg-surface hover:border-border"
-                      : isActive
-                        ? "px-3 py-2 bg-accent-dim border-accent text-accent shadow-[0_0_12px_rgba(247,147,26,0.08)]"
-                        : "flex-col px-4 py-4 bg-surface border-border hover:border-accent/40 hover:bg-surface-hover"
-                    }`}
-                >
-                  <span className={`shrink-0 ${isActive ? "text-accent" : "text-dim group-hover:text-accent"} transition-colors`}>
-                    {s.icon}
-                  </span>
-                  <div className="min-w-0">
-                    <div className={`font-semibold truncate ${hasActive ? "text-xs" : "text-sm"}`}>{s.label}</div>
-                    {!hasActive && <div className="text-[0.65rem] text-dim mt-0.5 leading-tight">{s.desc}</div>}
-                  </div>
-                </button>
-              );
-            })}
+          {/* Service tiles */}
+          {renderTileGroup(PRIMARY, active, toggleService)}
+          <div className="flex items-center gap-2 mb-3 mt-1">
+            <div className="h-px flex-1 bg-border/50" />
+            <span className="text-[0.6rem] uppercase tracking-widest text-dim/50 font-medium">Explore</span>
+            <div className="h-px flex-1 bg-border/50" />
           </div>
+          {renderTileGroup(EXPLORE, active, toggleService)}
 
           {/* Expanded view */}
           {active && (

@@ -47,6 +47,10 @@ export async function getWalletBalances({ refresh = false } = {}) {
   return fetchJSON(`${WALLET}/balances${refresh ? "?refresh" : ""}`);
 }
 
+export async function getWalletTrades() {
+  return fetchJSON(`${WALLET}/trades`);
+}
+
 export async function getWalletStatus() {
   return fetchJSON(`${WALLET}/status`);
 }
