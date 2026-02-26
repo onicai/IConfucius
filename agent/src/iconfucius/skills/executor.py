@@ -84,6 +84,7 @@ def execute_tool(name: str, args: dict, *, persona_name: str = "") -> dict:
 # ---------------------------------------------------------------------------
 
 def _handle_setup_status(args: dict) -> dict:
+    """Handle the setup_status tool call."""
     from iconfucius.config import find_config, get_pem_file
 
     config_path = find_config()
@@ -103,6 +104,7 @@ def _handle_setup_status(args: dict) -> dict:
 
 
 def _handle_check_update(args: dict) -> dict:
+    """Handle the check_update tool call."""
     from iconfucius import __version__
 
     # Result is cached at module level by chat.py at startup
@@ -121,6 +123,7 @@ _update_cache: dict = {}
 
 
 def _handle_enable_experimental(args: dict) -> dict:
+    """Handle the enable_experimental tool call."""
     global _experimental_enabled
     _experimental_enabled = True
     return {
@@ -136,6 +139,7 @@ def _handle_enable_experimental(args: dict) -> dict:
 
 
 def _handle_init(args: dict) -> dict:
+    """Handle the init tool call."""
     from typer.testing import CliRunner
     from iconfucius.cli import app as cli_app
 
@@ -159,6 +163,7 @@ def _handle_init(args: dict) -> dict:
 
 
 def _handle_set_bot_count(args: dict) -> dict:
+    """Handle the set_bot_count tool call."""
     import re
     from pathlib import Path
 
@@ -213,6 +218,7 @@ def _handle_set_bot_count(args: dict) -> dict:
     # --- Decreasing: check holdings, then remove ---
     # Sort bots by number, keep lowest, remove highest
     def _sort_key(name):
+        """Extract a numeric sort key from a bot name."""
         m = re.search(r'(\d+)$', name)
         return int(m.group(1)) if m else float('inf')
 
@@ -242,10 +248,10 @@ def _handle_set_bot_count(args: dict) -> dict:
             for bot_name, result in results:
                 if isinstance(result, Exception):
                     continue
-                if result.odin_sats > 0 or result.token_holdings:
+                if (result.odin_sats or 0) > 0 or result.token_holdings:
                     holdings.append({
                         "bot_name": result.bot_name,
-                        "odin_sats": int(result.odin_sats),
+                        "odin_sats": int(result.odin_sats) if result.odin_sats is not None else None,
                         "token_holdings": result.token_holdings,
                     })
 
@@ -272,6 +278,7 @@ def _handle_set_bot_count(args: dict) -> dict:
 
 
 def _handle_wallet_create(args: dict) -> dict:
+    """Handle the wallet_create tool call."""
     from typer.testing import CliRunner
     from iconfucius.cli.wallet import wallet_app
 
@@ -291,6 +298,7 @@ def _handle_wallet_create(args: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 def _handle_bot_list(args: dict) -> dict:
+    """Handle the bot_list tool call."""
     from iconfucius.config import find_config, get_bot_names
 
     if not find_config():
@@ -309,6 +317,7 @@ def _handle_bot_list(args: dict) -> dict:
 
 
 def _handle_wallet_balance(args: dict) -> dict:
+    """Handle wallet_balance tool: collect and return structured balance data."""
     from iconfucius.config import (
         MIN_DEPOSIT_SATS,
         MIN_TRADE_SATS,
@@ -328,13 +337,20 @@ def _handle_wallet_balance(args: dict) -> dict:
     data = run_all_balances(names, ckbtc_minter=ckbtc_minter)
 
     if data is None:
-        return {"status": "error", "error": "Balance check failed."}
+        return {
+            "status": "error",
+            "error": (
+                "Balance check failed. The wallet may need funding for "
+                "signing fees. Use the how_to_fund_wallet tool for instructions."
+            ),
+        }
 
     display_text = data.pop("_display", "")
     totals = data.get("totals", {})
 
     result = {
         "status": "ok",
+        "_display": display_text,
         "wallet_ckbtc_sats": data.get("wallet_ckbtc_sats", 0),
         "total_odin_sats": totals.get("odin_sats", 0),
         "total_token_value_sats": totals.get("token_value_sats", 0),
@@ -347,20 +363,51 @@ def _handle_wallet_balance(args: dict) -> dict:
     # Include per-bot balances so the AI doesn't need individual balance calls
     bots_list = data.get("bots", [])
     if bots_list:
-        result["bots"] = [
-            {
+        result["bots"] = []
+        for bot in bots_list:
+            entry = {
                 "name": bot["name"],
                 "principal": bot.get("principal", ""),
-                "odin_sats": bot.get("odin_sats", 0),
-                "tokens": bot.get("tokens", []),
-                "has_odin_account": bot.get("has_odin_account", False),
             }
-            for bot in bots_list
-        ]
+            odin_sats = bot.get("odin_sats")
+            if odin_sats is not None:
+                entry["odin_sats"] = odin_sats
+            tokens = bot.get("tokens")
+            if tokens is not None:
+                entry["tokens"] = tokens
+            has_odin = bot.get("has_odin_account")
+            if has_odin is not None:
+                entry["has_odin_account"] = has_odin
+            if bot.get("note"):
+                entry["note"] = bot["note"]
+            result["bots"].append(entry)
+    # Add next_step guidance when wallet is empty
+    wallet_empty = result["wallet_ckbtc_sats"] == 0
+    if wallet_empty:
+        bots_list = bots_list or []
+        all_unchecked = all("odin_sats" not in b or b["odin_sats"] is None
+                           for b in bots_list)
+        has_holdings = (result["total_odin_sats"] > 0
+                        or result["total_token_value_sats"] > 0)
+
+        if all_unchecked or not has_holdings:
+            result["next_step"] = (
+                "Wallet is empty. Use how_to_fund_wallet to show "
+                "the user how to deposit funds."
+            )
+        else:
+            result["next_step"] = (
+                "Wallet is empty but bots have holdings on Odin.Fun. "
+                "Options: fund wallet via how_to_fund_wallet, "
+                "withdraw ckBTC from bots, or sell tokens first "
+                "then withdraw."
+            )
+
     return result
 
 
 def _handle_how_to_fund_wallet(args: dict) -> dict:
+    """Handle the how_to_fund_wallet tool call."""
     from iconfucius.config import require_wallet
 
     if not require_wallet():
@@ -407,14 +454,11 @@ def _handle_how_to_fund_wallet(args: dict) -> dict:
         f"  Min deposit: {min_deposit}.\n"
         f"  BTC is converted to ckBTC via the ckBTC minter.\n"
         f"  Requires ~6 Bitcoin confirmations (~1 hour).\n"
-        f"  Use wallet_monitor to track the conversion progress.\n"
         f"\n"
         f"Option 2: Send ckBTC from any ckBTC wallet\n"
         f"  {principal}\n"
         f"  Send from NNS, Plug, Oisy, or any ckBTC wallet.\n"
-        f"  Arrives instantly, no conversion needed.\n"
-        f"\n"
-        f"After funding, distribute to bots with the fund tool."
+        f"  Arrives instantly, no conversion needed."
     )
 
     return {
@@ -428,6 +472,7 @@ def _handle_how_to_fund_wallet(args: dict) -> dict:
 
 
 def _handle_wallet_monitor(args: dict) -> dict:
+    """Handle the wallet_monitor tool call."""
     from iconfucius.config import require_wallet
 
     if not require_wallet():
@@ -444,6 +489,7 @@ def _handle_wallet_monitor(args: dict) -> dict:
 
 
 def _handle_security_status(args: dict) -> dict:
+    """Handle the security_status tool call."""
     from iconfucius.config import find_config, get_cache_sessions, load_config
 
     config_path = find_config()
@@ -557,6 +603,7 @@ def _enable_verify_certificates() -> dict:
 
 
 def _handle_install_blst(args: dict) -> dict:
+    """Handle the install_blst tool call."""
     import platform
     import shutil
     import subprocess
@@ -734,6 +781,7 @@ def _handle_install_blst(args: dict) -> dict:
 
 
 def _handle_account_lookup(args: dict) -> dict:
+    """Handle the account_lookup tool call."""
     from iconfucius.accounts import lookup_odin_account
 
     address = args.get("address", "")
@@ -775,6 +823,7 @@ def _handle_account_lookup(args: dict) -> dict:
 
 
 def _handle_token_lookup(args: dict) -> dict:
+    """Handle the token_lookup tool call."""
     from iconfucius.tokens import search_token
 
     query = args.get("query", "")
@@ -830,6 +879,7 @@ def _handle_token_lookup(args: dict) -> dict:
 
 
 def _handle_token_discover(args: dict) -> dict:
+    """Handle the token_discover tool call."""
     from iconfucius.config import fmt_sats, get_btc_to_usd_rate
     from iconfucius.tokens import discover_tokens
 
@@ -873,6 +923,7 @@ def _handle_token_discover(args: dict) -> dict:
 
 
 def _handle_token_price(args: dict) -> dict:
+    """Handle the token_price tool call."""
     from iconfucius.config import fmt_sats, get_btc_to_usd_rate
     from iconfucius.tokens import fetch_token_data, lookup_token_with_fallback
 
@@ -910,6 +961,7 @@ def _handle_token_price(args: dict) -> dict:
     price_sats = price_msat / MSAT_PER_SAT
 
     def _pct_change(current: int, previous: int) -> str:
+        """Calculate percentage change between two values."""
         if not previous or not current:
             return "n/a"
         pct = ((current - previous) / previous) * 100
@@ -978,6 +1030,7 @@ def _resolve_bot_names(args: dict) -> list[str]:
 
 
 def _handle_fund(args: dict) -> dict:
+    """Handle the fund tool call."""
     from iconfucius.config import require_wallet
 
     if not require_wallet():
@@ -1079,6 +1132,7 @@ def _usd_to_tokens(amount_usd: float, token_id: str) -> int:
 
 
 def _handle_trade_buy(args: dict) -> dict:
+    """Handle the trade_buy tool call."""
     from iconfucius.config import require_wallet
 
     if not require_wallet():
@@ -1111,6 +1165,7 @@ def _handle_trade_buy(args: dict) -> dict:
 
 
 def _handle_trade_sell(args: dict) -> dict:
+    """Handle the trade_sell tool call."""
     from iconfucius.config import require_wallet
 
     if not require_wallet():
@@ -1195,6 +1250,7 @@ def _aggregate_trade_results(results: list, action: str, token_id: str) -> dict:
 
 
 def _handle_withdraw(args: dict) -> dict:
+    """Handle the withdraw tool call."""
     from iconfucius.config import require_wallet
 
     if not require_wallet():
@@ -1276,6 +1332,7 @@ def _handle_withdraw(args: dict) -> dict:
 
 
 def _handle_token_transfer(args: dict) -> dict:
+    """Handle the token_transfer tool call."""
     from iconfucius.config import require_wallet
 
     if not require_wallet():
@@ -1333,6 +1390,7 @@ def _handle_token_transfer(args: dict) -> dict:
 
 
 def _handle_wallet_send(args: dict) -> dict:
+    """Handle the wallet_send tool call."""
     from iconfucius.config import require_wallet
 
     if not require_wallet():
@@ -1549,6 +1607,7 @@ def _record_balance_snapshot(result: dict, persona_name: str) -> None:
 # ---------------------------------------------------------------------------
 
 def _handle_memory_read_strategy(args: dict, *, persona_name: str = "") -> dict:
+    """Handle the memory_read_strategy tool call."""
     from iconfucius.memory import read_strategy
 
     if not persona_name:
@@ -1560,6 +1619,7 @@ def _handle_memory_read_strategy(args: dict, *, persona_name: str = "") -> dict:
 
 
 def _handle_memory_read_learnings(args: dict, *, persona_name: str = "") -> dict:
+    """Handle the memory_read_learnings tool call."""
     from iconfucius.memory import read_learnings
 
     if not persona_name:
@@ -1571,6 +1631,7 @@ def _handle_memory_read_learnings(args: dict, *, persona_name: str = "") -> dict
 
 
 def _handle_memory_read_trades(args: dict, *, persona_name: str = "") -> dict:
+    """Handle the memory_read_trades tool call."""
     from iconfucius.memory import read_trades
 
     if not persona_name:
@@ -1586,6 +1647,7 @@ def _handle_memory_read_trades(args: dict, *, persona_name: str = "") -> dict:
 
 
 def _handle_memory_read_balances(args: dict, *, persona_name: str = "") -> dict:
+    """Handle the memory_read_balances tool call."""
     from iconfucius.memory import read_balance_snapshots
 
     if not persona_name:
@@ -1601,6 +1663,7 @@ def _handle_memory_read_balances(args: dict, *, persona_name: str = "") -> dict:
 
 
 def _handle_memory_archive_balances(args: dict, *, persona_name: str = "") -> dict:
+    """Handle the memory_archive_balances tool call."""
     from iconfucius.memory import archive_balance_snapshots
 
     if not persona_name:
@@ -1616,6 +1679,7 @@ def _handle_memory_archive_balances(args: dict, *, persona_name: str = "") -> di
 
 
 def _handle_memory_update(args: dict, *, persona_name: str = "") -> dict:
+    """Handle the memory_update tool call."""
     from iconfucius.memory import write_learnings, write_strategy
 
     if not persona_name:

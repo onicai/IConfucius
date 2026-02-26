@@ -189,6 +189,7 @@ def run_fund(bot_names: list, amount: int, verbose: bool = False) -> dict:
         btc_usd_rate = None
 
     def _fmt(sats):
+        """Format a sats amount for display."""
         return fmt_sats(sats, btc_usd_rate)
 
     # -----------------------------------------------------------------------

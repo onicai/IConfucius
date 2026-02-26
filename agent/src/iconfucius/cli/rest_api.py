@@ -49,11 +49,13 @@ def get(path: str, params: dict | None = None) -> dict:
 
 
 def list_tokens() -> None:
+    """List all available tokens from the Odin.fun API."""
     data = get("/tokens", {"limit": 5})
     pp("List tokens (first 5)", data)
 
 
 def get_bonded_token_details() -> None:
+    """Fetch details for a bonded token by ID."""
     for tid in TEST_TOKENS_BONDED:
         data = get(f"/token/{tid}")
         pp(f"Token details [bonded]: {tid}", data)
@@ -71,22 +73,26 @@ def get_newest_tokens(count: int = 3) -> list[str]:
 
 
 def get_unbonded_token_details(token_ids: list[str]) -> None:
+    """Fetch details for an unbonded token by ID."""
     for tid in token_ids:
         data = get(f"/token/{tid}")
         pp(f"Token details [unbonded]: {tid}", data)
 
 
 def list_trades() -> None:
+    """List recent trades from the Odin.fun API."""
     data = get("/trades", {"limit": 5})
     pp("Recent trades (first 5)", data)
 
 
 def search_tokens() -> None:
+    """Search for tokens by query string."""
     data = get("/search", {"q": "ICONFUCIUS"})
     pp("Search: ICONFUCIUS", data)
 
 
 def main() -> None:
+    """CLI entry point."""
     print("Odin.Fun REST API Explorer")
     print(f"Base URL: {BASE_URL}")
 

@@ -271,6 +271,7 @@ def _resolve_network(network: Optional[str] = None) -> None:
 
 
 def _version_callback(value: bool):
+    """Print the version and exit when the --version flag is set."""
     if value:
         print(f"iconfucius {__version__}")
         raise typer.Exit()
@@ -831,6 +832,7 @@ def trade(
         from iconfucius.cli.balance import collect_balances
 
         def _sell_all_tokens(bot_name):
+            """Sell all token holdings for a single bot and return the results."""
             data = collect_balances(bot_name, verbose=state.verbose)
             if not data.token_holdings:
                 return {"status": "skipped", "bot_name": bot_name,
@@ -946,6 +948,7 @@ def sweep(
 
     # Phase 1: Sell all tokens for each bot (concurrent)
     def _sell_all(bot_name):
+        """Sell all holdings of a token for a bot."""
         data = collect_balances(bot_name, verbose=state.verbose)
         if not data.token_holdings:
             return {"status": "skipped", "bot_name": bot_name,

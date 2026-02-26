@@ -119,6 +119,7 @@ class _Spinner:
     """
 
     def __init__(self, message: str = ""):
+        """Initialize the instance."""
         self._message = message
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -131,11 +132,13 @@ class _Spinner:
             self._message = message
 
     def __enter__(self):
+        """Enter the context manager."""
         self._thread = threading.Thread(target=self._spin, daemon=True)
         self._thread.start()
         return self
 
     def __exit__(self, *_):
+        """Exit the context manager."""
         self._stop.set()
         if self._thread:
             self._thread.join()
@@ -144,6 +147,7 @@ class _Spinner:
         self._stdout.flush()
 
     def _spin(self):
+        """Run the spinner animation loop."""
         frames = itertools.cycle("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
         while not self._stop.is_set():
             with self._lock:
@@ -151,6 +155,29 @@ class _Spinner:
             self._stdout.write(f"\r\033[K{next(frames)} {msg}")
             self._stdout.flush()
             time.sleep(0.08)
+
+
+def _run_with_spinner(label: str, func, *args, **kwargs):
+    """Run *func* inside a spinner with progress/status callbacks wired up."""
+    from iconfucius.cli.concurrent import set_progress_callback, set_status_callback
+
+    with _Spinner(label) as sp:
+        def _on_progress(done, total):
+            w = 20
+            filled = int(w * done / total)
+            bar = "█" * filled + "░" * (w - filled)
+            sp.update(f"{label} [{bar}] {done}/{total}")
+
+        def _on_status(msg):
+            sp.update(f"{label} {msg}")
+
+        set_progress_callback(_on_progress)
+        set_status_callback(_on_status)
+        try:
+            return func(*args, **kwargs)
+        finally:
+            set_progress_callback(None)
+            set_status_callback(None)
 
 
 def _get_language_code() -> str:
@@ -418,6 +445,7 @@ def _reset_ai_config() -> None:
     content = config_path.read_text()
 
     def _comment_section(match):
+        """Format a comment section header."""
         return "".join(f"# {line}\n" for line in match.group(0).splitlines())
 
     content = re.sub(
@@ -828,31 +856,11 @@ def _run_tool_loop(backend, messages: list[dict], system: str,
             )
 
             if use_spinner:
-                with _Spinner(f"Running {block.name}...") as spinner:
-                    from iconfucius.cli.concurrent import (
-                        set_progress_callback,
-                        set_status_callback,
-                    )
-
-                    def _on_progress(done, total):
-                        width = 20
-                        filled = int(width * done / total)
-                        bar = "█" * filled + "░" * (width - filled)
-                        spinner.update(
-                            f"Running {block.name}... [{bar}] {done}/{total}"
-                        )
-
-                    def _on_status(message):
-                        spinner.update(f"Running {block.name}... {message}")
-
-                    set_progress_callback(_on_progress)
-                    set_status_callback(_on_status)
-                    try:
-                        result = execute_tool(block.name, block.input,
-                                              persona_name=persona_key)
-                    finally:
-                        set_progress_callback(None)
-                        set_status_callback(None)
+                result = _run_with_spinner(
+                    f"Running {block.name}...",
+                    execute_tool, block.name, block.input,
+                    persona_name=persona_key,
+                )
             else:
                 result = execute_tool(block.name, block.input,
                                       persona_name=persona_key)
@@ -861,6 +869,7 @@ def _run_tool_loop(backend, messages: list[dict], system: str,
             terminal_output = result.pop("_terminal_output", None)
             if terminal_output:
                 print(f"\n{terminal_output}")
+            result.pop("_display", None)
 
             tool_results.append({
                 "type": "tool_result",
@@ -915,6 +924,7 @@ def _check_pypi_version() -> tuple[str | None, str]:
         with urlopen("https://pypi.org/pypi/iconfucius/json", timeout=3) as resp:
             latest = json.loads(resp.read())["info"]["version"]
         def _ver_tuple(v: str) -> tuple:
+            """Parse a version string into a comparable tuple."""
             return tuple(int(x) for x in v.split("."))
         if _ver_tuple(latest) <= _ver_tuple(__version__):
             return None, ""
@@ -1109,69 +1119,45 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False,
         _update_cache["release_notes"] = release_notes
     print()
 
-    # Show wallet balance at startup (fast — single IC call)
+    # Show wallet balance at startup — same path as AI-initiated wallet_balance
+    startup_balance_result = None
     if setup.get("wallet_exists"):
         try:
-            with _Spinner("Checking wallet..."):
-                from iconfucius.cli.balance import run_wallet_balance
-                wallet_data = run_wallet_balance()
-            if wallet_data:
-                wallet_display = wallet_data.get("_display", "")
-                if wallet_display and len(all_bot_names) <= 1:
-                    print(wallet_display)
-                    print()
-
-                # Show bot holdings at startup (multi-bot only)
-                if len(all_bot_names) > 1:
-                    try:
-                        from iconfucius.cli.concurrent import (
-                            set_progress_callback,
-                            set_status_callback,
-                        )
-                        with _Spinner("Checking bot holdings...") as sp:
-                            def _on_progress(done, total):
-                                w = 20
-                                filled = int(w * done / total)
-                                bar = "█" * filled + "░" * (w - filled)
-                                sp.update(f"Checking bot holdings... [{bar}] {done}/{total}")
-
-                            def _on_status(msg):
-                                sp.update(f"Checking bot holdings... {msg}")
-
-                            set_progress_callback(_on_progress)
-                            set_status_callback(_on_status)
-                            try:
-                                from iconfucius.cli.balance import run_all_balances
-                                bot_data = run_all_balances(all_bot_names, verbose=verbose)
-                            finally:
-                                set_progress_callback(None)
-                                set_status_callback(None)
-                        if bot_data:
-                            bot_display = bot_data.get("_display", "")
-                            if bot_display:
-                                print(f"\n{bot_display}\n")
-                            # Record balance snapshot (best-effort)
-                            try:
-                                from iconfucius.skills.executor import _record_balance_snapshot
-                                totals = bot_data.get("totals", {})
-                                snapshot_result = {
-                                    "wallet_ckbtc_sats": bot_data.get("wallet_ckbtc_sats", 0),
-                                    "total_odin_sats": totals.get("odin_sats", 0),
-                                    "total_token_value_sats": totals.get("token_value_sats", 0),
-                                    "portfolio_sats": totals.get("portfolio_sats", 0),
-                                    "bots": bot_data.get("bots", []),
-                                }
-                                _record_balance_snapshot(snapshot_result, persona_name)
-                            except Exception as exc:
-                                from iconfucius.logging_config import get_logger
-                                get_logger().debug("Skipping balance snapshot: %s", exc)
-                    except (KeyboardInterrupt, EOFError):
-                        print()  # user cancelled — continue to chat
+            startup_balance_result = _run_with_spinner(
+                "Checking balances...",
+                execute_tool, "wallet_balance", {},
+                persona_name=persona_name,
+            )
+            if startup_balance_result and startup_balance_result.get("status") == "ok":
+                display_text = startup_balance_result.pop("_display", "")
+                if display_text:
+                    print(f"\n{display_text}\n")
+        except (KeyboardInterrupt, EOFError):
+            print()  # user cancelled — continue to chat
         except Exception:
-            pass  # non-critical — don't block chat startup
+            from iconfucius.logging_config import get_logger
+            get_logger().debug("Startup balance check failed", exc_info=True)
 
     tools = get_tools_for_anthropic()
     messages: list[dict] = []
+
+    # Seed conversation with balance data so the AI sees it on its first turn
+    if startup_balance_result and startup_balance_result.get("status") == "ok":
+        tool_call_id = "startup_wallet_balance"
+        messages.append({
+            "role": "assistant",
+            "content": [
+                {"type": "tool_use", "id": tool_call_id,
+                 "name": "wallet_balance", "input": {}},
+            ],
+        })
+        messages.append({
+            "role": "user",
+            "content": [
+                {"type": "tool_result", "tool_use_id": tool_call_id,
+                 "content": json.dumps(startup_balance_result)},
+            ],
+        })
 
     # Seed conversation with update data so the AI sees it on its first turn
     if latest_version:
@@ -1191,6 +1177,17 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False,
                  "content": json.dumps(update_result)},
             ],
         })
+
+    # If balance data has a next_step, trigger an automatic AI response
+    if (startup_balance_result
+            and startup_balance_result.get("next_step")
+            and messages):
+        try:
+            _run_tool_loop(backend, messages, system, tools, persona.name,
+                           persona_key=persona_name)
+        except Exception:
+            from iconfucius.logging_config import get_logger
+            get_logger().debug("Startup auto next_step failed", exc_info=True)
 
     def _prompt_banner() -> None:
         """Print separator lines with optional upgrade notice."""

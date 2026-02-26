@@ -53,6 +53,7 @@ class TestGetPublicKeyQueryCacheHit:
     @patch(f"{M}.log")
     @patch(f"{M}.unwrap", side_effect=lambda x: x)
     def test_uses_query_result(self, mock_unwrap, mock_log):
+        """Test that a cache hit returns the query result without calling getPublicKey."""
         mock_cksigner = MagicMock()
         mock_cksigner.getPublicKeyQuery.return_value = _make_pubkey_ok()
 
@@ -67,6 +68,7 @@ class TestGetPublicKeyQueryCacheHit:
     @patch(f"{M}.log")
     @patch(f"{M}.unwrap", side_effect=lambda x: x)
     def test_passes_bot_name(self, mock_unwrap, mock_log):
+        """Test that the bot name is forwarded to getPublicKeyQuery."""
         mock_cksigner = MagicMock()
         mock_cksigner.getPublicKeyQuery.return_value = _make_pubkey_ok("my-bot")
 
@@ -95,6 +97,7 @@ class TestGetPublicKeyQueryCacheMissNoFees:
     @patch(f"{M}.log")
     @patch(f"{M}.unwrap", side_effect=lambda x: x)
     def test_falls_back_to_update(self, mock_unwrap, mock_log):
+        """Test that a cache miss triggers a fallback to getPublicKey update call."""
         mock_cksigner = MagicMock()
         mock_cksigner.getPublicKeyQuery.return_value = _make_pubkey_err_cache_miss()
         mock_cksigner.getFeeTokens.return_value = _make_fee_tokens_response([])
@@ -111,6 +114,7 @@ class TestGetPublicKeyQueryCacheMissNoFees:
     @patch(f"{M}.log")
     @patch(f"{M}.unwrap", side_effect=lambda x: x)
     def test_fallback_passes_bot_name_and_empty_payment(self, mock_unwrap, mock_log):
+        """Test that fallback passes the bot name and an empty payment list when no fees."""
         mock_cksigner = MagicMock()
         mock_cksigner.getPublicKeyQuery.return_value = _make_pubkey_err_cache_miss()
         mock_cksigner.getFeeTokens.return_value = _make_fee_tokens_response([])
@@ -135,6 +139,7 @@ class TestGetPublicKeyQueryCacheMissWithFees:
     def test_approves_and_passes_payment(
         self, MockCanister, MockPrincipal, mock_unwrap, mock_unwrap_cr, mock_log
     ):
+        """Test that fees trigger icrc2_approve and payment is included in getPublicKey."""
         mock_cksigner = MagicMock()
         mock_cksigner.getPublicKeyQuery.return_value = _make_pubkey_err_cache_miss()
         mock_cksigner.getFeeTokens.return_value = _make_fee_tokens_response(
@@ -168,6 +173,7 @@ class TestGetPublicKeyQueryCacheMissWithFees:
     def test_approve_failure_raises(
         self, MockCanister, MockPrincipal, mock_unwrap, mock_unwrap_cr, mock_log
     ):
+        """Test that a failed icrc2_approve raises RuntimeError and skips getPublicKey."""
         mock_cksigner = MagicMock()
         mock_cksigner.getPublicKeyQuery.return_value = _make_pubkey_err_cache_miss()
         mock_cksigner.getFeeTokens.return_value = _make_fee_tokens_response(
@@ -189,6 +195,7 @@ class TestGetPublicKeyQueryCacheMissWithFees:
     @patch(f"{M}.log")
     @patch(f"{M}.unwrap", side_effect=lambda x: x)
     def test_fees_required_no_wallet_agent_raises(self, mock_unwrap, mock_log):
+        """Test that fees without a wallet_agent raises RuntimeError."""
         mock_cksigner = MagicMock()
         mock_cksigner.getPublicKeyQuery.return_value = _make_pubkey_err_cache_miss()
         mock_cksigner.getFeeTokens.return_value = _make_fee_tokens_response(

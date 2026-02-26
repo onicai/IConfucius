@@ -669,6 +669,7 @@ def siwb_login(bot_name: str = None, verbose: bool = True) -> dict:
 # ---------------------------------------------------------------------------
 
 def main():
+    """Run a standalone SIWB login and print the resulting bot principal."""
     result = siwb_login(verbose=True)
     print(f"\n--- Done ---")
     print(f"Bot principal: {result['bot_principal_text']}")

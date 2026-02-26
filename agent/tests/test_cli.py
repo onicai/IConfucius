@@ -32,17 +32,20 @@ class TestHelpOutput:
         "env_exists": True, "has_api_key": True, "ready": True,
     })
     def test_no_args_starts_chat(self, mock_exec, mock_run_chat):
+        """Verify invoking CLI with no arguments launches the chat."""
         result = runner.invoke(app, [])
         assert result.exit_code == 0
         mock_run_chat.assert_called_once()
 
     def test_help_flag(self):
+        """Verify --help prints help text with section headers."""
         result = runner.invoke(app, ["--help"])
         assert result.exit_code == 0
         assert "Setup:" in result.output
         assert "How to use your bots:" in result.output
 
     def test_version_flag(self):
+        """Verify --version prints the version matching pyproject.toml."""
         import tomllib
         pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
         with open(pyproject, "rb") as f:
@@ -57,11 +60,13 @@ class TestHelpOutput:
         assert version in result.output
 
     def test_version_short_flag(self):
+        """Verify -V short flag prints the version string."""
         result = runner.invoke(app, ["-V"])
         assert result.exit_code == 0
         assert "iconfucius" in result.output
 
     def test_help_lists_all_commands(self):
+        """Verify --help output lists every registered CLI command."""
         result = runner.invoke(app, ["--help"])
         assert "init" in result.output
         assert "config" in result.output
@@ -74,6 +79,7 @@ class TestHelpOutput:
         assert "persona" in result.output
 
     def test_no_deposit_command(self):
+        """Verify the deprecated deposit command is not listed in help."""
         result = runner.invoke(app, ["--help"])
         # deposit command should be removed
         lines = result.output.split("\n")
@@ -92,6 +98,7 @@ class TestHelpOutput:
 
 class TestResolveBotNames:
     def test_global_bot(self, odin_project):
+        """Verify global --bot flag resolves to a single bot name."""
         state.bot_name = "bot-2"
         state.all_bots = False
         result = _resolve_bot_names()
@@ -99,12 +106,14 @@ class TestResolveBotNames:
         state.bot_name = None
 
     def test_per_command_bot(self, odin_project):
+        """Verify per-command bot= keyword resolves to a single bot name."""
         state.bot_name = None
         state.all_bots = False
         result = _resolve_bot_names(bot="bot-3")
         assert result == ["bot-3"]
 
     def test_global_all_bots(self, odin_project):
+        """Verify global --all-bots flag resolves to all configured bots."""
         state.bot_name = None
         state.all_bots = True
         result = _resolve_bot_names()
@@ -112,12 +121,14 @@ class TestResolveBotNames:
         state.all_bots = False
 
     def test_per_command_all_bots(self, odin_project):
+        """Verify per-command all_bots=True resolves to all configured bots."""
         state.bot_name = None
         state.all_bots = False
         result = _resolve_bot_names(all_bots=True)
         assert set(result) == {"bot-1", "bot-2", "bot-3"}
 
     def test_no_flag_exits(self, odin_project):
+        """Verify missing --bot and --all-bots flags raises Exit."""
         from click.exceptions import Exit
         state.bot_name = None
         state.all_bots = False
@@ -202,6 +213,7 @@ class TestUpgradeWizard:
 
 class TestInitCommand:
     def test_creates_config_and_gitignore(self, tmp_path, monkeypatch):
+        """Verify init creates iconfucius.toml and .gitignore files."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         result = runner.invoke(app, ["init"])
@@ -211,6 +223,7 @@ class TestInitCommand:
         assert "Created iconfucius.toml" in result.output
 
     def test_refuses_overwrite_without_force(self, tmp_path, monkeypatch):
+        """Verify init exits with error when config already exists."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         (tmp_path / "iconfucius.toml").write_text("existing")
@@ -219,6 +232,7 @@ class TestInitCommand:
         assert "already exists" in result.output
 
     def test_force_overwrites(self, tmp_path, monkeypatch):
+        """Verify init --force overwrites an existing config file."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         (tmp_path / "iconfucius.toml").write_text("old")
@@ -228,6 +242,7 @@ class TestInitCommand:
         assert "[bots.bot-1]" in content
 
     def test_creates_three_default_bots(self, tmp_path, monkeypatch):
+        """Verify init creates three bots by default."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         result = runner.invoke(app, ["init"])
@@ -238,6 +253,7 @@ class TestInitCommand:
         assert "[bots.bot-3]" in content
 
     def test_bots_flag_one(self, tmp_path, monkeypatch):
+        """Verify bots flag one."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         result = runner.invoke(app, ["init", "--bots", "1"])
@@ -248,6 +264,7 @@ class TestInitCommand:
         assert "bot-1" in result.output
 
     def test_bots_flag_five(self, tmp_path, monkeypatch):
+        """Verify bots flag five."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         result = runner.invoke(app, ["init", "--bots", "5"])
@@ -259,6 +276,7 @@ class TestInitCommand:
         assert "bot-5" in result.output
 
     def test_bots_short_flag(self, tmp_path, monkeypatch):
+        """Verify bots short flag."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         result = runner.invoke(app, ["init", "-n", "2"])
@@ -275,36 +293,43 @@ class TestInitCommand:
 
 class TestConfigCommand:
     def teardown_method(self):
+        """Clean up after each test method."""
         set_network("prd")
 
     def test_shows_config(self, odin_project):
+        """Verify shows config."""
         result = runner.invoke(app, ["config"])
         assert result.exit_code == 0
         assert "bot-1" in result.output
         assert "bot-2" in result.output
 
     def test_prd_hides_network(self, odin_project):
+        """Verify prd hides network."""
         result = runner.invoke(app, ["config"])
         assert result.exit_code == 0
         assert "Network:" not in result.output
 
     def test_prd_shows_prd_canister_id(self, odin_project):
+        """Verify prd shows prd canister id."""
         result = runner.invoke(app, ["config"])
         assert result.exit_code == 0
         assert "g7qkb-iiaaa-aaaar-qb3za-cai" in result.output
 
     def test_testing_shows_network(self, odin_project):
+        """Verify testing shows network."""
         result = runner.invoke(app, ["--network", "testing", "config"])
         assert result.exit_code == 0
         assert "Network:" in result.output
         assert "testing" in result.output
 
     def test_testing_shows_testing_canister_id(self, odin_project):
+        """Verify testing shows testing canister id."""
         result = runner.invoke(app, ["--network", "testing", "config"])
         assert result.exit_code == 0
         assert "ho2u6-qaaaa-aaaar-qb34q-cai" in result.output
 
     def test_development_shows_network(self, odin_project):
+        """Verify development shows network."""
         result = runner.invoke(app, ["--network", "development", "config"])
         assert result.exit_code == 0
         assert "Network:" in result.output
@@ -318,6 +343,7 @@ class TestConfigCommand:
 class TestFundRouting:
     @patch("iconfucius.cli.fund.run_fund")
     def test_fund_requires_bot_flag(self, mock_run_fund, odin_project):
+        """Verify fund requires bot flag."""
         result = runner.invoke(app, ["fund", "5000"])
         assert result.exit_code == 1
         assert "--bot" in result.output
@@ -326,6 +352,7 @@ class TestFundRouting:
 
     @patch("iconfucius.cli.fund.run_fund")
     def test_fund_bot_before_command(self, mock_run_fund, odin_project):
+        """Verify fund bot before command."""
         result = runner.invoke(app, ["--bot", "bot-2", "fund", "3000"])
         args = mock_run_fund.call_args
         assert args.kwargs["bot_names"] == ["bot-2"]
@@ -333,18 +360,21 @@ class TestFundRouting:
 
     @patch("iconfucius.cli.fund.run_fund")
     def test_fund_bot_after_command(self, mock_run_fund, odin_project):
+        """Verify fund bot after command."""
         result = runner.invoke(app, ["fund", "3000", "--bot", "bot-2"])
         args = mock_run_fund.call_args
         assert args.kwargs["bot_names"] == ["bot-2"]
 
     @patch("iconfucius.cli.fund.run_fund")
     def test_fund_all_bots_before_command(self, mock_run_fund, odin_project):
+        """Verify fund all bots before command."""
         result = runner.invoke(app, ["--all-bots", "fund", "1000"])
         args = mock_run_fund.call_args
         assert set(args.kwargs["bot_names"]) == {"bot-1", "bot-2", "bot-3"}
 
     @patch("iconfucius.cli.fund.run_fund")
     def test_fund_all_bots_after_command(self, mock_run_fund, odin_project):
+        """Verify fund all bots after command."""
         result = runner.invoke(app, ["fund", "1000", "--all-bots"])
         args = mock_run_fund.call_args
         assert set(args.kwargs["bot_names"]) == {"bot-1", "bot-2", "bot-3"}
@@ -353,6 +383,7 @@ class TestFundRouting:
 class TestWithdrawRouting:
     @patch("iconfucius.cli.withdraw.run_withdraw")
     def test_withdraw_requires_bot_flag(self, mock_run_withdraw, odin_project):
+        """Verify withdraw requires bot flag."""
         result = runner.invoke(app, ["withdraw", "1000"])
         assert result.exit_code == 1
         assert "--bot" in result.output
@@ -360,6 +391,7 @@ class TestWithdrawRouting:
 
     @patch("iconfucius.cli.withdraw.run_withdraw")
     def test_withdraw_bot_before_command(self, mock_run_withdraw, odin_project):
+        """Verify withdraw bot before command."""
         result = runner.invoke(app, ["--bot", "bot-1", "withdraw", "1000"])
         mock_run_withdraw.assert_called_once()
         args = mock_run_withdraw.call_args
@@ -368,6 +400,7 @@ class TestWithdrawRouting:
 
     @patch("iconfucius.cli.withdraw.run_withdraw")
     def test_withdraw_bot_after_command(self, mock_run_withdraw, odin_project):
+        """Verify withdraw bot after command."""
         result = runner.invoke(app, ["withdraw", "1000", "--bot", "bot-1"])
         mock_run_withdraw.assert_called_once()
         args = mock_run_withdraw.call_args
@@ -375,11 +408,13 @@ class TestWithdrawRouting:
 
     @patch("iconfucius.cli.withdraw.run_withdraw")
     def test_withdraw_all_bots_before_command(self, mock_run_withdraw, odin_project):
+        """Verify withdraw all bots before command."""
         result = runner.invoke(app, ["--all-bots", "withdraw", "all"])
         assert mock_run_withdraw.call_count == 3
 
     @patch("iconfucius.cli.withdraw.run_withdraw")
     def test_withdraw_all_bots_after_command(self, mock_run_withdraw, odin_project):
+        """Verify withdraw all bots after command."""
         result = runner.invoke(app, ["withdraw", "all", "--all-bots"])
         assert mock_run_withdraw.call_count == 3
 
@@ -387,6 +422,7 @@ class TestWithdrawRouting:
 class TestTradeRouting:
     @patch("iconfucius.cli.trade.run_trade")
     def test_trade_requires_bot_flag(self, mock_run_trade, odin_project):
+        """Verify trade requires bot flag."""
         result = runner.invoke(app, ["trade", "buy", "29m8", "1000"])
         assert result.exit_code == 1
         assert "--bot" in result.output
@@ -394,6 +430,7 @@ class TestTradeRouting:
 
     @patch("iconfucius.cli.trade.run_trade")
     def test_trade_bot_before_command(self, mock_run_trade, odin_project):
+        """Verify trade bot before command."""
         result = runner.invoke(app, ["--bot", "bot-1", "trade", "buy", "29m8", "1000"])
         mock_run_trade.assert_called_once()
         args = mock_run_trade.call_args
@@ -403,6 +440,7 @@ class TestTradeRouting:
 
     @patch("iconfucius.cli.trade.run_trade")
     def test_trade_bot_after_command(self, mock_run_trade, odin_project):
+        """Verify trade bot after command."""
         result = runner.invoke(app, ["trade", "buy", "29m8", "1000", "--bot", "bot-1"])
         mock_run_trade.assert_called_once()
         args = mock_run_trade.call_args
@@ -410,6 +448,7 @@ class TestTradeRouting:
 
     @patch("iconfucius.cli.trade.run_trade")
     def test_trade_sell(self, mock_run_trade, odin_project):
+        """Verify trade sell."""
         result = runner.invoke(app, ["--bot", "bot-1", "trade", "sell", "29m8", "500"])
         args = mock_run_trade.call_args
         assert args.kwargs["action"] == "sell"
@@ -425,6 +464,7 @@ class TestSweepRouting:
     @patch("iconfucius.cli.balance.collect_balances")
     def test_sweep_requires_bot_flag(self, mock_collect, mock_trade, mock_withdraw,
                                       odin_project):
+        """Verify sweep requires bot flag."""
         result = runner.invoke(app, ["sweep"])
         assert result.exit_code == 1
         assert "--bot" in result.output
@@ -435,6 +475,7 @@ class TestSweepRouting:
     @patch("iconfucius.cli.balance.collect_balances")
     def test_sweep_single_bot(self, mock_collect, mock_trade, mock_withdraw,
                                odin_project):
+        """Verify sweep single bot."""
         mock_collect.return_value = BotBalances(
             bot_name="bot-1", bot_principal="principal-1", odin_sats=5000,
             token_holdings=[
@@ -462,6 +503,7 @@ class TestSweepRouting:
     @patch("iconfucius.cli.balance.collect_balances")
     def test_sweep_all_bots(self, mock_collect, mock_trade, mock_withdraw,
                              odin_project):
+        """Verify sweep all bots."""
         mock_collect.side_effect = [
             BotBalances(bot_name="bot-1", bot_principal="p1", odin_sats=5000,
                         token_holdings=[{"ticker": "T", "token_id": "29m8",
@@ -486,6 +528,7 @@ class TestSweepRouting:
     @patch("iconfucius.cli.balance.collect_balances")
     def test_sweep_no_holdings(self, mock_collect, mock_trade, mock_withdraw,
                                 odin_project):
+        """Verify sweep no holdings."""
         mock_collect.return_value = BotBalances(
             bot_name="bot-1", bot_principal="p1", odin_sats=1000,
             token_holdings=[],
@@ -499,6 +542,7 @@ class TestSweepRouting:
     @patch("iconfucius.cli.balance.collect_balances")
     def test_sweep_skips_zero_balance_tokens(self, mock_collect, mock_trade,
                                               mock_withdraw, odin_project):
+        """Verify sweep skips zero balance tokens."""
         mock_collect.return_value = BotBalances(
             bot_name="bot-1", bot_principal="p1", odin_sats=1000,
             token_holdings=[
@@ -518,25 +562,30 @@ class TestSweepRouting:
 
 class TestNetworkOption:
     def teardown_method(self):
+        """Clean up after each test method."""
         set_network("prd")
 
     def test_default_network_is_prd(self, odin_project):
+        """Verify default network is prd."""
         result = runner.invoke(app, ["config"])
         assert result.exit_code == 0
         assert get_network() == "prd"
 
     def test_network_before_command(self, odin_project):
+        """Verify network before command."""
         result = runner.invoke(app, ["--network", "testing", "config"])
         assert result.exit_code == 0
         assert get_network() == "testing"
 
     def test_network_after_command(self, odin_project):
+        """Verify network after command."""
         result = runner.invoke(app, ["config", "--network", "testing"])
         assert result.exit_code == 0
         assert "testing" in result.output
 
     @patch("iconfucius.cli.fund.run_fund")
     def test_network_with_fund(self, mock_run_fund, odin_project):
+        """Verify network with fund."""
         result = runner.invoke(app, [
             "--network", "testing", "--bot", "bot-1", "fund", "5000",
         ])
@@ -544,6 +593,7 @@ class TestNetworkOption:
         mock_run_fund.assert_called_once()
 
     def test_invalid_network(self, odin_project):
+        """Verify invalid network."""
         result = runner.invoke(app, ["--network", "staging", "config"])
         # set_network raises ValueError, Typer catches it
         assert result.exit_code != 0
@@ -557,16 +607,19 @@ class TestOptionPlacement:
     """Verify --network, --bot, and --all-bots work before and after commands."""
 
     def teardown_method(self):
+        """Clean up after each test method."""
         set_network("prd")
 
     # --network placement with config
 
     def test_network_before_config(self, odin_project):
+        """Verify network before config."""
         result = runner.invoke(app, ["--network", "testing", "config"])
         assert result.exit_code == 0
         assert "ho2u6-qaaaa-aaaar-qb34q-cai" in result.output
 
     def test_network_after_config(self, odin_project):
+        """Verify network after config."""
         result = runner.invoke(app, ["config", "--network", "testing"])
         assert result.exit_code == 0
         assert "ho2u6-qaaaa-aaaar-qb34q-cai" in result.output
@@ -575,6 +628,7 @@ class TestOptionPlacement:
 
     @patch("iconfucius.cli.balance.run_all_balances")
     def test_network_before_wallet_balance(self, mock_run, odin_project):
+        """Verify network before wallet balance."""
         result = runner.invoke(app, [
             "--network", "testing", "wallet", "balance", "--bot", "bot-1",
         ])
@@ -583,6 +637,7 @@ class TestOptionPlacement:
 
     @patch("iconfucius.cli.balance.run_all_balances")
     def test_network_after_wallet_balance(self, mock_run, odin_project):
+        """Verify network after wallet balance."""
         result = runner.invoke(app, [
             "wallet", "balance", "--bot", "bot-1", "--network", "testing",
         ])
@@ -607,6 +662,7 @@ class TestOptionPlacement:
                                          mock_minter, mock_pending,
                                          mock_btc_addr, mock_withdrawal_acct,
                                          mock_unwrap, odin_project):
+        """Verify network before wallet info."""
         mock_id = MagicMock()
         mock_id.sender.return_value = MagicMock(
             __str__=lambda s: "test-principal"
@@ -636,6 +692,7 @@ class TestOptionPlacement:
                                         mock_minter, mock_pending,
                                         mock_btc_addr, mock_withdrawal_acct,
                                         mock_unwrap, odin_project):
+        """Verify network after wallet info."""
         mock_id = MagicMock()
         mock_id.sender.return_value = MagicMock(
             __str__=lambda s: "test-principal"
@@ -664,6 +721,7 @@ class TestOptionPlacement:
                                             mock_ckbtc, mock_btc_addr,
                                             mock_get_bal, mock_rate,
                                             odin_project):
+        """Verify network before wallet receive."""
         mock_id = MagicMock()
         mock_id.sender.return_value = MagicMock(
             __str__=lambda s: "test-principal"
@@ -690,6 +748,7 @@ class TestOptionPlacement:
                                            mock_ckbtc, mock_btc_addr,
                                            mock_get_bal, mock_rate,
                                            odin_project):
+        """Verify network after wallet receive."""
         mock_id = MagicMock()
         mock_id.sender.return_value = MagicMock(
             __str__=lambda s: "test-principal"
@@ -716,6 +775,7 @@ class TestOptionPlacement:
                                          MockAgent, mock_create, mock_get_bal,
                                          mock_transfer, mock_unwrap,
                                          odin_project):
+        """Verify network before wallet send."""
         mock_id = MagicMock()
         mock_id.sender.return_value = MagicMock(
             __str__=lambda s: "ctrl-principal"
@@ -741,6 +801,7 @@ class TestOptionPlacement:
                                         MockAgent, mock_create, mock_get_bal,
                                         mock_transfer, mock_unwrap,
                                         odin_project):
+        """Verify network after wallet send."""
         mock_id = MagicMock()
         mock_id.sender.return_value = MagicMock(
             __str__=lambda s: "ctrl-principal"
@@ -759,6 +820,7 @@ class TestOptionPlacement:
 
     @patch("iconfucius.cli.balance.run_all_balances")
     def test_network_before_instructions(self, mock_run, odin_project):
+        """Verify network before instructions."""
         result = runner.invoke(app, [
             "--network", "testing", "--bot", "bot-1", "instructions",
         ])
@@ -767,6 +829,7 @@ class TestOptionPlacement:
 
     @patch("iconfucius.cli.balance.run_all_balances")
     def test_network_after_instructions(self, mock_run, odin_project):
+        """Verify network after instructions."""
         result = runner.invoke(app, [
             "instructions", "--bot", "bot-1", "--network", "testing",
         ])
@@ -777,6 +840,7 @@ class TestOptionPlacement:
 
     @patch("iconfucius.cli.fund.run_fund")
     def test_network_before_fund(self, mock_run, odin_project):
+        """Verify network before fund."""
         result = runner.invoke(app, [
             "--network", "testing", "--bot", "bot-1", "fund", "5000",
         ])
@@ -784,6 +848,7 @@ class TestOptionPlacement:
 
     @patch("iconfucius.cli.fund.run_fund")
     def test_network_after_fund(self, mock_run, odin_project):
+        """Verify network after fund."""
         result = runner.invoke(app, [
             "--bot", "bot-1", "fund", "5000", "--network", "testing",
         ])
@@ -793,6 +858,7 @@ class TestOptionPlacement:
 
     @patch("iconfucius.cli.withdraw.run_withdraw")
     def test_network_before_withdraw(self, mock_run, odin_project):
+        """Verify network before withdraw."""
         result = runner.invoke(app, [
             "--network", "testing", "--bot", "bot-1", "withdraw", "1000",
         ])
@@ -800,6 +866,7 @@ class TestOptionPlacement:
 
     @patch("iconfucius.cli.withdraw.run_withdraw")
     def test_network_after_withdraw(self, mock_run, odin_project):
+        """Verify network after withdraw."""
         result = runner.invoke(app, [
             "--bot", "bot-1", "withdraw", "1000", "--network", "testing",
         ])
@@ -809,6 +876,7 @@ class TestOptionPlacement:
 
     @patch("iconfucius.cli.trade.run_trade")
     def test_network_before_trade(self, mock_run, odin_project):
+        """Verify network before trade."""
         result = runner.invoke(app, [
             "--network", "testing", "--bot", "bot-1", "trade", "buy", "29m8", "1000",
         ])
@@ -816,6 +884,7 @@ class TestOptionPlacement:
 
     @patch("iconfucius.cli.trade.run_trade")
     def test_network_after_trade(self, mock_run, odin_project):
+        """Verify network after trade."""
         result = runner.invoke(app, [
             "--bot", "bot-1", "trade", "buy", "29m8", "1000", "--network", "testing",
         ])
@@ -828,6 +897,7 @@ class TestOptionPlacement:
     @patch("iconfucius.cli.balance.collect_balances")
     def test_network_before_sweep(self, mock_collect, mock_trade, mock_withdraw,
                                    odin_project):
+        """Verify network before sweep."""
         mock_collect.return_value = BotBalances(
             bot_name="bot-1", bot_principal="p1", odin_sats=0, token_holdings=[],
         )
@@ -841,6 +911,7 @@ class TestOptionPlacement:
     @patch("iconfucius.cli.balance.collect_balances")
     def test_network_after_sweep(self, mock_collect, mock_trade, mock_withdraw,
                                   odin_project):
+        """Verify network after sweep."""
         mock_collect.return_value = BotBalances(
             bot_name="bot-1", bot_principal="p1", odin_sats=0, token_holdings=[],
         )
@@ -853,6 +924,7 @@ class TestOptionPlacement:
 
     @patch("iconfucius.cli.fund.run_fund")
     def test_bot_before_network_before_command(self, mock_run, odin_project):
+        """Verify bot before network before command."""
         result = runner.invoke(app, [
             "--bot", "bot-2", "--network", "testing", "fund", "5000",
         ])
@@ -861,6 +933,7 @@ class TestOptionPlacement:
 
     @patch("iconfucius.cli.fund.run_fund")
     def test_network_before_bot_before_command(self, mock_run, odin_project):
+        """Verify network before bot before command."""
         result = runner.invoke(app, [
             "--network", "testing", "--bot", "bot-2", "fund", "5000",
         ])
@@ -869,6 +942,7 @@ class TestOptionPlacement:
 
     @patch("iconfucius.cli.fund.run_fund")
     def test_bot_after_command_network_after_command(self, mock_run, odin_project):
+        """Verify bot after command network after command."""
         result = runner.invoke(app, [
             "fund", "5000", "--bot", "bot-2", "--network", "testing",
         ])
@@ -880,6 +954,7 @@ class TestOptionPlacement:
 
     @patch("iconfucius.cli.balance.run_all_balances")
     def test_all_bots_before_network_wallet_balance(self, mock_run, odin_project):
+        """Verify all bots before network wallet balance."""
         result = runner.invoke(app, [
             "--all-bots", "wallet", "balance", "--network", "testing",
         ])
@@ -889,6 +964,7 @@ class TestOptionPlacement:
 
     @patch("iconfucius.cli.balance.run_all_balances")
     def test_network_before_all_bots_before_wallet_balance(self, mock_run, odin_project):
+        """Verify network before all bots before wallet balance."""
         result = runner.invoke(app, [
             "--network", "testing", "--all-bots", "wallet", "balance",
         ])
@@ -898,6 +974,7 @@ class TestOptionPlacement:
 
     @patch("iconfucius.cli.balance.run_all_balances")
     def test_wallet_balance_all_bots_network_at_command(self, mock_run, odin_project):
+        """Verify wallet balance all bots network at command."""
         result = runner.invoke(app, [
             "wallet", "balance", "--all-bots", "--network", "testing",
         ])
@@ -917,12 +994,14 @@ class TestStartChatWizard:
     """
 
     def _ready_status(self):
+        """Return a ready status fixture."""
         return {
             "status": "ok", "config_exists": True, "wallet_exists": True,
             "env_exists": True, "has_api_key": True, "ready": True,
         }
 
     def _no_config_status(self):
+        """Return a no config status fixture."""
         return {
             "status": "ok", "config_exists": False, "wallet_exists": False,
             "env_exists": False, "has_api_key": False, "ready": False,
@@ -936,18 +1015,21 @@ class TestStartChatWizard:
         }
 
     def _no_wallet_status(self):
+        """Return a no wallet status fixture."""
         return {
             "status": "ok", "config_exists": True, "wallet_exists": False,
             "env_exists": True, "has_api_key": True, "ready": False,
         }
 
     def _no_api_key_status(self):
+        """Return a no api key status fixture."""
         return {
             "status": "ok", "config_exists": True, "wallet_exists": True,
             "env_exists": True, "has_api_key": False, "ready": False,
         }
 
     def _how_to_fund_wallet_result(self):
+        """Return a mock how_to_fund_wallet result."""
         return {
             "status": "ok",
             "display": "Wallet balance: 0 sats\n\nOption 1: ...\nOption 2: ...",
@@ -962,6 +1044,7 @@ class TestStartChatWizard:
     @patch("iconfucius.skills.executor.execute_tool")
     @patch("builtins.input", side_effect=["n"])
     def test_decline_init_exits(self, mock_input, mock_exec, mock_chat):
+        """Verify decline init exits."""
         mock_exec.return_value = self._no_config_status()
         result = runner.invoke(app, [])
         assert result.exit_code == 0
@@ -972,6 +1055,7 @@ class TestStartChatWizard:
     @patch("iconfucius.skills.executor.execute_tool")
     @patch("builtins.input", side_effect=KeyboardInterrupt)
     def test_ctrl_c_during_init_prompt(self, mock_input, mock_exec, mock_chat):
+        """Verify ctrl c during init prompt."""
         mock_exec.return_value = self._no_config_status()
         result = runner.invoke(app, [])
         mock_chat.assert_not_called()
@@ -986,6 +1070,7 @@ class TestStartChatWizard:
         calls = []
 
         def track_exec(name, args):
+            """Track execute_tool calls for assertion."""
             calls.append((name, args))
             if name == "setup_status" and not _calls_with(calls, "init"):
                 return self._no_config_status()
@@ -1007,6 +1092,7 @@ class TestStartChatWizard:
         calls = []
 
         def track_exec(name, args):
+            """Track execute_tool calls for assertion."""
             calls.append((name, args))
             if name == "setup_status" and not _calls_with(calls, "init"):
                 return self._no_config_status()
@@ -1023,9 +1109,11 @@ class TestStartChatWizard:
     @patch("iconfucius.skills.executor.execute_tool")
     @patch("builtins.input", side_effect=["y", "abc"])
     def test_invalid_bot_count_uses_default(self, mock_input, mock_exec, mock_chat):
+        """Verify invalid bot count uses default."""
         calls = []
 
         def track_exec(name, args):
+            """Track execute_tool calls for assertion."""
             calls.append((name, args))
             if name == "setup_status" and not _calls_with(calls, "init"):
                 return self._no_config_status()
@@ -1043,6 +1131,7 @@ class TestStartChatWizard:
     @patch("iconfucius.skills.executor.execute_tool")
     @patch("builtins.input", side_effect=["y", KeyboardInterrupt])
     def test_ctrl_c_during_bot_count(self, mock_input, mock_exec, mock_chat):
+        """Verify ctrl c during bot count."""
         mock_exec.return_value = self._no_config_status()
         result = runner.invoke(app, [])
         mock_chat.assert_not_called()
@@ -1057,6 +1146,7 @@ class TestStartChatWizard:
         calls = []
 
         def track_exec(name, args):
+            """Track execute_tool calls for assertion."""
             calls.append((name, args))
             if name == "setup_status" and not _calls_with(calls, "init"):
                 return self._no_config_status()
@@ -1077,6 +1167,7 @@ class TestStartChatWizard:
     @patch("builtins.input", side_effect=["sk-ant-test-key-123"])
     def test_api_key_prompt_saves_to_env(self, mock_input, mock_exec, mock_chat,
                                          tmp_path, monkeypatch):
+        """Verify api key prompt saves to env."""
         monkeypatch.chdir(tmp_path)
         mock_exec.return_value = self._no_api_key_status()
 
@@ -1094,6 +1185,7 @@ class TestStartChatWizard:
     @patch("builtins.input", side_effect=["sk-ant-my-key"])
     def test_api_key_creates_env_if_missing(self, mock_input, mock_exec, mock_chat,
                                              tmp_path, monkeypatch):
+        """Verify api key creates env if missing."""
         monkeypatch.chdir(tmp_path)
         mock_exec.return_value = self._no_api_key_status()
 
@@ -1109,6 +1201,7 @@ class TestStartChatWizard:
     @patch("builtins.input", side_effect=["sk-ant-new-key"])
     def test_api_key_replaces_existing_value(self, mock_input, mock_exec, mock_chat,
                                               tmp_path, monkeypatch):
+        """Verify api key replaces existing value."""
         monkeypatch.chdir(tmp_path)
         mock_exec.return_value = self._no_api_key_status()
 
@@ -1126,6 +1219,7 @@ class TestStartChatWizard:
     @patch("builtins.input", side_effect=["sk-ant-appended"])
     def test_api_key_appends_to_env_without_key(self, mock_input, mock_exec, mock_chat,
                                                  tmp_path, monkeypatch):
+        """Verify api key appends to env without key."""
         monkeypatch.chdir(tmp_path)
         mock_exec.return_value = self._no_api_key_status()
 
@@ -1141,6 +1235,7 @@ class TestStartChatWizard:
     @patch("iconfucius.skills.executor.execute_tool")
     @patch("builtins.input", side_effect=[""])
     def test_empty_api_key_exits(self, mock_input, mock_exec, mock_chat):
+        """Verify empty api key exits."""
         mock_exec.return_value = self._no_api_key_status()
         result = runner.invoke(app, [])
         assert "No key entered" in result.output
@@ -1150,6 +1245,7 @@ class TestStartChatWizard:
     @patch("iconfucius.skills.executor.execute_tool")
     @patch("builtins.input", side_effect=KeyboardInterrupt)
     def test_ctrl_c_during_api_key_prompt(self, mock_input, mock_exec, mock_chat):
+        """Verify ctrl c during api key prompt."""
         mock_exec.return_value = self._no_api_key_status()
         result = runner.invoke(app, [])
         mock_chat.assert_not_called()
@@ -1159,6 +1255,7 @@ class TestStartChatWizard:
     @patch("builtins.input", side_effect=["sk-ant-key"])
     def test_api_key_sets_environ(self, mock_input, mock_exec, mock_chat,
                                    tmp_path, monkeypatch):
+        """Verify api key sets environ."""
         monkeypatch.chdir(tmp_path)
         mock_exec.return_value = self._no_api_key_status()
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
@@ -1172,6 +1269,7 @@ class TestStartChatWizard:
     @patch("iconfucius.skills.executor.execute_tool")
     @patch("builtins.input", side_effect=["n"])
     def test_decline_wallet_create_exits(self, mock_input, mock_exec, mock_chat):
+        """Verify decline wallet create exits."""
         mock_exec.return_value = self._no_wallet_status()
         result = runner.invoke(app, [])
         assert "iconfucius wallet create" in result.output
@@ -1181,6 +1279,7 @@ class TestStartChatWizard:
     @patch("iconfucius.skills.executor.execute_tool")
     @patch("builtins.input", side_effect=KeyboardInterrupt)
     def test_ctrl_c_during_wallet_prompt(self, mock_input, mock_exec, mock_chat):
+        """Verify ctrl c during wallet prompt."""
         mock_exec.return_value = self._no_wallet_status()
         result = runner.invoke(app, [])
         mock_chat.assert_not_called()
@@ -1193,6 +1292,7 @@ class TestStartChatWizard:
         calls = []
 
         def track_exec(name, args):
+            """Track execute_tool calls for assertion."""
             calls.append((name, args))
             if name == "setup_status" and not _calls_with(calls, "wallet_create"):
                 return self._no_wallet_status()
@@ -1220,6 +1320,7 @@ class TestStartChatWizard:
         step = {"n": 0}  # track wizard progression
 
         def track_exec(name, args):
+            """Track execute_tool calls for assertion."""
             if name == "setup_status":
                 if step["n"] == 0:
                     return self._no_config_status()
@@ -1255,6 +1356,7 @@ class TestStartChatWizard:
         calls = []
 
         def track_exec(name, args):
+            """Track execute_tool calls for assertion."""
             calls.append(name)
             if name == "setup_status" and "wallet_create" not in calls:
                 # Config exists, but no API key and no wallet

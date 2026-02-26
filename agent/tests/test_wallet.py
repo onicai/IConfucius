@@ -27,6 +27,7 @@ _BTC_ADDR = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"
 class TestWalletCreate:
     @patch(ID)
     def test_creates_wallet(self, MockIdentity, tmp_path, monkeypatch):
+        """Verify creates wallet."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         mock_identity = MagicMock()
         mock_identity.to_pem.return_value = b"-----BEGIN PRIVATE KEY-----\nfake\n-----END PRIVATE KEY-----\n"
@@ -40,12 +41,14 @@ class TestWalletCreate:
 
     @patch(ID)
     def test_refuses_overwrite(self, MockIdentity, odin_project):
+        """Verify refuses overwrite."""
         result = runner.invoke(app, ["wallet", "create"])
         assert result.exit_code == 1
         assert "already exists" in result.output
 
     @patch(ID)
     def test_force_overwrites(self, MockIdentity, odin_project):
+        """Verify force overwrites."""
         mock_identity = MagicMock()
         mock_identity.to_pem.return_value = b"-----BEGIN PRIVATE KEY-----\nnew\n-----END PRIVATE KEY-----\n"
         MockIdentity.return_value = mock_identity
@@ -105,6 +108,7 @@ class TestWalletCreate:
     @pytest.mark.skipif(os.name == "nt", reason="Unix file permissions not supported on Windows")
     @patch(ID)
     def test_sets_pem_permissions(self, MockIdentity, tmp_path, monkeypatch):
+        """Verify sets pem permissions."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         mock_identity = MagicMock()
         mock_identity.to_pem.return_value = b"-----BEGIN PRIVATE KEY-----\nfake\n-----END PRIVATE KEY-----\n"
@@ -117,6 +121,7 @@ class TestWalletCreate:
 
     @patch(ID)
     def test_shows_diagram(self, MockIdentity, tmp_path, monkeypatch):
+        """Verify shows diagram."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         mock_identity = MagicMock()
         mock_identity.to_pem.return_value = b"fake-pem"
@@ -142,6 +147,7 @@ class TestWalletInfo:
     def test_shows_info(self, MockIdentity, MockClient, MockAgent,
                          mock_create, mock_get_bal, mock_minter,
                          mock_btc_addr, odin_project):
+        """Verify shows info."""
         mock_id = MagicMock()
         mock_id.sender.return_value = MagicMock(
             __str__=lambda s: "test-principal"
@@ -182,6 +188,7 @@ class TestWalletInfo:
                                        mock_pending, mock_check, mock_btc_addr,
                                        mock_withdrawal_acct, mock_unwrap,
                                        odin_project):
+        """Verify info shows confirmations."""
         mock_id = MagicMock()
         mock_id.sender.return_value = MagicMock(
             __str__=lambda s: "test-principal"
@@ -213,6 +220,7 @@ class TestWalletInfo:
                                         mock_pending, mock_check, mock_btc_addr,
                                         mock_withdrawal_acct, mock_unwrap,
                                         odin_project):
+        """Verify info converts pending btc."""
         mock_id = MagicMock()
         mock_id.sender.return_value = MagicMock(
             __str__=lambda s: "test-principal"
@@ -244,6 +252,7 @@ class TestWalletInfo:
                                            mock_btc_addr, mock_withdrawal_acct,
                                            mock_unwrap, odin_project, tmp_path,
                                            monkeypatch):
+        """Verify info shows withdrawal status."""
         mock_id = MagicMock()
         mock_id.sender.return_value = MagicMock(
             __str__=lambda s: "test-principal"
@@ -291,6 +300,7 @@ class TestWalletReceive:
     def test_shows_addresses(self, MockIdentity, MockClient, MockAgent,
                               mock_minter, mock_ckbtc, mock_btc_addr,
                               mock_get_bal, mock_rate, odin_project):
+        """Verify shows addresses."""
         mock_id = MagicMock()
         mock_id.sender.return_value = MagicMock(
             __str__=lambda s: "controller-principal"
@@ -323,6 +333,7 @@ class TestWalletSendCkbtc:
     def test_send_ckbtc_success(self, MockIdentity, MockClient, MockAgent,
                                  mock_create, mock_get_bal, mock_transfer,
                                  mock_unwrap, odin_project):
+        """Verify send ckbtc success."""
         mock_id = MagicMock()
         mock_id.sender.return_value = MagicMock(
             __str__=lambda s: "ctrl-principal"
@@ -345,6 +356,7 @@ class TestWalletSendCkbtc:
     def test_send_ckbtc_insufficient(self, MockIdentity, MockClient, MockAgent,
                                       mock_create, mock_get_bal, mock_unwrap,
                                       odin_project):
+        """Verify send ckbtc insufficient."""
         mock_id = MagicMock()
         mock_id.sender.return_value = MagicMock(
             __str__=lambda s: "ctrl-principal"
@@ -366,6 +378,7 @@ class TestWalletSendCkbtc:
     def test_send_all_ckbtc(self, MockIdentity, MockClient, MockAgent,
                              mock_create, mock_get_bal, mock_transfer,
                              mock_unwrap, odin_project):
+        """Verify send all ckbtc."""
         mock_id = MagicMock()
         mock_id.sender.return_value = MagicMock(
             __str__=lambda s: "ctrl-principal"
@@ -402,6 +415,7 @@ class TestWalletSendBtc:
                                mock_create_minter, mock_withdrawal_acct,
                                mock_est_fee, mock_retrieve,
                                mock_unwrap, odin_project):
+        """Verify send btc success."""
         mock_id = MagicMock()
         mock_id.sender.return_value = MagicMock(
             __str__=lambda s: "ctrl-principal"
@@ -436,6 +450,7 @@ class TestWalletSendBtc:
                                       mock_create_minter, mock_withdrawal_acct,
                                       mock_est_fee,
                                       mock_unwrap, odin_project):
+        """Verify send btc below minimum."""
         mock_id = MagicMock()
         mock_id.sender.return_value = MagicMock(
             __str__=lambda s: "ctrl-principal"
@@ -460,6 +475,7 @@ class TestWalletSendBtc:
 class TestWalletBalance:
     @patch("iconfucius.cli.balance.run_all_balances")
     def test_wallet_balance_command(self, mock_run, odin_project):
+        """Verify wallet balance command."""
         result = runner.invoke(app, ["wallet", "balance", "--all-bots"])
         mock_run.assert_called_once()
 
@@ -498,6 +514,7 @@ class TestBackupWarning:
 
 class TestBackupPem:
     def test_creates_backup_01(self, tmp_path):
+        """Verify creates backup 01."""
         from iconfucius.cli.wallet import _backup_pem
 
         pem = tmp_path / "identity-private.pem"
@@ -510,6 +527,7 @@ class TestBackupPem:
         assert not pem.exists()  # original was moved
 
     def test_increments_past_existing_backups(self, tmp_path):
+        """Verify increments past existing backups."""
         from iconfucius.cli.wallet import _backup_pem
 
         pem = tmp_path / "identity-private.pem"
@@ -526,6 +544,7 @@ class TestBackupPem:
         assert (tmp_path / "identity-private.pem-backup-02").read_text() == "old-2"
 
     def test_returns_backup_path(self, tmp_path):
+        """Verify returns backup path."""
         from iconfucius.cli.wallet import _backup_pem
 
         pem = tmp_path / "identity-private.pem"
@@ -536,6 +555,7 @@ class TestBackupPem:
         assert backup.name == "identity-private.pem-backup-01"
 
     def test_raises_after_99_backups(self, tmp_path):
+        """Verify raises after 99 backups."""
         from iconfucius.cli.wallet import _backup_pem
 
         pem = tmp_path / "identity-private.pem"

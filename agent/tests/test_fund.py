@@ -8,12 +8,14 @@ M = "iconfucius.cli.fund"
 
 
 def _make_mock_identity(principal_str="controller-principal"):
+    """Create a mock identity for testing."""
     identity = MagicMock()
-    identity.sender.return_value = MagicMock(__str__=lambda s: principal_str)
+    identity.sender.return_value = MagicMock(__str__=lambda _: principal_str)
     return identity
 
 
 def _make_mock_auth(bot_principal="bot-principal-abc"):
+    """Create a mock auth for testing."""
     delegate = MagicMock()
     delegate.der_pubkey = b"\x30" * 44
     return {
@@ -42,6 +44,7 @@ class TestRunFundSuccess:
                          mock_get_bal, mock_transfer, mock_patch_del,
                          mock_unwrap, mock_rate, mock_run_all,
                          odin_project, mock_siwb_auth):
+        """Verify single bot."""
         MockId.from_pem.return_value = _make_mock_identity()
         mock_load.return_value = mock_siwb_auth
 
@@ -88,6 +91,7 @@ class TestRunFundSuccess:
                             mock_get_bal, mock_transfer, mock_patch_del,
                             mock_unwrap, mock_rate, mock_run_all,
                             odin_project, mock_siwb_auth):
+        """Verify multiple bots."""
         MockId.from_pem.return_value = _make_mock_identity()
         mock_load.return_value = mock_siwb_auth
 
@@ -129,6 +133,7 @@ class TestRunFundSuccess:
                                            mock_patch_del, mock_unwrap,
                                            mock_rate, mock_run_all,
                                            odin_project, mock_siwb_auth):
+        """Verify balance differs from deposit."""
         MockId.from_pem.return_value = _make_mock_identity()
         mock_load.return_value = mock_siwb_auth
 
@@ -170,6 +175,7 @@ class TestRunFundSuccess:
                                      mock_transfer, mock_patch_del,
                                      mock_unwrap, mock_rate, mock_run_all,
                                      odin_project, mock_siwb_auth):
+        """Verify exact reserve boundary."""
         MockId.from_pem.return_value = _make_mock_identity()
         mock_load.return_value = mock_siwb_auth
 
@@ -190,12 +196,14 @@ class TestRunFundSuccess:
 
 class TestRunFundErrors:
     def test_no_wallet(self, odin_project_no_wallet):
+        """Verify no wallet."""
         from iconfucius.cli.fund import run_fund
         result = run_fund(bot_names=["bot-1"], amount=5000)
         assert result["status"] == "error"
         assert "No wallet found" in result["error"]
 
-    def test_zero_amount(self, odin_project):
+    def test_zero_amount(self, odin_project):  # noqa: ARG002
+        """Verify zero amount."""
         from iconfucius.cli.fund import run_fund
         result = run_fund(bot_names=["bot-1"], amount=0)
         assert result["status"] == "error"
@@ -210,6 +218,7 @@ class TestRunFundErrors:
     def test_insufficient_balance(self, MockId, MockClient, MockAgent,
                                    mock_create, mock_get_bal, mock_rate,
                                    odin_project):
+        """Verify insufficient balance."""
         MockId.from_pem.return_value = _make_mock_identity()
 
         from iconfucius.cli.fund import run_fund
@@ -229,6 +238,7 @@ class TestRunFundErrors:
     def test_wallet_reserve_enforced(self, MockId, MockClient, MockAgent,
                                       mock_create, mock_get_bal, mock_rate,
                                       odin_project):
+        """Verify wallet reserve enforced."""
         MockId.from_pem.return_value = _make_mock_identity()
 
         from iconfucius.cli.fund import run_fund
@@ -249,6 +259,7 @@ class TestRunFundErrors:
     def test_wallet_reserve_multi_bot(self, MockId, MockClient, MockAgent,
                                        mock_create, mock_get_bal, mock_rate,
                                        odin_project):
+        """Verify wallet reserve multi bot."""
         MockId.from_pem.return_value = _make_mock_identity()
 
         from iconfucius.cli.fund import run_fund
@@ -270,6 +281,7 @@ class TestRunFundErrors:
                                mock_load, mock_create, mock_get_bal,
                                mock_transfer, mock_patch_del, mock_rate,
                                odin_project, mock_siwb_auth):
+        """Verify transfer failure."""
         MockId.from_pem.return_value = _make_mock_identity()
         mock_load.return_value = mock_siwb_auth
 
@@ -297,6 +309,7 @@ class TestRunFundErrors:
                               mock_get_bal, mock_transfer, mock_patch_del,
                               mock_unwrap, mock_rate,
                               odin_project, mock_siwb_auth):
+        """Verify approve failure."""
         MockId.from_pem.return_value = _make_mock_identity()
         mock_load.return_value = mock_siwb_auth
 
@@ -328,6 +341,7 @@ class TestRunFundErrors:
                               mock_get_bal, mock_transfer, mock_patch_del,
                               mock_unwrap, mock_rate,
                               odin_project, mock_siwb_auth):
+        """Verify deposit failure."""
         MockId.from_pem.return_value = _make_mock_identity()
         mock_load.return_value = mock_siwb_auth
 

@@ -37,7 +37,7 @@ from iconfucius.config import (
     require_wallet,
     set_verbose,
 )
-from iconfucius.siwb import siwb_login, load_session, save_session
+from iconfucius.siwb import bot_has_public_key, siwb_login, load_session, save_session
 
 from iconfucius.candid import ODIN_TRADING_CANDID
 
@@ -48,12 +48,17 @@ from iconfucius.candid import ODIN_TRADING_CANDID
 
 @dataclass
 class BotBalances:
-    """Structured balance data for a single bot."""
+    """Structured balance data for a single bot.
+
+    odin_sats is None when balance could not be checked (e.g. unfunded wallet),
+    0.0 when confirmed zero, or a positive value for actual balance.
+    """
     bot_name: str
     bot_principal: str
-    odin_sats: float = 0.0
-    token_holdings: list = field(default_factory=list)
-    has_odin_account: bool = False
+    odin_sats: float | None = None
+    token_holdings: list | None = None
+    has_odin_account: bool | None = None
+    note: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -85,10 +90,35 @@ def collect_balances(bot_name: str, token_id: str = "29m8",
     log("=" * 60)
     log(f"Step 1: Authenticate (bot={bot_name})")
     log("=" * 60)
+    _needs_funding_note = (
+        "Balance could not be checked — wallet needs funding for signing fees. "
+        "Do NOT report this bot's balance as 0. "
+        "Use the how_to_fund_wallet tool for instructions."
+    )
     auth = load_session(bot_name=bot_name, verbose=verbose)
     if not auth:
+        # Layer 1: cheap query — if bot has no cached key, the wallet must
+        # pay a fee to register one, so an unfunded wallet cannot proceed.
+        if not bot_has_public_key(bot_name):
+            log("Bot has no public key and wallet needs funds for signing fees.")
+            return BotBalances(
+                bot_name=bot_name,
+                bot_principal="",
+                note=_needs_funding_note,
+            )
         log("No valid cached session, performing full SIWB login...")
-        auth = siwb_login(bot_name=bot_name, verbose=verbose)
+        try:
+            auth = siwb_login(bot_name=bot_name, verbose=verbose)
+        except RuntimeError as exc:
+            # Layer 2: catch InsufficientFunds from fee approval
+            if "InsufficientFunds" in str(exc):
+                log(f"SIWB login failed (insufficient funds): {exc}")
+                return BotBalances(
+                    bot_name=bot_name,
+                    bot_principal="",
+                    note=_needs_funding_note,
+                )
+            raise
     bot_principal_text = auth["bot_principal_text"]
     jwt_token = auth["jwt_token"]
 
@@ -694,7 +724,7 @@ def _format_holdings_table(all_data: list, btc_usd_rate: float | None,
     ticker_to_id = {}
     seen = set()
     for d in all_data:
-        for t in d.token_holdings:
+        for t in (d.token_holdings or []):
             if t["ticker"] not in seen:
                 all_tickers.append(t["ticker"])
                 ticker_to_id[t["ticker"]] = t.get("token_id", "")
@@ -712,12 +742,17 @@ def _format_holdings_table(all_data: list, btc_usd_rate: float | None,
     total_token_value_sats = {ticker: 0.0 for ticker in all_tickers}
 
     for d in all_data:
-        total_odin_sats += int(d.odin_sats)
+        if d.odin_sats is None:
+            bot_odin = 0
+        else:
+            bot_odin = int(d.odin_sats)
+        total_odin_sats += bot_odin
         # Build a lookup for this bot's tokens
-        token_map = {t["ticker"]: t for t in d.token_holdings}
+        token_map = {t["ticker"]: t for t in (d.token_holdings or [])}
+        odin_display = "?" if d.odin_sats is None else fmt_sats(bot_odin, btc_usd_rate)
         row = [
             d.bot_name,
-            fmt_sats(int(d.odin_sats), btc_usd_rate),
+            odin_display,
         ]
         for ticker in all_tickers:
             if ticker in token_map:
@@ -737,8 +772,10 @@ def _format_holdings_table(all_data: list, btc_usd_rate: float | None,
         rows.append(tuple(row))
 
     # Totals row
+    all_unknown = all(d.odin_sats is None for d in all_data)
     if len(all_data) > 1:
-        total_row = ["TOTAL", fmt_sats(total_odin_sats, btc_usd_rate)]
+        odin_total_display = "?" if all_unknown else fmt_sats(total_odin_sats, btc_usd_rate)
+        total_row = ["TOTAL", odin_total_display]
         total_usd = (total_odin_sats / 100_000_000) * btc_usd_rate if btc_usd_rate else 0
         for ticker in all_tickers:
             bal = total_token_balances[ticker]
@@ -758,22 +795,25 @@ def _format_holdings_table(all_data: list, btc_usd_rate: float | None,
 
     if btc_usd_rate:
         wallet_total_sats = wallet_balance_sats + wallet_pending_sats + wallet_withdrawal_sats
-        wallet_usd = (wallet_total_sats / 100_000_000) * btc_usd_rate
-        total_usd = (total_odin_sats / 100_000_000) * btc_usd_rate + wallet_usd
-        for ticker in all_tickers:
-            vs = total_token_value_sats[ticker]
-            if vs:
-                total_usd += (vs / 100_000_000) * btc_usd_rate
-        notes = []
-        if wallet_pending_sats > 0:
-            pending_usd = (wallet_pending_sats / 100_000_000) * btc_usd_rate
-            notes.append(f"${pending_usd:,.3f} BTC pending conversion")
-        if wallet_withdrawal_sats > 0:
-            withdrawal_usd = (wallet_withdrawal_sats / 100_000_000) * btc_usd_rate
-            notes.append(f"${withdrawal_usd:,.3f} in BTC withdrawal account")
-        note_str = f" (includes {', '.join(notes)})" if notes else ""
-        total_sats = round(wallet_total_sats + total_odin_sats + sum(total_token_value_sats.values()))
-        lines.append(f"\nTotal portfolio value: {fmt_sats(total_sats, btc_usd_rate)}{note_str}")
+        if all_unknown and wallet_total_sats == 0:
+            lines.append("\nTotal portfolio value: ?")
+        else:
+            wallet_usd = (wallet_total_sats / 100_000_000) * btc_usd_rate
+            total_usd = (total_odin_sats / 100_000_000) * btc_usd_rate + wallet_usd
+            for ticker in all_tickers:
+                vs = total_token_value_sats[ticker]
+                if vs:
+                    total_usd += (vs / 100_000_000) * btc_usd_rate
+            notes = []
+            if wallet_pending_sats > 0:
+                pending_usd = (wallet_pending_sats / 100_000_000) * btc_usd_rate
+                notes.append(f"${pending_usd:,.3f} BTC pending conversion")
+            if wallet_withdrawal_sats > 0:
+                withdrawal_usd = (wallet_withdrawal_sats / 100_000_000) * btc_usd_rate
+                notes.append(f"${withdrawal_usd:,.3f} in BTC withdrawal account")
+            note_str = f" (includes {', '.join(notes)})" if notes else ""
+            total_sats = round(wallet_total_sats + total_odin_sats + sum(total_token_value_sats.values()))
+            lines.append(f"\nTotal portfolio value: {fmt_sats(total_sats, btc_usd_rate)}{note_str}")
 
     return "\n".join(lines)
 
@@ -844,18 +884,23 @@ def run_all_balances(bot_names: list, token_id: str = "29m8",
     if not all_data:
         return None
 
-    holdings_display = _format_holdings_table(
-        all_data, btc_usd_rate, wallet_balance, wallet_pending, wallet_withdrawal,
-    )
-
-    # Build display text
-    display_lines = wallet_lines + [
-        "",
-        "=" * 60,
-        "Bot Holdings at Odin.Fun",
-        "=" * 60,
-        holdings_display,
-    ]
+    # Skip Bot Holdings section entirely when no balances could be checked
+    all_unchecked = all(d.odin_sats is None and not d.token_holdings
+                        for d in all_data)
+    if all_unchecked:
+        display_lines = wallet_lines
+    else:
+        holdings_display = _format_holdings_table(
+            all_data, btc_usd_rate, wallet_balance, wallet_pending,
+            wallet_withdrawal,
+        )
+        display_lines = wallet_lines + [
+            "",
+            "=" * 60,
+            "Bot Holdings at Odin.Fun",
+            "=" * 60,
+            holdings_display,
+        ]
 
     # Build structured data with pre-calculated totals
     total_odin_sats = 0
@@ -863,43 +908,51 @@ def run_all_balances(bot_names: list, token_id: str = "29m8",
 
     bots_data = []
     for d in all_data:
-        bot_odin = int(d.odin_sats)
-        total_odin_sats += bot_odin
-        bot_tokens = []
-        for t in d.token_holdings:
-            ticker = t["ticker"]
-            token_id_val = t["token_id"]
-            vs = round(t.get("value_sats", 0))
-            div = t.get("divisibility", 8)
-            human_balance = t["balance"] / (10 ** div) if div > 0 else t["balance"]
-            bot_tokens.append({
-                "ticker": ticker, "id": token_id_val,
-                "balance": human_balance,
-                "value_sats": vs,
-            })
-            if ticker not in token_totals:
-                token_totals[ticker] = {
-                    "id": token_id_val, "balance": 0,
-                    "value_sats": 0,
-                }
-            token_totals[ticker]["balance"] += human_balance
-            token_totals[ticker]["value_sats"] += vs
+        bot_odin = int(d.odin_sats) if d.odin_sats is not None else None
+        if bot_odin is not None:
+            total_odin_sats += bot_odin
+        if d.token_holdings is not None:
+            bot_tokens = []
+            for t in d.token_holdings:
+                ticker = t["ticker"]
+                token_id_val = t["token_id"]
+                vs = round(t.get("value_sats", 0))
+                div = t.get("divisibility", 8)
+                human_balance = t["balance"] / (10 ** div) if div > 0 else t["balance"]
+                bot_tokens.append({
+                    "ticker": ticker, "id": token_id_val,
+                    "balance": human_balance,
+                    "value_sats": vs,
+                })
+                if ticker not in token_totals:
+                    token_totals[ticker] = {
+                        "id": token_id_val, "balance": 0,
+                        "value_sats": 0,
+                    }
+                token_totals[ticker]["balance"] += human_balance
+                token_totals[ticker]["value_sats"] += vs
+        else:
+            bot_tokens = None
 
-        bots_data.append({
+        bot_entry = {
             "name": d.bot_name,
             "principal": d.bot_principal,
             "odin_sats": bot_odin,
             "tokens": bot_tokens,
             "has_odin_account": d.has_odin_account,
-        })
+        }
+        if d.note:
+            bot_entry["note"] = d.note
+        bots_data.append(bot_entry)
 
     for name in failed_bots:
         bots_data.append({
             "name": name,
             "principal": "",
-            "odin_sats": 0,
-            "tokens": [],
-            "has_odin_account": False,
+            "odin_sats": None,
+            "tokens": None,
+            "has_odin_account": None,
+            "note": "Balance check failed for this bot.",
         })
 
     wallet_total_sats = wallet_balance + wallet_pending + wallet_withdrawal

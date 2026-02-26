@@ -41,6 +41,7 @@ class TestCreateBackend:
         assert LlamaCppBackend is OpenAICompatBackend
 
     def test_create_backend_unsupported(self):
+        """Raise ValueError for an unrecognized ai_api_type."""
         persona = MagicMock()
         persona.ai_api_type = "unknown"
         with pytest.raises(ValueError, match="Unsupported AI API type"):
@@ -213,6 +214,7 @@ class TestOpenAICompatBackendChat:
                     assert "cache_control" not in block
 
     def test_base_url_trailing_slash_stripped(self):
+        """Trailing slash is removed from the base URL."""
         backend = OpenAICompatBackend(model="x",
                                   base_url="http://localhost:9999/")
         assert backend.base_url == "http://localhost:9999"
@@ -279,6 +281,7 @@ class TestOpenAICompatBackendApiKey:
 class TestCachedMessages:
 
     def test_empty_returns_empty(self):
+        """Return an empty list when given no messages."""
         assert cached_messages([]) == []
 
     def test_single_message_unchanged(self):

@@ -69,6 +69,7 @@ def run_withdraw(bot_name: str, amount: str, verbose: bool = False) -> dict:
         btc_usd_rate = None
 
     def _fmt(sats):
+        """Format a sats amount for display."""
         return fmt_sats(sats, btc_usd_rate)
 
     # -----------------------------------------------------------------------

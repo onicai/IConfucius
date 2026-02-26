@@ -115,6 +115,7 @@ class ClaudeBackend(AIBackend):
 
     def __init__(self, model: str, api_key: str | None = None,
                  timeout: int = 600):
+        """Initialize the Claude backend with model name, API key, and timeout."""
         import anthropic
 
         key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
@@ -134,6 +135,7 @@ class ClaudeBackend(AIBackend):
         return cached_system(system)
 
     def chat(self, messages: list[dict], system: str) -> str:
+        """Send a chat message to Claude and return the text response."""
         response = self.client.messages.create(
             model=self.model,
             max_tokens=4096,
@@ -144,6 +146,7 @@ class ClaudeBackend(AIBackend):
 
     def chat_with_tools(self, messages: list[dict], system: str,
                         tools: list[dict]):
+        """Send a chat message to Claude with tool definitions and return the full response."""
         return self.client.messages.create(
             model=self.model,
             max_tokens=4096,
@@ -153,6 +156,7 @@ class ClaudeBackend(AIBackend):
         )
 
     def list_models(self) -> list[tuple[str, str]]:
+        """Fetch available models from the Claude API."""
         try:
             page = self.client.models.list(limit=100)
             result = []
@@ -168,6 +172,7 @@ class OpenAICompatBackend(AIBackend):
 
     def __init__(self, model: str = "default", base_url: str = "http://localhost:55128",
                  timeout: int = 600, api_key: str | None = None):
+        """Initialize the OpenAI-compatible backend with model, base URL, and credentials."""
         import requests as _requests
         self._requests = _requests
         self.model = model
@@ -190,6 +195,7 @@ class OpenAICompatBackend(AIBackend):
         return resp.json()
 
     def chat(self, messages: list[dict], system: str) -> str:
+        """Send a chat message via the OpenAI-compatible API and return the text response."""
         from iconfucius.openai_compat import (
             anthropic_messages_to_openai,
             openai_response_to_anthropic,
@@ -209,6 +215,7 @@ class OpenAICompatBackend(AIBackend):
 
     def chat_with_tools(self, messages: list[dict], system: str,
                         tools: list[dict]):
+        """Send a chat message with tools via the OpenAI-compatible API and return the response."""
         from iconfucius.openai_compat import (
             anthropic_messages_to_openai,
             anthropic_tools_to_openai,
@@ -229,6 +236,7 @@ class OpenAICompatBackend(AIBackend):
         return response
 
     def list_models(self) -> list[tuple[str, str]]:
+        """Fetch available models from the OpenAI-compatible API endpoint."""
         try:
             url = f"{self.base_url}/v1/models"
             resp = self._requests.get(url, headers=self._headers(), timeout=10)
@@ -247,18 +255,22 @@ class LoggingBackend(AIBackend):
     """Transparent wrapper that logs every AI call to a ConversationLogger."""
 
     def __init__(self, backend: AIBackend, conv_logger):
+        """Initialize the logging wrapper with an AI backend and conversation logger."""
         self._backend = backend
         self._logger = conv_logger
 
     @property
     def model(self):
+        """Return the model name from the wrapped backend."""
         return self._backend.model
 
     @model.setter
     def model(self, value):
+        """Set the model name on the wrapped backend."""
         self._backend.model = value
 
     def chat(self, messages: list[dict], system: str) -> str:
+        """Send a chat message through the wrapped backend and log the interaction."""
         t0 = time.monotonic()
         error = None
         response = None
@@ -282,6 +294,7 @@ class LoggingBackend(AIBackend):
 
     def chat_with_tools(self, messages: list[dict], system: str,
                         tools: list[dict]):
+        """Send a chat message with tools through the wrapped backend and log the interaction."""
         t0 = time.monotonic()
         error = None
         response = None
@@ -312,6 +325,7 @@ class LoggingBackend(AIBackend):
             self._logger.log_interaction(**log_kwargs)
 
     def list_models(self) -> list[tuple[str, str]]:
+        """Delegate model listing to the wrapped backend."""
         return self._backend.list_models()
 
 

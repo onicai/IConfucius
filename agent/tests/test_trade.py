@@ -8,6 +8,7 @@ M = "iconfucius.cli.trade"
 
 
 def _make_mock_auth(bot_principal="bot-principal-abc"):
+    """Create a mock auth for testing."""
     delegate = MagicMock()
     delegate.der_pubkey = b"\x30" * 44
     return {
@@ -29,6 +30,7 @@ class TestRunTradeSuccess:
     def test_buy(self, MockClient, MockAgent, MockCanister, mock_token_info,
                   mock_load, mock_patch_del, mock_unwrap, mock_rate,
                   odin_project):
+        """Verify buy."""
         mock_load.return_value = _make_mock_auth()
         mock_odin = MagicMock()
         mock_odin.getBalance.side_effect = [5_000_000, 100]  # BTC msat, token
@@ -114,6 +116,7 @@ class TestRunTradeSuccess:
     def test_sell(self, MockClient, MockAgent, MockCanister, mock_token_info,
                    mock_load, mock_patch_del, mock_unwrap, mock_rate,
                    odin_project):
+        """Verify sell."""
         mock_load.return_value = _make_mock_auth()
         mock_odin = MagicMock()
         mock_odin.getBalance.side_effect = [5_000_000, 500]
@@ -141,6 +144,7 @@ class TestRunTradeSellAll:
     def test_sell_all(self, MockClient, MockAgent, MockCanister, mock_token_info,
                       mock_load, mock_patch_del, mock_unwrap, mock_rate,
                       odin_project):
+        """Verify sell all."""
         mock_load.return_value = _make_mock_auth()
         mock_odin = MagicMock()
         mock_odin.getBalance.side_effect = [5_000_000, 99_999]
@@ -169,6 +173,7 @@ class TestRunTradeSellAll:
                                     mock_token_info, mock_load, mock_patch_del,
                                     mock_unwrap, mock_rate,
                                     odin_project):
+        """Verify sell all zero balance."""
         mock_load.return_value = _make_mock_auth()
         mock_odin = MagicMock()
         mock_odin.getBalance.side_effect = [5_000_000, 0]
@@ -185,18 +190,21 @@ class TestRunTradeSellAll:
 
 class TestRunTradeErrors:
     def test_no_wallet(self, odin_project_no_wallet):
+        """Verify no wallet."""
         from iconfucius.cli.trade import run_trade
         result = run_trade(bot_name="bot-1", action="buy", token_id="29m8", amount="1000")
         assert result["status"] == "error"
         assert "wallet" in result["error"].lower()
 
-    def test_invalid_action(self, odin_project):
+    def test_invalid_action(self, odin_project):  # noqa: ARG002
+        """Verify invalid action."""
         from iconfucius.cli.trade import run_trade
         result = run_trade(bot_name="bot-1", action="hold", token_id="29m8", amount="1000")
         assert result["status"] == "error"
         assert "must be 'buy' or 'sell'" in result["error"]
 
-    def test_buy_all_rejected(self, odin_project):
+    def test_buy_all_rejected(self, odin_project):  # noqa: ARG002
+        """Verify buy all rejected."""
         from iconfucius.cli.trade import run_trade
         result = run_trade(bot_name="bot-1", action="buy", token_id="29m8", amount="all")
         assert result["status"] == "error"
@@ -214,6 +222,7 @@ class TestRunTradeErrors:
                             mock_token_info, mock_load, mock_patch_del,
                             mock_unwrap, mock_rate,
                             odin_project):
+        """Verify trade failure."""
         mock_load.return_value = _make_mock_auth()
         mock_odin = MagicMock()
         mock_odin.getBalance.side_effect = [5_000_000, 100]

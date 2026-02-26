@@ -293,6 +293,7 @@ def derive_address(pubkey_hex: str) -> str:
 # ── CLI: read JSON from stdin, dispatch action, write JSON to stdout ─────────
 
 def main() -> None:
+    """Read a JSON request from stdin, dispatch the BIP-322 action, and write the result to stdout."""
     try:
         req = json.loads(sys.stdin.read())
         action = req.get("action")

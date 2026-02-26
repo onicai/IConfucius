@@ -26,6 +26,7 @@ class TestLoadKnownTokens:
         assert "2jjj" in tokens  # ODINDOG
 
     def test_tokens_have_name_and_ticker(self):
+        """Verify tokens have name and ticker."""
         tokens = load_known_tokens()
         for token_id, entry in tokens.items():
             assert "name" in entry, f"Token {token_id} missing 'name'"
@@ -34,44 +35,52 @@ class TestLoadKnownTokens:
 
 class TestLookupKnownToken:
     def test_lookup_by_id(self):
+        """Verify lookup by id."""
         result = lookup_known_token("29m8")
         assert result is not None
         assert result["id"] == "29m8"
         assert result["name"] == "IConfucius"
 
     def test_lookup_by_name_case_insensitive(self):
+        """Verify lookup by name case insensitive."""
         result = lookup_known_token("iconfucius")
         assert result is not None
         assert result["id"] == "29m8"
 
     def test_lookup_by_name_exact(self):
+        """Verify lookup by name exact."""
         result = lookup_known_token("IConfucius")
         assert result is not None
         assert result["id"] == "29m8"
 
     def test_lookup_by_ticker(self):
+        """Verify lookup by ticker."""
         result = lookup_known_token("ICONFUCIUS")
         assert result is not None
         assert result["id"] == "29m8"
 
     def test_lookup_by_ticker_lowercase(self):
+        """Verify lookup by ticker lowercase."""
         result = lookup_known_token("cryptoburg")
         assert result is not None
         assert result["id"] == "28k1"
 
     def test_lookup_unknown_returns_none(self):
+        """Verify lookup unknown returns none."""
         result = lookup_known_token("nonexistent_token_xyz")
         assert result is None
 
 
 class TestFormatKnownTokensForPrompt:
     def test_format_contains_header(self):
+        """Verify format contains header."""
         text = format_known_tokens_for_prompt()
         assert "| ID" in text
         assert "| Name" in text
         assert "| Ticker" in text
 
     def test_format_contains_known_token(self):
+        """Verify format contains known token."""
         text = format_known_tokens_for_prompt()
         # The prompt shows top 50 sorted alphabetically by name;
         # just check that some tokens are present
@@ -79,6 +88,7 @@ class TestFormatKnownTokensForPrompt:
         assert len(text.split("\n")) > 10
 
     def test_format_has_total_count(self):
+        """Verify format has total count."""
         text = format_known_tokens_for_prompt()
         assert "total known tokens" in text
 
@@ -161,10 +171,12 @@ class TestLookupTokenWithFallback:
 
 class TestSafetyNote:
     def test_known_bonded(self):
+        """Verify known bonded."""
         note = _safety_note({"bonded": True}, is_known=True)
         assert "VERIFIED" in note
 
     def test_bonded_not_known(self):
+        """Verify bonded not known."""
         note = _safety_note(
             {"bonded": True, "twitter_verified": True, "holder_count": 500},
             is_known=False,
@@ -173,6 +185,7 @@ class TestSafetyNote:
         assert "not in known tokens" in note
 
     def test_not_bonded_warning(self):
+        """Verify not bonded warning."""
         note = _safety_note(
             {"bonded": False, "twitter_verified": False, "holder_count": 3},
             is_known=False,
@@ -182,6 +195,7 @@ class TestSafetyNote:
         assert "only 3 holders" in note
 
     def test_high_holder_count_formatted(self):
+        """Verify high holder count formatted."""
         note = _safety_note(
             {"bonded": True, "twitter_verified": False, "holder_count": 1500},
             is_known=False,
@@ -193,6 +207,7 @@ class TestFetchTokenData:
     """Tests for fetch_token_data — Odin.fun /token/{id} endpoint."""
 
     def test_returns_api_response(self):
+        """Verify returns api response."""
         fake = {"id": "29m8", "price": 1477, "ticker": "ICONFUCIUS"}
         with patch("curl_cffi.requests.get") as mock_get:
             mock_get.return_value.raise_for_status = lambda: None
@@ -202,11 +217,13 @@ class TestFetchTokenData:
         assert result["price"] == 1477
 
     def test_returns_none_on_network_failure(self):
+        """Verify returns none on network failure."""
         with patch("curl_cffi.requests.get", side_effect=Exception("timeout")):
             result = fetch_token_data("29m8")
         assert result is None
 
     def test_returns_none_on_http_error(self):
+        """Verify returns none on http error."""
         with patch("curl_cffi.requests.get") as mock_get:
             mock_get.return_value.raise_for_status.side_effect = Exception("404")
             result = fetch_token_data("nonexistent")

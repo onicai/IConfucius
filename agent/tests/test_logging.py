@@ -21,6 +21,7 @@ class TestLogFilePermissions:
     """Log file and directory must be owner-only."""
 
     def test_log_dir_is_0700(self, tmp_path, monkeypatch):
+        """Verify log dir is 0700."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         _reset_logger()
         from iconfucius.logging_config import get_logger
@@ -31,6 +32,7 @@ class TestLogFilePermissions:
         assert mode == 0o700, f"Expected 0700, got {oct(mode)}"
 
     def test_parent_log_dir_is_0700(self, tmp_path, monkeypatch):
+        """Verify parent log dir is 0700."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         _reset_logger()
         from iconfucius.logging_config import get_logger
@@ -41,6 +43,7 @@ class TestLogFilePermissions:
         assert mode == 0o700, f"Expected 0700, got {oct(mode)}"
 
     def test_log_file_is_0600(self, tmp_path, monkeypatch):
+        """Verify log file is 0600."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         _reset_logger()
         from iconfucius.logging_config import get_logger
@@ -64,6 +67,7 @@ class TestJwtScrubbing:
     )
 
     def test_jwt_scrubbed_from_log_message(self, tmp_path, monkeypatch):
+        """Verify jwt scrubbed from log message."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         _reset_logger()
         from iconfucius.logging_config import get_logger, set_debug
@@ -79,6 +83,7 @@ class TestJwtScrubbing:
         assert "[JWT-REDACTED]" in log_content
 
     def test_jwt_scrubbed_at_info_level(self, tmp_path, monkeypatch):
+        """Verify jwt scrubbed at info level."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         _reset_logger()
         from iconfucius.logging_config import get_logger
@@ -93,6 +98,7 @@ class TestJwtScrubbing:
         assert "[JWT-REDACTED]" in log_content
 
     def test_non_jwt_message_unchanged(self, tmp_path, monkeypatch):
+        """Verify non jwt message unchanged."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         _reset_logger()
         from iconfucius.logging_config import get_logger
@@ -110,6 +116,7 @@ class TestLogLevelGating:
     """Debug messages must only appear when --verbose is active."""
 
     def test_default_level_is_info(self, tmp_path, monkeypatch):
+        """Verify default level is info."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         _reset_logger()
         from iconfucius.logging_config import get_logger
@@ -125,6 +132,7 @@ class TestLogLevelGating:
         assert "operational info" in log_content
 
     def test_set_debug_enables_debug(self, tmp_path, monkeypatch):
+        """Verify set debug enables debug."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         _reset_logger()
         from iconfucius.logging_config import get_logger, set_debug
@@ -139,6 +147,7 @@ class TestLogLevelGating:
         assert "now visible" in log_content
 
     def test_set_debug_false_restores_info(self, tmp_path, monkeypatch):
+        """Verify set debug false restores info."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         _reset_logger()
         from iconfucius.logging_config import get_logger, set_debug
@@ -154,6 +163,7 @@ class TestLogLevelGating:
         assert "should be hidden again" not in log_content
 
     def test_env_var_enables_debug(self, tmp_path, monkeypatch):
+        """Verify env var enables debug."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         monkeypatch.setenv("ICONFUCIUS_VERBOSE", "1")
         _reset_logger()
@@ -172,6 +182,7 @@ class TestSessionLogCleanup:
     """Old session logs beyond _MAX_SESSION_LOGS are deleted."""
 
     def test_cleanup_keeps_max_files(self, tmp_path, monkeypatch):
+        """Verify cleanup keeps max files."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         conv_dir = tmp_path / ".logs" / "conversations"
         conv_dir.mkdir(parents=True)
@@ -192,6 +203,7 @@ class TestSessionLogCleanup:
             assert f"20260101-{i:06d}-iconfucius.log" not in names
 
     def test_cleanup_noop_under_limit(self, tmp_path, monkeypatch):
+        """Verify cleanup noop under limit."""
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         conv_dir = tmp_path / ".logs" / "conversations"
         conv_dir.mkdir(parents=True)

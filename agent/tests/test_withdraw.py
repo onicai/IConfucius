@@ -8,12 +8,14 @@ M = "iconfucius.cli.withdraw"
 
 
 def _make_mock_identity(principal_str="controller-principal"):
+    """Create a mock identity for testing."""
     identity = MagicMock()
-    identity.sender.return_value = MagicMock(__str__=lambda s: principal_str)
+    identity.sender.return_value = MagicMock(__str__=lambda _: principal_str)
     return identity
 
 
 def _make_mock_auth(bot_principal="bot-principal-abc"):
+    """Create a mock auth for testing."""
     delegate = MagicMock()
     delegate.der_pubkey = b"\x30" * 44
     return {
@@ -41,6 +43,7 @@ class TestRunWithdrawSuccess:
                                        mock_create_icrc1, mock_get_bal,
                                        mock_transfer, mock_rate,
                                        odin_project):
+        """Verify withdraw specific amount."""
         mock_load.return_value = _make_mock_auth()
         MockId.from_pem.return_value = _make_mock_identity()
 
@@ -77,6 +80,7 @@ class TestRunWithdrawSuccess:
                            mock_unwrap, mock_create_icrc1, mock_get_bal,
                            mock_transfer, mock_rate,
                            odin_project):
+        """Verify withdraw all."""
         mock_load.return_value = _make_mock_auth()
         MockId.from_pem.return_value = _make_mock_identity()
 
@@ -98,6 +102,7 @@ class TestRunWithdrawSuccess:
 
 class TestRunWithdrawErrors:
     def test_no_wallet(self, odin_project_no_wallet):
+        """Verify no wallet."""
         from iconfucius.cli.withdraw import run_withdraw
         result = run_withdraw(bot_name="bot-1", amount="1000")
         assert result["status"] == "error"
@@ -113,6 +118,7 @@ class TestRunWithdrawErrors:
     def test_insufficient_balance(self, MockClient, MockAgent, MockCanister,
                                    mock_load, mock_patch_del, mock_unwrap,
                                    mock_rate, odin_project):
+        """Verify insufficient balance."""
         mock_load.return_value = _make_mock_auth()
         mock_odin = MagicMock()
         mock_odin.getBalance.return_value = 500_000  # 500 sats
@@ -134,6 +140,7 @@ class TestRunWithdrawErrors:
     def test_zero_balance(self, MockClient, MockAgent, MockCanister,
                            mock_load, mock_patch_del, mock_unwrap,
                            mock_rate, odin_project):
+        """Verify zero balance."""
         mock_load.return_value = _make_mock_auth()
         mock_odin = MagicMock()
         mock_odin.getBalance.return_value = 0
@@ -155,6 +162,7 @@ class TestRunWithdrawErrors:
     def test_withdraw_canister_error(self, MockClient, MockAgent, MockCanister,
                                       mock_load, mock_patch_del, mock_unwrap,
                                       mock_rate, odin_project):
+        """Verify withdraw canister error."""
         mock_load.return_value = _make_mock_auth()
         mock_odin = MagicMock()
         mock_odin.getBalance.return_value = 5_000_000
@@ -182,6 +190,7 @@ class TestRunWithdrawErrors:
                                                   mock_create_icrc1,
                                                   mock_get_bal, mock_rate,
                                                   odin_project):
+        """Verify sweep skipped when balance too low."""
         mock_load.return_value = _make_mock_auth()
         mock_odin = MagicMock()
         mock_odin.getBalance.return_value = 5_000_000

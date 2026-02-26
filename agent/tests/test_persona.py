@@ -21,6 +21,7 @@ from iconfucius.persona import (
 
 class TestBuiltinPersonas:
     def test_builtin_dir_exists(self):
+        """Verify builtin dir exists."""
         d = get_builtin_personas_dir()
         assert d.is_dir()
         assert (d / "iconfucius" / "persona.toml").exists()
@@ -29,10 +30,12 @@ class TestBuiltinPersonas:
         assert (d / "iconfucius" / "goodbye-prompt.md").exists()
 
     def test_list_personas_includes_iconfucius(self):
+        """Verify list personas includes iconfucius."""
         names = list_personas()
         assert "iconfucius" in names
 
     def test_load_builtin_iconfucius(self):
+        """Verify load builtin iconfucius."""
         p = load_persona("iconfucius")
         assert isinstance(p, Persona)
         assert p.name == "IConfucius"
@@ -40,11 +43,13 @@ class TestBuiltinPersonas:
         assert len(p.system_prompt) > 0
 
     def test_builtin_greeting_prompt_has_placeholders(self):
+        """Verify builtin greeting prompt has placeholders."""
         p = load_persona("iconfucius")
         assert "{icon}" in p.greeting_prompt
         assert "{topic}" in p.greeting_prompt
 
     def test_builtin_goodbye_prompt_loaded(self):
+        """Verify builtin goodbye prompt loaded."""
         p = load_persona("iconfucius")
         assert len(p.goodbye_prompt) > 0
 
@@ -55,6 +60,7 @@ class TestBuiltinPersonas:
 
 class TestPersonaNotFound:
     def test_raises_for_unknown_name(self):
+        """Verify raises for unknown name."""
         with pytest.raises(PersonaNotFoundError, match="nonexistent"):
             load_persona("nonexistent")
 
@@ -65,15 +71,18 @@ class TestPersonaNotFound:
 
 class TestDeepMerge:
     def test_flat_override(self):
+        """Verify flat override."""
         assert _deep_merge({"a": 1}, {"a": 2}) == {"a": 2}
 
     def test_nested_override(self):
+        """Verify nested override."""
         base = {"ai": {"backend": "claude", "model": "old"}}
         override = {"ai": {"model": "new"}}
         result = _deep_merge(base, override)
         assert result == {"ai": {"backend": "claude", "model": "new"}}
 
     def test_add_new_key(self):
+        """Verify add new key."""
         assert _deep_merge({"a": 1}, {"b": 2}) == {"a": 1, "b": 2}
 
 
@@ -185,18 +194,21 @@ class TestResolveAiConfig:
     """Tests for resolve_ai_config() with all resolution table rows."""
 
     def test_empty_config(self):
+        """Verify empty config."""
         api_type, model, base_url = resolve_ai_config({})
         assert api_type == "claude"
         assert model == DEFAULT_MODEL
         assert base_url == ""
 
     def test_model_only_claude(self):
+        """Verify model only claude."""
         api_type, model, base_url = resolve_ai_config({"model": "claude-sonnet-4-6"})
         assert api_type == "claude"
         assert model == "claude-sonnet-4-6"
         assert base_url == ""
 
     def test_openai_with_base_url(self):
+        """Verify openai with base url."""
         api_type, model, base_url = resolve_ai_config({
             "api_type": "openai",
             "base_url": "http://localhost:55128",
@@ -206,6 +218,7 @@ class TestResolveAiConfig:
         assert base_url == "http://localhost:55128"
 
     def test_openai_with_model_and_url(self):
+        """Verify openai with model and url."""
         api_type, model, base_url = resolve_ai_config({
             "api_type": "openai",
             "model": "meta-llama/Llama-3-70b",
