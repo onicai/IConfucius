@@ -37,7 +37,7 @@ from iconfucius.config import (
     require_wallet,
     set_verbose,
 )
-from iconfucius.siwb import bot_has_public_key, siwb_login, load_session, save_session
+from iconfucius.siwb import siwb_login, load_session, save_session
 
 from iconfucius.candid import ODIN_TRADING_CANDID
 
@@ -97,15 +97,6 @@ def collect_balances(bot_name: str, token_id: str = "29m8",
     )
     auth = load_session(bot_name=bot_name, verbose=verbose)
     if not auth:
-        # Layer 1: cheap query — if bot has no cached key, the wallet must
-        # pay a fee to register one, so an unfunded wallet cannot proceed.
-        if not bot_has_public_key(bot_name):
-            log("Bot has no public key and wallet needs funds for signing fees.")
-            return BotBalances(
-                bot_name=bot_name,
-                bot_principal="",
-                note=_needs_funding_note,
-            )
         log("No valid cached session, performing full SIWB login...")
         try:
             auth = siwb_login(bot_name=bot_name, verbose=verbose)

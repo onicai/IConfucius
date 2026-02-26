@@ -357,9 +357,8 @@ class TestCollectBalances:
     @patch("iconfucius.cli.balance.Client")
     @patch("iconfucius.cli.balance.Identity")
     @patch("iconfucius.cli.balance.siwb_login")
-    @patch("iconfucius.cli.balance.bot_has_public_key", return_value=True)
     @patch("iconfucius.cli.balance.load_session", return_value=None)
-    def test_falls_back_to_siwb_login(self, _mock_load, _mock_has_key,
+    def test_falls_back_to_siwb_login(self, _mock_load,
                                        mock_login,
                                        _MockId, _MockClient, _MockAgent,
                                        MockCanister, mock_cffi,
@@ -465,22 +464,9 @@ class TestCollectBalances:
         assert result.odin_sats is None
         assert result.token_holdings is None
 
-    @patch("iconfucius.cli.balance.bot_has_public_key", return_value=False)
-    @patch("iconfucius.cli.balance.load_session", return_value=None)
-    def test_no_public_key_returns_note(self, _mock_load, _mock_has_key):
-        """Bot with no cached public key returns BotBalances with funding note."""
-        result = collect_balances("bot-1", verbose=False)
-        assert isinstance(result, BotBalances)
-        assert result.bot_name == "bot-1"
-        assert result.bot_principal == ""
-        assert result.odin_sats is None
-        assert "funding" in result.note.lower() or "fund" in result.note.lower()
-        assert "how_to_fund_wallet" in result.note
-
     @patch("iconfucius.cli.balance.siwb_login")
-    @patch("iconfucius.cli.balance.bot_has_public_key", return_value=True)
     @patch("iconfucius.cli.balance.load_session", return_value=None)
-    def test_insufficient_funds_returns_note(self, _mock_load, _mock_has_key,
+    def test_insufficient_funds_returns_note(self, _mock_load,
                                               mock_login):
         """InsufficientFunds during siwb_login returns BotBalances with funding note."""
         mock_login.side_effect = RuntimeError(
@@ -494,9 +480,8 @@ class TestCollectBalances:
         assert "how_to_fund_wallet" in result.note
 
     @patch("iconfucius.cli.balance.siwb_login")
-    @patch("iconfucius.cli.balance.bot_has_public_key", return_value=True)
     @patch("iconfucius.cli.balance.load_session", return_value=None)
-    def test_other_runtime_errors_propagate(self, _mock_load, _mock_has_key,
+    def test_other_runtime_errors_propagate(self, _mock_load,
                                              mock_login):
         """RuntimeErrors not related to InsufficientFunds still propagate."""
         mock_login.side_effect = RuntimeError("signBip322 failed: timeout")
