@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { chatStart, chatMessage, chatConfirm, chatSettings } from "../api";
 
 const STORAGE_KEY = "iconfucius_chat_messages";
+const SESSION_KEY = "iconfucius_chat_session";
 
 const Spinner = ({ className = "" }) => (
   <span className={`inline-block w-4 h-4 border-2 border-border border-t-accent rounded-full animate-spin align-middle ${className}`} />
@@ -117,6 +118,7 @@ export default function ChatPanel({ onAction }) {
     try {
       const res = await chatStart({ apiKey });
       setSessionId(res.session_id);
+      try { sessionStorage.setItem(SESSION_KEY, res.session_id); } catch {}
     } catch (err) {
       if (err.message?.includes("API key") || err.message?.includes("ANTHROPIC_API_KEY")) {
         setNeedsKey(true);
@@ -126,7 +128,14 @@ export default function ChatPanel({ onAction }) {
     } finally { setStarting(false); }
   }
 
-  useEffect(() => { startSession(); }, []);
+  useEffect(() => {
+    const saved = sessionStorage.getItem(SESSION_KEY);
+    if (saved) {
+      setSessionId(saved);
+    } else {
+      startSession();
+    }
+  }, []);
 
   function addMessages(newMsgs) {
     setMessages((prev) => {
@@ -155,7 +164,16 @@ export default function ChatPanel({ onAction }) {
     try {
       const res = await chatMessage({ sessionId, text });
       handleResponse(res);
-    } catch (err) { setError(err.message); }
+    } catch (err) {
+      if (err.message?.includes("session") || err.message?.includes("Session")) {
+        sessionStorage.removeItem(SESSION_KEY);
+        setSessionId(null);
+        startSession();
+        setError("Session expired — reconnecting. Please resend your message.");
+      } else {
+        setError(err.message);
+      }
+    }
     finally { setLoading(false); inputRef.current?.focus(); }
   }
 
@@ -172,6 +190,9 @@ export default function ChatPanel({ onAction }) {
   function handleClear() {
     setMessages([]);
     localStorage.removeItem(STORAGE_KEY);
+    sessionStorage.removeItem(SESSION_KEY);
+    setSessionId(null);
+    startSession();
   }
 
   if (needsKey) return <ApiKeyForm onSaved={(key) => startSession(key)} />;

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, Component } from "react";
-import { getBtcPrice, getWalletStatus } from "./api";
-import { clearClientCache } from "./hooks";
+import { getBtcPrice, getWalletStatus, getWalletInfo, getWalletBalances } from "./api";
+import { clearClientCache, preloadCache } from "./hooks";
 import TokensView from "./views/TokensView";
 import TradesView from "./views/TradesView";
 import SearchView from "./views/SearchView";
@@ -127,6 +127,9 @@ export default function App() {
     getWalletStatus()
       .then((s) => setSdkOk(s.sdk_available))
       .catch(() => setSdkOk(false));
+    // Eagerly preload slow data so tiles open instantly
+    preloadCache("wallet_info", getWalletInfo);
+    preloadCache("wallet_balances", getWalletBalances);
   }, []);
 
   function toggleService(id) {

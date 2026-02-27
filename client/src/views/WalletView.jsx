@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { getWalletInfo, getWalletStatus, setupInit, setupWalletCreate, importWallet } from "../api";
+import LoadingQuote from "../components/LoadingQuote";
 import { useFetch, clearClientCache } from "../hooks";
 import { fmtSats } from "../utils";
 
@@ -236,7 +237,7 @@ function WalletInfoCards({ btcUsd, refreshKey = 0 }) {
     [refreshKey], { cacheKey: "wallet_info" },
   );
   const hardRefresh = () => { refreshRef.current = true; refetch(); };
-  if (loading && !data) return <div className="text-center py-16 text-dim"><Spinner className="mr-2" /> Loading wallet...</div>;
+  if (loading && !data) return <LoadingQuote message="Fetching your wallet from the Internet Computer..." />;
   if (error && !data) return <div className="bg-red-dim border border-red rounded-[10px] px-4 py-3 mb-4 text-sm text-red">{error}</div>;
   if (!data) return null;
 
@@ -286,7 +287,7 @@ export default function WalletView({ btcUsd, refreshKey = 0 }) {
   }, []);
   useEffect(() => { checkStatus(); }, [checkStatus]);
 
-  if (setupDone === null) return <div className="text-center py-16 text-dim"><Spinner className="mr-2" /> Checking setup...</div>;
+  if (setupDone === null) return <LoadingQuote message="Checking setup..." />;
   if (!setupDone && status) return <SetupWizard status={status} onComplete={checkStatus} />;
 
   return (

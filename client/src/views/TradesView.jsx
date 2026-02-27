@@ -1,6 +1,7 @@
 import { getWalletTrades } from "../api";
 import { useFetch } from "../hooks";
 import { fmtSats } from "../utils";
+import LoadingQuote from "../components/LoadingQuote";
 
 const Spinner = ({ className = "" }) => (
   <span className={`inline-block w-5 h-5 border-2 border-border border-t-accent rounded-full animate-spin align-middle ${className}`} />
@@ -61,7 +62,7 @@ export default function TradesView({ btcUsd, refreshKey = 0 }) {
   );
   const trades = data?.trades || [];
 
-  if (loading && !data) return <div className="text-center py-16 text-dim"><Spinner className="mr-2" /> Loading trade history...</div>;
+  if (loading && !data) return <LoadingQuote message="Reviewing your trade scrolls..." />;
 
   return (
     <>

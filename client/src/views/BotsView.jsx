@@ -1,4 +1,5 @@
 import { getWalletBalances } from "../api";
+import LoadingQuote from "../components/LoadingQuote";
 import { useFetch } from "../hooks";
 import { fmtSats, fmtUsd } from "../utils";
 
@@ -95,7 +96,7 @@ export default function BotsView({ btcUsd, refreshKey = 0 }) {
   );
   const hardRefresh = () => { refreshRef.current = true; refetch(); };
 
-  if (loading && !data) return <div className="text-center py-16 text-dim"><Spinner className="mr-2" /> Loading bot data...</div>;
+  if (loading && !data) return <LoadingQuote message="Consulting the blockchain for your bots..." />;
   if (error) return (
     <div className="text-center py-16">
       <div className="bg-red-dim border border-red rounded-[10px] px-4 py-3 mb-4 text-sm text-red inline-block">{error}</div>

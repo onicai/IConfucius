@@ -20,36 +20,60 @@ Endpoints:
 import json
 import os
 import sys
+import threading
 import time
 import traceback
 import uuid
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from socketserver import ThreadingMixIn
 from urllib.parse import urlparse
+
+
+class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
+    daemon_threads = True
 
 
 # ---------------------------------------------------------------------------
 # Simple TTL cache for expensive blockchain calls
 # ---------------------------------------------------------------------------
 _cache = {}
-_CACHE_TTL = 45  # seconds
+_cache_lock = threading.Lock()
+_CACHE_TTL = 120  # seconds
 
 
 def _cache_get(key):
-    entry = _cache.get(key)
-    if entry and (time.monotonic() - entry[0]) < _CACHE_TTL:
-        return entry[1]
+    with _cache_lock:
+        entry = _cache.get(key)
+        if entry and (time.monotonic() - entry[0]) < _CACHE_TTL:
+            return entry[1]
     return None
 
 
 def _cache_set(key, value):
-    _cache[key] = (time.monotonic(), value)
+    with _cache_lock:
+        _cache[key] = (time.monotonic(), value)
 
 
 def _cache_clear(key=None):
-    if key:
-        _cache.pop(key, None)
-    else:
-        _cache.clear()
+    with _cache_lock:
+        if key:
+            _cache.pop(key, None)
+        else:
+            _cache.clear()
+
+
+def _warm_cache():
+    """Preload expensive data in background threads at startup."""
+    if not _HAS_ICONFUCIUS:
+        return
+    def _preload(name, fn):
+        try:
+            fn()
+            print(f"  [cache] {name} ready")
+        except Exception as e:
+            print(f"  [cache] {name} failed: {e}")
+    threading.Thread(target=_preload, args=("wallet_info", _handle_wallet_info), daemon=True).start()
+    threading.Thread(target=_preload, args=("wallet_balances", _handle_wallet_balances), daemon=True).start()
 
 try:
     from curl_cffi import requests
@@ -913,7 +937,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
 
 
 def main():
-    server = HTTPServer(("127.0.0.1", PORT), ProxyHandler)
+    server = ThreadingHTTPServer(("127.0.0.1", PORT), ProxyHandler)
     print(f"IConfucius Dashboard Proxy on http://localhost:{PORT}")
     print(f"  Odin.fun API:  /api/odin/* -> {ODIN_API}/*")
     print(f"  Wallet info:   /api/wallet/info")
@@ -923,6 +947,7 @@ def main():
     print(f"  SDK available: {_HAS_ICONFUCIUS}")
     print(f"  Project root:  {os.environ.get('ICONFUCIUS_ROOT', 'not set')}")
     print()
+    _warm_cache()
     try:
         server.serve_forever()
     except KeyboardInterrupt:

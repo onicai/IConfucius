@@ -43,3 +43,8 @@ export function clearClientCache(key) {
   if (key) _clientCache.delete(key);
   else _clientCache.clear();
 }
+
+export function preloadCache(key, fetchFn) {
+  if (_clientCache.has(key)) return;
+  fetchFn().then((d) => { _clientCache.set(key, d); }).catch(() => {});
+}
