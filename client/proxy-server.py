@@ -686,21 +686,11 @@ def _handle_wallet_trades():
     _sync_project_root()
     _chdir_to_root()
     from iconfucius.memory import read_trades
-    import re as _re
     persona = "iconfucius"
     raw = read_trades(persona, last_n=50)
     if not raw:
         return 200, {"trades": []}
-    entries = _re.split(r"(?=^## )", raw, flags=_re.MULTILINE)
-    trades = []
-    for entry in entries:
-        entry = entry.strip()
-        if not entry:
-            continue
-        heading = entry.split("\n", 1)[0].lstrip("# ").strip()
-        body = entry.split("\n", 1)[1].strip() if "\n" in entry else ""
-        trades.append({"heading": heading, "body": body})
-    trades.reverse()
+    trades = list(reversed(raw))
     return 200, {"trades": trades}
 
 

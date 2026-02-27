@@ -1,37 +1,55 @@
 import { getWalletTrades } from "../api";
 import { useFetch } from "../hooks";
+import { fmtSats } from "../utils";
 
 const Spinner = ({ className = "" }) => (
   <span className={`inline-block w-5 h-5 border-2 border-border border-t-accent rounded-full animate-spin align-middle ${className}`} />
 );
 
-function TradeEntry({ heading, body }) {
-  const isBuy = /\bbuy\b/i.test(heading) || /\bbought\b/i.test(heading);
-  const isSell = /\bsell\b/i.test(heading) || /\bsold\b/i.test(heading);
-  const isFund = /\bfund\b/i.test(heading) || /\bdeposit\b/i.test(heading);
-  const isWithdraw = /\bwithdraw\b/i.test(heading);
+function fmtTime(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+function TradeCard({ trade, btcUsd }) {
+  const action = (trade.action || "").toUpperCase();
+  const isBuy = action === "BUY";
+  const isSell = action === "SELL";
 
   const tagColor = isBuy ? "bg-green-dim text-green border-green/30"
     : isSell ? "bg-red-dim text-red border-red/30"
-    : isFund ? "bg-accent-dim text-accent border-accent/30"
-    : isWithdraw ? "bg-accent-dim text-accent border-accent/30"
-    : "bg-surface-hover text-dim border-border";
+    : "bg-accent-dim text-accent border-accent/30";
 
-  const tagLabel = isBuy ? "BUY" : isSell ? "SELL" : isFund ? "FUND" : isWithdraw ? "WITHDRAW" : "ACTION";
+  const bots = (trade.bots || []).join(", ");
+
+  let detail = "";
+  if (isBuy && trade.amount_sats) {
+    detail = fmtSats(trade.amount_sats, btcUsd);
+    if (trade.est_tokens) detail += ` → ~${trade.est_tokens.toLocaleString()} tokens`;
+  } else if (isSell) {
+    if (trade.tokens_sold === "all") detail = "all tokens";
+    else if (trade.tokens_sold) detail = `${Number(trade.tokens_sold).toLocaleString()} tokens`;
+    if (trade.est_sats_received) detail += ` → ~${fmtSats(trade.est_sats_received, btcUsd)}`;
+  }
 
   return (
     <div className="bg-surface border border-border rounded-xl p-3.5 hover:border-border/80 transition-colors">
-      <div className="flex items-start gap-2 mb-1">
+      <div className="flex items-center gap-2 flex-wrap">
         <span className={`shrink-0 px-1.5 py-0.5 rounded text-[0.6rem] font-bold border ${tagColor}`}>
-          {tagLabel}
+          {action || "TRADE"}
         </span>
-        <span className="text-sm font-semibold leading-snug">{heading}</span>
+        <a href={`https://odin.fun/token/${trade.token_id}`} target="_blank" rel="noopener noreferrer"
+          className="text-sm font-semibold text-accent hover:underline">
+          {trade.ticker || trade.token_id}
+        </a>
+        {detail && <span className="text-xs text-dim">{detail}</span>}
+        <span className="ml-auto text-[0.65rem] text-dim tabular-nums">{fmtTime(trade.ts)}</span>
       </div>
-      {body && (
-        <div className="text-xs text-dim leading-relaxed whitespace-pre-wrap mt-1.5 pl-[calc(theme(spacing.1.5)+theme(spacing.2)+3ch)]">
-          {body}
-        </div>
-      )}
+      <div className="flex items-center gap-3 mt-1.5 text-[0.7rem] text-dim">
+        {bots && <span>Bot: <span className="text-text">{bots}</span></span>}
+        {trade.price_sats != null && <span>Price: <span className="text-text tabular-nums">{trade.price_sats.toLocaleString()} sats</span></span>}
+      </div>
     </div>
   );
 }
@@ -65,7 +83,7 @@ export default function TradesView({ btcUsd, refreshKey = 0 }) {
       ) : (
         <div className="flex flex-col gap-2">
           {trades.map((t, i) => (
-            <TradeEntry key={i} heading={t.heading} body={t.body} />
+            <TradeCard key={i} trade={t} btcUsd={btcUsd} />
           ))}
         </div>
       )}
