@@ -93,7 +93,7 @@ function MessageBubble({ role, text }) {
   );
 }
 
-export default function ChatPanel({ onAction }) {
+export default function ChatPanel({ onAction, focusSignal = 0 }) {
   const [sessionId, setSessionId] = useState(null);
   const [messages, setMessages] = useState(loadSavedMessages);
   const [input, setInput] = useState("");
@@ -112,6 +112,11 @@ export default function ChatPanel({ onAction }) {
 
   useEffect(scrollToBottom, [messages, confirmData, scrollToBottom]);
   useEffect(() => { saveMessages(messages); }, [messages]);
+  useEffect(() => { if (!loading && !confirmLoading && sessionId) inputRef.current?.focus(); }, [loading, confirmLoading, sessionId]);
+  useEffect(() => {
+    if (!sessionId || loading || confirmLoading) return;
+    requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
+  }, [focusSignal, sessionId, loading, confirmLoading]);
 
   async function startSession(apiKey) {
     setStarting(true); setError(null); setNeedsKey(false);
@@ -269,7 +274,6 @@ export default function ChatPanel({ onAction }) {
       <form onSubmit={handleSend} className="shrink-0 flex gap-1.5 px-3 pb-3 pt-2 border-t border-border">
         <input
           ref={inputRef}
-          autoFocus
           type="text" value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Message..."

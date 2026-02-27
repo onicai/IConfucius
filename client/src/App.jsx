@@ -113,6 +113,7 @@ export default function App() {
   const [sdkOk, setSdkOk] = useState(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [chatFocusTick, setChatFocusTick] = useState(0);
 
   const handleAction = useCallback(() => {
     clearClientCache();
@@ -134,6 +135,7 @@ export default function App() {
 
   function toggleService(id) {
     setActive((prev) => prev === id ? null : id);
+    setChatFocusTick((t) => t + 1);
   }
 
   const renderView = () => {
@@ -155,7 +157,7 @@ export default function App() {
           <img src="/icon.webp" alt="IConfucius" className="w-8 h-8 rounded-full object-cover ring-1 ring-accent/30" />
           <div className="flex flex-col leading-tight">
             <span className="text-accent">IConfucius</span>
-            <span className="text-[0.6rem] text-dim font-normal -mt-0.5">The Runes trading agent</span>
+            <span className="text-[0.6rem] text-dim font-normal -mt-0.5">The Runes trading Agent</span>
           </div>
         </h1>
         <div className="flex items-center gap-3 text-[0.7rem] text-dim">
@@ -217,7 +219,7 @@ export default function App() {
 
         {/* Chat panel — desktop: always visible sidebar */}
         <aside className="hidden lg:flex w-[380px] shrink-0 border-l border-border">
-          <ChatPanel onAction={handleAction} />
+          <ChatPanel onAction={handleAction} focusSignal={chatFocusTick} />
         </aside>
       </div>
 
@@ -235,7 +237,7 @@ export default function App() {
                 </svg>
               </button>
             </div>
-            <ChatPanel onAction={handleAction} />
+            <ChatPanel onAction={handleAction} focusSignal={chatFocusTick} />
           </div>
         </div>
       )}
