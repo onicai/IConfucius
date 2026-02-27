@@ -181,7 +181,7 @@ def _build_system_prompt(persona):
         system += "\nUse these token IDs directly. For unknown tokens, use token_lookup."
 
     bots = _get_bots()
-    bot_name = persona.bot
+    bot_name = bots[0] if bots else "bot-1"
     if len(bots) > 1:
         names_str = ", ".join(bots)
         system += (
@@ -539,6 +539,48 @@ def _handle_wallet_backup(handler):
     handler.wfile.write(data)
 
 
+def _handle_wallet_import(handler):
+    """Import a wallet by receiving PEM file contents."""
+    import stat
+    _sync_project_root()
+    root = os.environ.get("ICONFUCIUS_ROOT", "")
+    if not root:
+        _json_response(handler, 400, {"error": "Project not initialized. Run Initialize Project first."})
+        return
+    content_length = int(handler.headers.get("Content-Length", 0))
+    if content_length == 0 or content_length > 10_000:
+        _json_response(handler, 400, {"error": "Invalid PEM data"})
+        return
+    body = handler.rfile.read(content_length)
+    content_type = handler.headers.get("Content-Type", "")
+    if "json" in content_type:
+        try:
+            parsed = json.loads(body)
+            pem_text = parsed.get("pem", "").strip()
+        except Exception:
+            _json_response(handler, 400, {"error": "Invalid JSON"})
+            return
+    else:
+        pem_text = body.decode("utf-8", errors="replace").strip()
+    if "PRIVATE KEY" not in pem_text:
+        _json_response(handler, 400, {"error": "Not a valid PEM private key file"})
+        return
+    wallet_dir = os.path.join(root, ".wallet")
+    os.makedirs(wallet_dir, exist_ok=True)
+    pem_path = os.path.join(wallet_dir, "identity-private.pem")
+    if os.path.exists(pem_path):
+        for i in range(1, 100):
+            backup = f"{pem_path}-backup-{i:02d}"
+            if not os.path.exists(backup):
+                os.rename(pem_path, backup)
+                break
+    fd = os.open(pem_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, stat.S_IRUSR | stat.S_IWUSR)
+    with os.fdopen(fd, "wb") as f:
+        f.write(pem_text.encode("utf-8"))
+    _cache_clear()
+    _json_response(handler, 200, {"status": "ok", "display": "Wallet imported successfully."})
+
+
 def _chdir_to_root():
     """chdir to ICONFUCIUS_ROOT so SDK finds config/wallet files."""
     root = os.environ.get("ICONFUCIUS_ROOT", "")
@@ -763,6 +805,14 @@ class ProxyHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         parsed = urlparse(self.path)
         path = parsed.path
+
+        if path == "/api/wallet/import":
+            try:
+                _handle_wallet_import(self)
+            except Exception as e:
+                traceback.print_exc()
+                _json_response(self, 500, {"error": str(e)})
+            return
 
         routes = {
             "/api/setup/init": _handle_action_init,

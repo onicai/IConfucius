@@ -51,6 +51,10 @@ export async function getWalletTrades() {
   return fetchJSON(`${WALLET}/trades`);
 }
 
+export async function importWallet(pemText) {
+  return postJSON(`${WALLET}/import`, { pem: pemText });
+}
+
 export async function getWalletStatus() {
   return fetchJSON(`${WALLET}/status`);
 }

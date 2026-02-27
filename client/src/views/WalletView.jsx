@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
-import { getWalletInfo, getWalletStatus, setupInit, setupWalletCreate } from "../api";
-import { useFetch } from "../hooks";
+import { getWalletInfo, getWalletStatus, setupInit, setupWalletCreate, importWallet } from "../api";
+import { useFetch, clearClientCache } from "../hooks";
 import { fmtSats } from "../utils";
 
 const Spinner = ({ className = "" }) => (
@@ -51,6 +51,36 @@ function DownloadBackupButton({ className = "" }) {
   );
 }
 
+function ImportWalletButton({ onImported, className = "" }) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function handleFile(file) {
+    setLoading(true); setError(null);
+    try {
+      const text = await file.text();
+      await importWallet(text);
+      clearClientCache();
+      if (onImported) onImported();
+    } catch (e) { setError(e.message); }
+    finally { setLoading(false); }
+  }
+
+  return (
+    <span className={className}>
+      <label className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium bg-surface border border-border text-dim hover:text-text hover:bg-surface-hover transition-colors cursor-pointer ${loading ? "opacity-50 pointer-events-none" : ""}`}>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        {loading ? "Importing..." : "Import Wallet"}
+        <input type="file" accept=".pem" className="hidden"
+          onChange={(e) => { if (e.target.files[0]) handleFile(e.target.files[0]); e.target.value = ""; }} />
+      </label>
+      {error && <div className="text-xs text-red mt-1">{error}</div>}
+    </span>
+  );
+}
+
 function SetupWizard({ status, onComplete }) {
   const sdkMissing = !status.sdk_available;
   const configExists = status.config_exists;
@@ -75,6 +105,14 @@ function SetupWizard({ status, onComplete }) {
     setWalletLoading(true); setWalletResult(null);
     try { setWalletResult(await setupWalletCreate()); }
     catch (e) { setWalletResult({ status: "error", error: e.message }); }
+    finally { setWalletLoading(false); }
+  }
+  async function handleImport(file) {
+    setWalletLoading(true); setWalletResult(null);
+    try {
+      const text = await file.text();
+      setWalletResult(await importWallet(text));
+    } catch (e) { setWalletResult({ status: "error", error: e.message }); }
     finally { setWalletLoading(false); }
   }
 
@@ -146,21 +184,31 @@ function SetupWizard({ status, onComplete }) {
         <div className={`flex gap-3.5 py-4 border-b border-border ${activeStep < 2 ? "opacity-40" : walletDone && activeStep !== 2 ? "opacity-50" : ""}`}>
           <StepCircle number={2} done={walletDone} active={activeStep === 2} />
           <div className="flex-1">
-            <div className="font-semibold mb-1">Create Wallet</div>
+            <div className="font-semibold mb-1">Create or Import Wallet</div>
             {activeStep === 2 && (
               <div className="text-sm text-dim leading-relaxed">
-                Creates a new trading identity for your wallet.
                 <div className="mt-2 px-3 py-2 bg-red-dim border border-red rounded-md text-xs text-red font-medium">
-                  After creation, download and store the backup file in a safe place. If lost, access to all funds is gone permanently.
+                  If creating new: download and store the backup file immediately. If lost, access to all funds is gone permanently.
                 </div>
-                <ActionBtn onClick={handleWalletCreate} loading={walletLoading}>Create Wallet</ActionBtn>
+                <div className="flex items-center gap-2 mt-3">
+                  <ActionBtn onClick={handleWalletCreate} loading={walletLoading}>Create New Wallet</ActionBtn>
+                  <span className="text-xs text-dim">or</span>
+                  <label className="mt-3 px-5 py-2 rounded-[10px] text-sm bg-surface border border-border text-text hover:bg-surface-hover transition-colors cursor-pointer inline-flex items-center gap-1.5">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                    Import Backup
+                    <input type="file" accept=".pem" className="hidden"
+                      onChange={(e) => { if (e.target.files[0]) handleImport(e.target.files[0]); }} />
+                  </label>
+                </div>
                 <ResultBox result={walletResult} />
                 {walletDone && <DownloadBackupButton className="mt-2" />}
               </div>
             )}
             {walletDone && activeStep !== 2 && (
               <div className="flex items-center gap-3">
-                <span className="text-[0.82rem] text-green">Wallet created</span>
+                <span className="text-[0.82rem] text-green">Wallet ready</span>
                 <DownloadBackupButton />
               </div>
             )}
@@ -254,8 +302,9 @@ export default function WalletView({ btcUsd, refreshKey = 0 }) {
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-3 flex-wrap">
         <DownloadBackupButton />
+        <ImportWalletButton onImported={checkStatus} />
         <span className="text-xs text-dim">Keep your wallet backup in a safe place</span>
       </div>
     </>
