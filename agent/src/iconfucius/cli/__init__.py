@@ -452,11 +452,6 @@ def _start_chat():
             return
         print("Wallet created.")
         print()
-        # Show deposit address and funding instructions
-        addr_result = execute_tool("how_to_fund_wallet", {})
-        if addr_result.get("status") == "ok":
-            print(addr_result.get("display", ""))
-            print()
         setup = execute_tool("setup_status", {})
 
     from iconfucius.cli.chat import run_chat

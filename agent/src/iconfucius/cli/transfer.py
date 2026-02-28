@@ -50,7 +50,7 @@ def run_transfer(bot_name: str, token_id: str, amount: str,
     Args:
         bot_name: Name of the source bot.
         token_id: Token ID to transfer (e.g. '29m8').
-        amount: Raw token sub-units, or 'all' for entire balance.
+        amount: Token amount in milli-subunits, or 'all' for entire balance.
         to_address: Destination address — IC principal, BTC deposit address
             (btc_deposit_address), or BTC wallet address (btc_wallet_address)
             of a bot's Odin.fun account. All three are resolved to the
@@ -154,17 +154,18 @@ def run_transfer(bot_name: str, token_id: str, amount: str,
     # Step 3: Check BTC balance for transfer fee
     # -----------------------------------------------------------------------
     TRANSFER_FEE_SATS = 100
-    MSAT_PER_SAT = 1000
     logger.info("Step 3: Check BTC balance for transfer fee (bot=%s)...", bot_name)
 
     btc_balance_msat = unwrap_canister_result(
         odin.getBalance(bot_principal_text, "btc",
                         verify_certificate=get_verify_certificates())
     )
-    btc_balance_sats = btc_balance_msat // MSAT_PER_SAT
+    from iconfucius.units import msat_to_sats
+    btc_balance_sats = msat_to_sats(btc_balance_msat)
     logger.info("Step 3: BTC balance: %d sats", btc_balance_sats)
 
     if btc_balance_sats < TRANSFER_FEE_SATS:
+        from iconfucius.config import MIN_DEPOSIT_SATS, MIN_TRADE_SATS
         return {
             "status": "error",
             "error_type": "insufficient_btc_for_fee",
@@ -175,11 +176,13 @@ def run_transfer(bot_name: str, token_id: str, amount: str,
             "bot_name": bot_name,
             "btc_balance_sats": btc_balance_sats,
             "fee_sats": TRANSFER_FEE_SATS,
+            "min_deposit_sats": MIN_DEPOSIT_SATS,
+            "min_trade_sats": MIN_TRADE_SATS,
             "token_id": token_id,
             "token_label": token_label,
             "options": [
-                "Fund bot from wallet (minimum 5,000 sats deposit) using the fund tool",
-                "Sell some tokens first to free up BTC for the fee",
+                f"Fund bot from wallet (minimum {MIN_DEPOSIT_SATS:,} sats deposit) using the fund tool",
+                f"Sell tokens first to get BTC for the fee (minimum sell: {MIN_TRADE_SATS:,} sats worth)",
             ],
         }
 

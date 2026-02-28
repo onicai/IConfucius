@@ -317,7 +317,7 @@ def discover_tokens(sort: str = "volume", limit: int = 20) -> list[dict]:
     except Exception:
         return []
 
-    MSAT_PER_SAT = 1000
+    from iconfucius.units import MSAT_PER_SAT, msat_to_sats
     known_ids = set(load_known_tokens().keys())
     results = []
 
@@ -330,8 +330,8 @@ def discover_tokens(sort: str = "volume", limit: int = 20) -> list[dict]:
             "name": token.get("name", ""),
             "ticker": token.get("ticker", ""),
             "price_sats": token.get("price", 0) / MSAT_PER_SAT,
-            "marketcap_sats": token.get("marketcap", 0) // MSAT_PER_SAT,
-            "volume_24h_sats": token.get("volume_24", 0) // MSAT_PER_SAT,
+            "marketcap_sats": msat_to_sats(token.get("marketcap", 0)),
+            "volume_24h_sats": msat_to_sats(token.get("volume_24", 0)),
             "holder_count": token.get("holder_count", 0),
             "bonded": True,
             "twitter_verified": token.get("twitter_verified", False),

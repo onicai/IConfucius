@@ -14,7 +14,7 @@ from icp_canister import Canister
 from icp_identity import Identity
 from icp_principal import Principal
 
-from iconfucius.candid import ICRC1_CANDID
+from iconfucius.candid import CKBTC_MINTER_CANDID, ICRC1_CANDID
 from iconfucius.config import (
     CKBTC_LEDGER_CANISTER_ID,
     CKBTC_MINTER_CANISTER_ID,
@@ -52,11 +52,11 @@ def patch_delegate_sender(delegate_identity):
 
 
 def create_ckbtc_minter(agent) -> Canister:
-    """Create a ckBTC minter canister instance (auto-fetches Candid from IC)."""
+    """Create a ckBTC minter canister instance."""
     return Canister(
         agent=agent,
         canister_id=CKBTC_MINTER_CANISTER_ID,
-        auto_fetch_candid=True,
+        candid_str=CKBTC_MINTER_CANDID,
     )
 
 

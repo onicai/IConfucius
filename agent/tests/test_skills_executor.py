@@ -6,8 +6,9 @@ from unittest.mock import MagicMock, patch
 from iconfucius.skills.executor import (
     execute_tool,
     _enable_verify_certificates,
+    _record_balance_snapshot,
     _resolve_bot_names,
-    _tokens_to_subunits,
+    _tokens_to_millisubunits,
     _usd_to_sats,
     _usd_to_tokens,
 )
@@ -709,6 +710,252 @@ class TestTradeRecording:
         assert result["status"] == "ok"
 
 
+class TestTradeRecordingSafeFloat:
+    """Tests for _safe_float fallback in _record_trade — amount='?', None, etc."""
+
+    def _fake_handler(self, result):
+        """Return a handler function that returns the given result."""
+        return lambda args: result
+
+    @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100000.0)
+    @patch("iconfucius.tokens.fetch_token_data",
+           return_value={"price": 1500, "ticker": "ICONFUCIUS"})
+    @patch("iconfucius.memory.append_trade")
+    def test_buy_amount_question_mark(self, mock_append, _mock_fetch, _mock_usd,
+                                       tmp_path, monkeypatch):
+        """BUY with amount='?' (fallback) records 0 sats instead of crashing."""
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        from iconfucius.skills.executor import _HANDLERS
+        original = _HANDLERS["trade_buy"]
+        _HANDLERS["trade_buy"] = self._fake_handler(
+            {"status": "ok", "display": "Bought!"})
+        try:
+            result = execute_tool("trade_buy",
+                                  {"token_id": "29m8", "bot_name": "bot-1"},
+                                  persona_name="iconfucius")
+        finally:
+            _HANDLERS["trade_buy"] = original
+        assert result["status"] == "ok"
+        mock_append.assert_called_once()
+        entry = mock_append.call_args[0][1]
+        assert entry["action"] == "BUY"
+        assert entry["amount_sats"] == 0
+
+    @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100000.0)
+    @patch("iconfucius.tokens.fetch_token_data",
+           return_value={"price": 1500, "ticker": "ICONFUCIUS"})
+    @patch("iconfucius.memory.append_trade")
+    def test_sell_amount_question_mark(self, mock_append, _mock_fetch, _mock_usd,
+                                        tmp_path, monkeypatch):
+        """SELL with amount='?' (fallback) records 0.0 tokens instead of crashing."""
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        from iconfucius.skills.executor import _HANDLERS
+        original = _HANDLERS["trade_sell"]
+        _HANDLERS["trade_sell"] = self._fake_handler(
+            {"status": "ok", "display": "Sold!"})
+        try:
+            result = execute_tool("trade_sell",
+                                  {"token_id": "29m8", "bot_name": "bot-1"},
+                                  persona_name="iconfucius")
+        finally:
+            _HANDLERS["trade_sell"] = original
+        assert result["status"] == "ok"
+        mock_append.assert_called_once()
+        entry = mock_append.call_args[0][1]
+        assert entry["action"] == "SELL"
+        assert entry["tokens_sold"] == 0.0
+
+    @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100000.0)
+    @patch("iconfucius.tokens.fetch_token_data",
+           return_value={"price": 1500, "ticker": "ICONFUCIUS"})
+    @patch("iconfucius.memory.append_trade")
+    def test_buy_amount_none(self, mock_append, _mock_fetch, _mock_usd,
+                              tmp_path, monkeypatch):
+        """BUY with amount=None records 0 sats instead of crashing."""
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        from iconfucius.skills.executor import _HANDLERS
+        original = _HANDLERS["trade_buy"]
+        _HANDLERS["trade_buy"] = self._fake_handler(
+            {"status": "ok", "display": "Bought!"})
+        try:
+            result = execute_tool("trade_buy",
+                                  {"token_id": "29m8", "amount": None,
+                                   "bot_name": "bot-1"},
+                                  persona_name="iconfucius")
+        finally:
+            _HANDLERS["trade_buy"] = original
+        assert result["status"] == "ok"
+        mock_append.assert_called_once()
+        entry = mock_append.call_args[0][1]
+        assert entry["amount_sats"] == 0
+
+    @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100000.0)
+    @patch("iconfucius.tokens.fetch_token_data",
+           return_value={"price": 1500, "ticker": "ICONFUCIUS"})
+    @patch("iconfucius.memory.append_trade")
+    def test_sell_amount_none(self, mock_append, _mock_fetch, _mock_usd,
+                               tmp_path, monkeypatch):
+        """SELL with amount=None records 0.0 tokens instead of crashing."""
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        from iconfucius.skills.executor import _HANDLERS
+        original = _HANDLERS["trade_sell"]
+        _HANDLERS["trade_sell"] = self._fake_handler(
+            {"status": "ok", "display": "Sold!"})
+        try:
+            result = execute_tool("trade_sell",
+                                  {"token_id": "29m8", "amount": None,
+                                   "bot_name": "bot-1"},
+                                  persona_name="iconfucius")
+        finally:
+            _HANDLERS["trade_sell"] = original
+        assert result["status"] == "ok"
+        mock_append.assert_called_once()
+        entry = mock_append.call_args[0][1]
+        assert entry["tokens_sold"] == 0.0
+
+    @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100000.0)
+    @patch("iconfucius.tokens.fetch_token_data",
+           return_value={"price": 1500, "ticker": "ICONFUCIUS"})
+    @patch("iconfucius.memory.append_trade")
+    def test_buy_amount_from_result_details(self, mock_append, _mock_fetch,
+                                             _mock_usd, tmp_path, monkeypatch):
+        """BUY uses amount from result details when available."""
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        from iconfucius.skills.executor import _HANDLERS
+        original = _HANDLERS["trade_buy"]
+        _HANDLERS["trade_buy"] = self._fake_handler(
+            {"status": "ok", "display": "Bought!",
+             "details": [{"amount": 2000}]})
+        try:
+            result = execute_tool("trade_buy",
+                                  {"token_id": "29m8", "amount": 1000,
+                                   "bot_name": "bot-1"},
+                                  persona_name="iconfucius")
+        finally:
+            _HANDLERS["trade_buy"] = original
+        assert result["status"] == "ok"
+        mock_append.assert_called_once()
+        entry = mock_append.call_args[0][1]
+        # Should use 2000 from details, not 1000 from args
+        assert entry["amount_sats"] == 2000
+
+    @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100000.0)
+    @patch("iconfucius.tokens.fetch_token_data",
+           return_value={"price": 1500, "ticker": "ICONFUCIUS"})
+    @patch("iconfucius.memory.append_trade")
+    def test_sell_amount_from_result_details(self, mock_append, _mock_fetch,
+                                              _mock_usd, tmp_path, monkeypatch):
+        """SELL uses amount from result details when available."""
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        from iconfucius.skills.executor import _HANDLERS
+        original = _HANDLERS["trade_sell"]
+        _HANDLERS["trade_sell"] = self._fake_handler(
+            {"status": "ok", "display": "Sold!",
+             "details": [{"amount": 500.5}]})
+        try:
+            result = execute_tool("trade_sell",
+                                  {"token_id": "29m8", "amount": 1000,
+                                   "bot_name": "bot-1"},
+                                  persona_name="iconfucius")
+        finally:
+            _HANDLERS["trade_sell"] = original
+        assert result["status"] == "ok"
+        mock_append.assert_called_once()
+        entry = mock_append.call_args[0][1]
+        # Should use 500.5 from details, not 1000 from args
+        assert entry["tokens_sold"] == 500.5
+
+    @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100000.0)
+    @patch("iconfucius.tokens.fetch_token_data",
+           return_value={"price": 1500, "ticker": "ICONFUCIUS"})
+    @patch("iconfucius.memory.append_trade")
+    def test_buy_string_amount(self, mock_append, _mock_fetch, _mock_usd,
+                                tmp_path, monkeypatch):
+        """BUY with string amount like '1000' is parsed correctly."""
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        from iconfucius.skills.executor import _HANDLERS
+        original = _HANDLERS["trade_buy"]
+        _HANDLERS["trade_buy"] = self._fake_handler(
+            {"status": "ok", "display": "Bought!"})
+        try:
+            result = execute_tool("trade_buy",
+                                  {"token_id": "29m8", "amount": "1000",
+                                   "bot_name": "bot-1"},
+                                  persona_name="iconfucius")
+        finally:
+            _HANDLERS["trade_buy"] = original
+        assert result["status"] == "ok"
+        mock_append.assert_called_once()
+        entry = mock_append.call_args[0][1]
+        assert entry["amount_sats"] == 1000
+
+
+class TestBalanceSnapshotRecording:
+    """Tests for _record_balance_snapshot."""
+
+    @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100000.0)
+    @patch("iconfucius.memory.append_balance_snapshot")
+    def test_records_snapshot_with_usd(self, mock_append, _mock_rate):
+        """Snapshot records portfolio_usd when btc_usd rate is available."""
+        result = {
+            "all_bots_ok": True,
+            "wallet_ckbtc_sats": 50000,
+            "total_odin_sats": 30000,
+            "total_token_value_sats": 20000,
+            "portfolio_sats": 100000,
+            "bots": [{"name": "bot-1"}],
+        }
+        _record_balance_snapshot(result, "iconfucius")
+        mock_append.assert_called_once()
+        snapshot = mock_append.call_args[0][1]
+        assert snapshot["wallet_sats"] == 50000
+        assert snapshot["odin_sats"] == 30000
+        assert snapshot["token_value_sats"] == 20000
+        assert snapshot["portfolio_sats"] == 100000
+        assert snapshot["portfolio_usd"] is not None
+        assert snapshot["bot_count"] == 1
+
+    @patch("iconfucius.config.get_btc_to_usd_rate", return_value=None)
+    @patch("iconfucius.memory.append_balance_snapshot")
+    def test_records_snapshot_without_usd(self, mock_append, _mock_rate):
+        """Snapshot records portfolio_usd=None when rate unavailable."""
+        result = {
+            "all_bots_ok": True,
+            "wallet_ckbtc_sats": 50000,
+            "total_odin_sats": 30000,
+            "total_token_value_sats": 20000,
+            "portfolio_sats": 100000,
+            "bots": [{"name": "bot-1"}],
+        }
+        _record_balance_snapshot(result, "iconfucius")
+        mock_append.assert_called_once()
+        snapshot = mock_append.call_args[0][1]
+        assert snapshot["portfolio_usd"] is None
+
+    @patch("iconfucius.memory.append_balance_snapshot")
+    def test_skips_incomplete_data(self, mock_append):
+        """Snapshot is skipped when all_bots_ok is False."""
+        result = {"all_bots_ok": False}
+        _record_balance_snapshot(result, "iconfucius")
+        mock_append.assert_not_called()
+
+    @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100000.0)
+    @patch("iconfucius.memory.append_balance_snapshot",
+           side_effect=Exception("disk full"))
+    def test_snapshot_failure_is_silent(self, mock_append, _mock_rate):
+        """Snapshot recording errors don't raise."""
+        result = {
+            "all_bots_ok": True,
+            "wallet_ckbtc_sats": 50000,
+            "total_odin_sats": 30000,
+            "total_token_value_sats": 20000,
+            "portfolio_sats": 100000,
+            "bots": [],
+        }
+        # Should not raise
+        _record_balance_snapshot(result, "iconfucius")
+
+
 class TestMemoryToolHandlers:
     """Tests for memory_read_strategy, memory_read_learnings, memory_update."""
 
@@ -800,6 +1047,7 @@ class TestWalletBalanceResult:
         """Verify returns structured data."""
         fake_data = {
             "wallet_ckbtc_sats": 1000,
+            "wallet_principal": "wallet-principal-xyz",
             "bots": [
                 {"name": "bot-1", "principal": "bot1-principal-abc",
                  "odin_sats": 500, "has_odin_account": True,
@@ -822,6 +1070,7 @@ class TestWalletBalanceResult:
                             return_value=["bot-1"]):
                     result = execute_tool("wallet_balance", {})
         assert result["status"] == "ok"
+        assert result["wallet_principal"] == "wallet-principal-xyz"
         assert result["wallet_ckbtc_sats"] == 1000
         assert result["total_odin_sats"] == 500
         assert result["total_token_value_sats"] == 200
@@ -897,6 +1146,49 @@ class TestWalletBalanceResult:
         assert "odin_sats" not in result["bots"][0]
         assert "tokens" not in result["bots"][0]
         assert "has_odin_account" not in result["bots"][0]
+
+    def test_all_bots_ok_true_when_complete(self):
+        """all_bots_ok is True when every bot has has_odin_account set."""
+        fake_data = {
+            "wallet_ckbtc_sats": 100,
+            "totals": {"odin_sats": 500, "token_value_sats": 0, "portfolio_sats": 600},
+            "bots": [
+                {"name": "bot-1", "principal": "p1", "odin_sats": 500,
+                 "tokens": [], "has_odin_account": True},
+                {"name": "bot-2", "principal": "p2", "odin_sats": 0,
+                 "tokens": [], "has_odin_account": False},
+            ],
+            "_display": "",
+        }
+        with patch("iconfucius.cli.balance.run_all_balances",
+                    return_value=fake_data):
+            with patch("iconfucius.config.require_wallet", return_value=True):
+                with patch("iconfucius.config.get_bot_names",
+                            return_value=["bot-1", "bot-2"]):
+                    result = execute_tool("wallet_balance", {})
+        assert result["all_bots_ok"] is True
+
+    def test_all_bots_ok_false_when_incomplete(self):
+        """all_bots_ok is False when any bot has has_odin_account=None."""
+        fake_data = {
+            "wallet_ckbtc_sats": 100,
+            "totals": {"odin_sats": 0, "token_value_sats": 0, "portfolio_sats": 100},
+            "bots": [
+                {"name": "bot-1", "principal": "p1", "odin_sats": 500,
+                 "tokens": [], "has_odin_account": True},
+                {"name": "bot-2", "principal": "", "odin_sats": None,
+                 "tokens": None, "has_odin_account": None,
+                 "note": "Balance check failed."},
+            ],
+            "_display": "",
+        }
+        with patch("iconfucius.cli.balance.run_all_balances",
+                    return_value=fake_data):
+            with patch("iconfucius.config.require_wallet", return_value=True):
+                with patch("iconfucius.config.get_bot_names",
+                            return_value=["bot-1", "bot-2"]):
+                    result = execute_tool("wallet_balance", {})
+        assert result["all_bots_ok"] is False
 
 
     def test_next_step_wallet_empty_bots_unchecked(self):
@@ -983,6 +1275,51 @@ class TestWalletBalanceResult:
                             return_value=["bot-1"]):
                     result = execute_tool("wallet_balance", {})
         assert "next_step" not in result
+
+
+    def test_warnings_for_failed_bots(self):
+        """When bots have notes (failures), result includes warnings list."""
+        fake_data = {
+            "wallet_ckbtc_sats": 100,
+            "totals": {"odin_sats": 500, "token_value_sats": 0, "portfolio_sats": 600},
+            "bots": [
+                {"name": "bot-1", "principal": "p1", "odin_sats": 500,
+                 "tokens": [], "has_odin_account": True},
+                {"name": "bot-2", "principal": "",
+                 "odin_sats": None, "tokens": None, "has_odin_account": None,
+                 "note": "Balance check failed: Could not connect to server"},
+            ],
+            "_display": "",
+        }
+        with patch("iconfucius.cli.balance.run_all_balances",
+                    return_value=fake_data):
+            with patch("iconfucius.config.require_wallet", return_value=True):
+                with patch("iconfucius.config.get_bot_names",
+                            return_value=["bot-1", "bot-2"]):
+                    result = execute_tool("wallet_balance", {})
+        assert "warnings" in result
+        assert len(result["warnings"]) == 1
+        assert "bot-2" in result["warnings"][0]
+        assert "Could not connect" in result["warnings"][0]
+
+    def test_no_warnings_when_all_ok(self):
+        """No warnings key when all bots succeed."""
+        fake_data = {
+            "wallet_ckbtc_sats": 100,
+            "totals": {"odin_sats": 500, "token_value_sats": 0, "portfolio_sats": 600},
+            "bots": [
+                {"name": "bot-1", "principal": "p1", "odin_sats": 500,
+                 "tokens": [], "has_odin_account": True},
+            ],
+            "_display": "",
+        }
+        with patch("iconfucius.cli.balance.run_all_balances",
+                    return_value=fake_data):
+            with patch("iconfucius.config.require_wallet", return_value=True):
+                with patch("iconfucius.config.get_bot_names",
+                            return_value=["bot-1"]):
+                    result = execute_tool("wallet_balance", {})
+        assert "warnings" not in result
 
 
 class TestTokenDiscoverExecutor:
@@ -1182,45 +1519,49 @@ class TestTokenPriceExecutor:
         assert "sats" in result["display"]
 
 
-class TestTokensToSubunits:
-    """Tests for human-readable tokens → raw sub-units conversion."""
+class TestTokensToMillisubunits:
+    """Tests for human-readable tokens → milli-subunits conversion."""
 
     @patch("iconfucius.tokens.fetch_token_data",
-           return_value={"divisibility": 8})
+           return_value={"divisibility": 8, "decimals": 3})
     def test_basic_conversion(self, _mock):
-        # 1000 tokens with div=8 → 100_000_000_000
-        """Verify basic conversion."""
-        result = _tokens_to_subunits(1000.0, "29m8")
-        assert result == 100_000_000_000
+        # 1000 tokens with div=8,dec=3 → 1000 * 10^11 = 10^14
+        result = _tokens_to_millisubunits(1000.0, "29m8")
+        assert result == 100_000_000_000_000
 
     @patch("iconfucius.tokens.fetch_token_data",
-           return_value={"divisibility": 0})
+           return_value={"divisibility": 0, "decimals": 0})
     def test_divisibility_zero(self, _mock):
-        # div=0 → tokens are indivisible, 1:1
-        """Verify divisibility zero."""
-        result = _tokens_to_subunits(500.0, "abc")
+        # div=0, dec=0 → factor = 10^0 = 1, tokens are indivisible
+        result = _tokens_to_millisubunits(500.0, "abc")
         assert result == 500
 
     @patch("iconfucius.tokens.fetch_token_data",
-           return_value={"divisibility": 2})
-    def test_divisibility_two(self, _mock):
-        """Verify divisibility two."""
-        result = _tokens_to_subunits(10.5, "xyz")
-        assert result == 1050
+           return_value={"divisibility": 2, "decimals": 1})
+    def test_custom_div_dec(self, _mock):
+        # div=2, dec=1 → factor = 10^3 = 1000
+        result = _tokens_to_millisubunits(10.5, "xyz")
+        assert result == 10500
 
     @patch("iconfucius.tokens.fetch_token_data", return_value=None)
-    def test_missing_data_defaults_to_8(self, _mock):
-        """Verify missing data defaults to 8."""
-        result = _tokens_to_subunits(1.0, "unknown")
-        assert result == 100_000_000
+    def test_missing_data_defaults(self, _mock):
+        # Missing data defaults to div=8, dec=3 → factor = 10^11
+        result = _tokens_to_millisubunits(1.0, "unknown")
+        assert result == 100_000_000_000
 
     @patch("iconfucius.tokens.fetch_token_data",
-           return_value={"divisibility": 8})
+           return_value={"divisibility": 8, "decimals": 3})
     def test_fractional_tokens(self, _mock):
-        # 0.5 tokens with div=8 → 50_000_000
-        """Verify fractional tokens."""
-        result = _tokens_to_subunits(0.5, "29m8")
-        assert result == 50_000_000
+        # 0.5 tokens with div=8,dec=3 → 50_000_000_000
+        result = _tokens_to_millisubunits(0.5, "29m8")
+        assert result == 50_000_000_000
+
+    @patch("iconfucius.tokens.fetch_token_data",
+           return_value={"divisibility": 8, "decimals": 3})
+    def test_100_tokens_sell_scenario(self, _mock):
+        """The sell bug fix: 100 tokens → 10^13 milli-subunits."""
+        result = _tokens_to_millisubunits(100.0, "29m8")
+        assert result == 10_000_000_000_000
 
 
 class TestUsdConversion:
@@ -1240,15 +1581,16 @@ class TestUsdConversion:
 
     @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100000.0)
     @patch("iconfucius.tokens.fetch_token_data",
-           return_value={"price": 1500, "divisibility": 8})
+           return_value={"price": 1500, "divisibility": 8, "decimals": 3})
     def test_usd_to_tokens(self, _mock_fetch, _mock_usd):
         # $5 at $100k/BTC = 5000 sats
-        # raw_tokens = 5000 * 1_000_000 * 10^8 / 1500
-        """Verify usd to tokens."""
-        tokens = _usd_to_tokens(5.0, "29m8")
-        assert tokens > 0
-        # Verify: value_sats = (tokens * 1500) / 10^8 / 10^6 ≈ 5000
-        value_sats = (tokens * 1500) / (10 ** 8) / 1_000_000
+        # milli-subunits = 5000 * 1_000 * 10^11 / 1500
+        """Verify usd to tokens returns milli-subunits."""
+        msu = _usd_to_tokens(5.0, "29m8")
+        assert msu > 0
+        # Verify round-trip: value_sats via millisubunit_value_sats ≈ 5000
+        from iconfucius.units import millisubunit_value_sats
+        value_sats = millisubunit_value_sats(msu, 1500, 8)
         assert abs(value_sats - 5000) < 1  # within 1 sat
 
     @patch("iconfucius.tokens.fetch_token_data", return_value=None)
@@ -1689,3 +2031,149 @@ class TestHowToFundWalletHandler:
         assert "bc1qfund123" in display
         assert "fund-principal" in display
         assert "~6 Bitcoin confirmations" in display
+
+
+# ---------------------------------------------------------------------------
+# _record_balance_snapshot — all_bots_ok guard
+# ---------------------------------------------------------------------------
+
+class TestRecordBalanceSnapshot:
+    @patch("iconfucius.memory.append_balance_snapshot")
+    @patch("iconfucius.config.get_btc_to_usd_rate", return_value=66000.0)
+    def test_records_when_all_bots_ok(self, _mock_rate, mock_append):
+        """Snapshot is recorded when all_bots_ok is True."""
+        result = {
+            "status": "ok",
+            "wallet_ckbtc_sats": 100,
+            "total_odin_sats": 5000,
+            "total_token_value_sats": 3000,
+            "portfolio_sats": 8100,
+            "all_bots_ok": True,
+            "bots": [
+                {"name": "bot-1", "odin_sats": 5000, "has_odin_account": True},
+            ],
+        }
+        _record_balance_snapshot(result, "test-persona")
+        mock_append.assert_called_once()
+        snapshot = mock_append.call_args[0][1]
+        assert snapshot["portfolio_sats"] == 8100
+        assert snapshot["bot_count"] == 1
+
+    @patch("iconfucius.memory.append_balance_snapshot")
+    def test_skips_when_all_bots_ok_false(self, mock_append):
+        """Snapshot is NOT recorded when all_bots_ok is False."""
+        result = {
+            "status": "ok",
+            "wallet_ckbtc_sats": 100,
+            "total_odin_sats": 0,
+            "total_token_value_sats": 0,
+            "portfolio_sats": 100,
+            "all_bots_ok": False,
+            "bots": [
+                {"name": "bot-1", "has_odin_account": None, "note": "failed"},
+            ],
+        }
+        _record_balance_snapshot(result, "test-persona")
+        mock_append.assert_not_called()
+
+    @patch("iconfucius.memory.append_balance_snapshot")
+    def test_skips_when_all_bots_ok_missing(self, mock_append):
+        """Snapshot is NOT recorded when all_bots_ok key is absent."""
+        result = {
+            "status": "ok",
+            "wallet_ckbtc_sats": 100,
+            "portfolio_sats": 100,
+            "bots": [],
+        }
+        _record_balance_snapshot(result, "test-persona")
+        mock_append.assert_not_called()
+
+    @patch("iconfucius.memory.append_balance_snapshot")
+    @patch("iconfucius.config.get_btc_to_usd_rate", return_value=66000.0)
+    def test_records_zero_bot_count_when_all_ok(self, _mock_rate, mock_append):
+        """Snapshot with zero bots is recorded if all_bots_ok is True (e.g. no bots configured)."""
+        result = {
+            "status": "ok",
+            "wallet_ckbtc_sats": 500,
+            "total_odin_sats": 0,
+            "total_token_value_sats": 0,
+            "portfolio_sats": 500,
+            "all_bots_ok": True,
+            "bots": [],
+        }
+        _record_balance_snapshot(result, "test-persona")
+        mock_append.assert_called_once()
+        assert mock_append.call_args[0][1]["bot_count"] == 0
+
+
+class TestPublicBalanceExecutor:
+    """Tests for public_balance agent skill."""
+
+    @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100000.0)
+    @patch("iconfucius.config.get_verify_certificates", return_value=False)
+    @patch("iconfucius.transfers.get_balance", return_value=50000)
+    @patch("iconfucius.transfers.create_icrc1_canister")
+    @patch("icp_canister.Canister")
+    @patch("icp_agent.Agent")
+    @patch("icp_agent.Client")
+    @patch("curl_cffi.requests.get")
+    def test_valid_principal_returns_balances(
+        self, mock_cffi_get, _mock_client, _mock_agent, mock_canister,
+        mock_icrc1, mock_get_bal, _mock_verify, _mock_rate,
+    ):
+        """Valid principal returns ckbtc_sats, odin_btc_sats, token_holdings."""
+        # Mock Odin canister getBalance
+        mock_odin = MagicMock()
+        mock_odin.getBalance.return_value = [{"value": 5_000}]  # 5000 msat = 5 sats
+        mock_canister.return_value = mock_odin
+
+        # Mock REST API response
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"data": [
+            {"type": "token", "ticker": "ICONF", "id": "29m8",
+             "balance": 100_000_000_000, "divisibility": 8,
+             "decimals": 0, "price": 1500},
+        ]}
+        mock_cffi_get.return_value = mock_resp
+
+        result = execute_tool("public_balance", {
+            "principal": "aamu4-v26cr-pc5oe-35oal-b3tju-srmh5-cpqql-rkqzf-umm4n-vlahk-hqe",
+        })
+
+        assert result["status"] == "ok"
+        assert result["ckbtc_sats"] == 50000
+        assert result["odin_btc_sats"] == 5
+        assert len(result["token_holdings"]) == 1
+        assert result["token_holdings"][0]["ticker"] == "ICONF"
+        assert "display" in result
+
+    def test_empty_principal_returns_error(self):
+        """Empty principal returns error."""
+        result = execute_tool("public_balance", {"principal": ""})
+        assert result["status"] == "error"
+        assert "required" in result["error"].lower()
+
+    def test_missing_principal_returns_error(self):
+        """Missing principal returns error."""
+        result = execute_tool("public_balance", {})
+        assert result["status"] == "error"
+        assert "required" in result["error"].lower()
+
+    def test_invalid_principal_returns_error(self):
+        """Invalid principal string returns error."""
+        result = execute_tool("public_balance", {"principal": "not-a-principal"})
+        assert result["status"] == "error"
+        assert "Invalid" in result["error"]
+
+    def test_no_wallet_required(self):
+        """public_balance should NOT call require_wallet."""
+        with patch("iconfucius.config.require_wallet") as mock_rw:
+            # Will fail on canister calls, but that's fine — we just
+            # check that require_wallet is never called
+            try:
+                execute_tool("public_balance", {
+                    "principal": "aamu4-v26cr-pc5oe-35oal-b3tju-srmh5-cpqql-rkqzf-umm4n-vlahk-hqe",
+                })
+            except Exception:
+                pass
+            mock_rw.assert_not_called()

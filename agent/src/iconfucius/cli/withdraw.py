@@ -32,10 +32,7 @@ from iconfucius.transfers import (
     transfer,
     unwrap_canister_result,
 )
-
-# Odin uses millisatoshis (msat) for BTC amounts
-# 1 sat = 1000 msat
-MSAT_PER_SAT = 1000
+from iconfucius.units import msat_to_sats, sats_to_msat
 
 from iconfucius.candid import ODIN_TRADING_CANDID
 
@@ -107,7 +104,7 @@ def run_withdraw(bot_name: str, amount: str, verbose: bool = False) -> dict:
         odin.getBalance(bot_principal_text, "btc",
                              verify_certificate=get_verify_certificates())
     )
-    odin_btc_sats = odin_btc_msat // MSAT_PER_SAT
+    odin_btc_sats = msat_to_sats(odin_btc_msat)
 
     logger.info("Step 2: Odin.Fun balance: %s", _fmt(odin_btc_sats))
 
@@ -131,7 +128,7 @@ def run_withdraw(bot_name: str, amount: str, verbose: bool = False) -> dict:
         }
 
     # Convert to millisatoshis for Odin
-    withdraw_msat = withdraw_sats * MSAT_PER_SAT
+    withdraw_msat = sats_to_msat(withdraw_sats)
 
     # -----------------------------------------------------------------------
     # Step 4: Execute Odin.Fun withdrawal

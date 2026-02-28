@@ -37,7 +37,7 @@ from iconfucius.config import (
     require_wallet,
     set_verbose,
 )
-from iconfucius.siwb import siwb_login, load_session, save_session
+from iconfucius.siwb import siwb_login, save_session, read_cached_principal
 
 from iconfucius.candid import ODIN_TRADING_CANDID
 
@@ -85,33 +85,28 @@ def collect_balances(bot_name: str, token_id: str = "29m8",
         btc_usd_rate = None
 
     # -------------------------------------------------------------------
-    # Step 1: Load cached session or SIWB login
+    # Step 1: Resolve bot principal
     # -------------------------------------------------------------------
     log("=" * 60)
-    log(f"Step 1: Authenticate (bot={bot_name})")
+    log(f"Step 1: Resolve bot principal (bot={bot_name})")
     log("=" * 60)
-    _needs_funding_note = (
-        "Balance could not be checked — wallet needs funding for signing fees. "
-        "Do NOT report this bot's balance as 0. "
-        "Use the how_to_fund_wallet tool for instructions."
-    )
-    auth = load_session(bot_name=bot_name, verbose=verbose)
-    if not auth:
-        log("No valid cached session, performing full SIWB login...")
+    # Prefer cached principal (no API calls, no signing fees).
+    # Only do SIWB login when principal is unknown (first time for this bot).
+    bot_principal_text = read_cached_principal(bot_name)
+    if not bot_principal_text:
+        log("No cached principal, performing SIWB login to discover it...")
         try:
             auth = siwb_login(bot_name=bot_name, verbose=verbose)
+            bot_principal_text = auth["bot_principal_text"]
         except RuntimeError as exc:
-            # Layer 2: catch InsufficientFunds from fee approval
             if "InsufficientFunds" in str(exc):
                 log(f"SIWB login failed (insufficient funds): {exc}")
                 return BotBalances(
                     bot_name=bot_name,
                     bot_principal="",
-                    note=_needs_funding_note,
+                    note="Bot not yet initialized (no cached principal and wallet lacks funds for first login).",
                 )
             raise
-    bot_principal_text = auth["bot_principal_text"]
-    jwt_token = auth["jwt_token"]
 
     # Check if bot has a registered Odin.fun account
     from iconfucius.accounts import resolve_odin_account
@@ -147,7 +142,8 @@ def collect_balances(bot_name: str, token_id: str = "29m8",
     else:
         odin_balance = odin_balance_raw
 
-    odin_sats = odin_balance / 1000 if isinstance(odin_balance, (int, float)) else 0
+    from iconfucius.units import msat_to_sats
+    odin_sats = msat_to_sats(odin_balance) if isinstance(odin_balance, (int, float)) else 0
     log(f"Odin.Fun trading canister ({ODIN_TRADING_CANISTER_ID}):")
     log(f"  Odin.Fun Balance: {fmt_sats(int(odin_sats), btc_usd_rate)}")
 
@@ -163,10 +159,7 @@ def collect_balances(bot_name: str, token_id: str = "29m8",
     resp = cffi_requests.get(
         url,
         impersonate="chrome",
-        headers={
-            "Authorization": f"Bearer {jwt_token}",
-            "Accept": "application/json",
-        },
+        headers={"Accept": "application/json"},
     )
     log(f"Status: {resp.status_code}")
     log(f"Response: {resp.text[:1000]}")
@@ -184,11 +177,11 @@ def collect_balances(bot_name: str, token_id: str = "29m8",
             divisibility = t.get("divisibility", 8)
             decimals = t.get("decimals", 0)
             price = t.get("price", 0)
-            # API balance is in milli-subunits; decimals tells us the extra factor
-            balance = raw_balance / (10 ** decimals) if decimals > 0 else raw_balance
-            # Value uses raw_balance because price is per raw-balance unit
-            value_microsats = (raw_balance * price) / (10 ** divisibility)
-            value_sats = value_microsats / 1_000_000
+            # Strip extra API decimals; result is still milli-subunits
+            from iconfucius.units import adjust_api_decimals, millisubunit_value_sats
+            balance = adjust_api_decimals(raw_balance, decimals)
+            # Value: raw_balance is milli-subunits, price is msat per display-token
+            value_sats = millisubunit_value_sats(raw_balance, price, divisibility)
             token_holdings.append({
                 "ticker": ticker,
                 "token_id": token_id,
@@ -708,6 +701,8 @@ def _format_holdings_table(all_data: list, btc_usd_rate: float | None,
                            wallet_pending_sats: int = 0,
                            wallet_withdrawal_sats: int = 0) -> str:
     """Format the Bot Holdings at Odin.Fun table. Returns formatted string."""
+    from iconfucius.units import sats_to_usd
+
     lines = []
 
     # Collect all unique token tickers across all bots
@@ -746,7 +741,9 @@ def _format_holdings_table(all_data: list, btc_usd_rate: float | None,
             odin_display,
         ]
         for ticker in all_tickers:
-            if ticker in token_map:
+            if d.odin_sats is None:
+                row.append("?")
+            elif ticker in token_map:
                 t = token_map[ticker]
                 total_token_balances[ticker] += t["balance"]
                 div = t.get("divisibility", 8)
@@ -754,7 +751,7 @@ def _format_holdings_table(all_data: list, btc_usd_rate: float | None,
                 total_token_value_sats[ticker] += t.get("value_sats", 0)
                 display_bal = _fmt_token_amount(t["balance"], div)
                 if btc_usd_rate and t.get("value_sats", 0):
-                    usd = (t["value_sats"] / 100_000_000) * btc_usd_rate
+                    usd = sats_to_usd(t["value_sats"], btc_usd_rate)
                     row.append(f"{display_bal} (${usd:.3f})")
                 else:
                     row.append(display_bal)
@@ -767,18 +764,21 @@ def _format_holdings_table(all_data: list, btc_usd_rate: float | None,
     if len(all_data) > 1:
         odin_total_display = "?" if all_unknown else fmt_sats(total_odin_sats, btc_usd_rate)
         total_row = ["TOTAL", odin_total_display]
-        total_usd = (total_odin_sats / 100_000_000) * btc_usd_rate if btc_usd_rate else 0
+        total_usd = sats_to_usd(total_odin_sats, btc_usd_rate) if btc_usd_rate else 0
         for ticker in all_tickers:
-            bal = total_token_balances[ticker]
-            div = total_token_divisibility[ticker]
-            vs = total_token_value_sats[ticker]
-            display_bal = _fmt_token_amount(bal, div)
-            if btc_usd_rate and vs:
-                usd = (vs / 100_000_000) * btc_usd_rate
-                total_usd += usd
-                total_row.append(f"{display_bal} (${usd:.3f})")
+            if all_unknown:
+                total_row.append("?")
             else:
-                total_row.append(display_bal)
+                bal = total_token_balances[ticker]
+                div = total_token_divisibility[ticker]
+                vs = total_token_value_sats[ticker]
+                display_bal = _fmt_token_amount(bal, div)
+                if btc_usd_rate and vs:
+                    usd = sats_to_usd(vs, btc_usd_rate)
+                    total_usd += usd
+                    total_row.append(f"{display_bal} (${usd:.3f})")
+                else:
+                    total_row.append(display_bal)
         rows.append(tuple(total_row))
 
     lines.append("")
@@ -789,18 +789,18 @@ def _format_holdings_table(all_data: list, btc_usd_rate: float | None,
         if all_unknown and wallet_total_sats == 0:
             lines.append("\nTotal portfolio value: ?")
         else:
-            wallet_usd = (wallet_total_sats / 100_000_000) * btc_usd_rate
-            total_usd = (total_odin_sats / 100_000_000) * btc_usd_rate + wallet_usd
+            wallet_usd = sats_to_usd(wallet_total_sats, btc_usd_rate)
+            total_usd = sats_to_usd(total_odin_sats, btc_usd_rate) + wallet_usd
             for ticker in all_tickers:
                 vs = total_token_value_sats[ticker]
                 if vs:
-                    total_usd += (vs / 100_000_000) * btc_usd_rate
+                    total_usd += sats_to_usd(vs, btc_usd_rate)
             notes = []
             if wallet_pending_sats > 0:
-                pending_usd = (wallet_pending_sats / 100_000_000) * btc_usd_rate
+                pending_usd = sats_to_usd(wallet_pending_sats, btc_usd_rate)
                 notes.append(f"${pending_usd:,.3f} BTC pending conversion")
             if wallet_withdrawal_sats > 0:
-                withdrawal_usd = (wallet_withdrawal_sats / 100_000_000) * btc_usd_rate
+                withdrawal_usd = sats_to_usd(wallet_withdrawal_sats, btc_usd_rate)
                 notes.append(f"${withdrawal_usd:,.3f} in BTC withdrawal account")
             note_str = f" (includes {', '.join(notes)})" if notes else ""
             total_sats = round(wallet_total_sats + total_odin_sats + sum(total_token_value_sats.values()))
@@ -861,15 +861,16 @@ def run_all_balances(bot_names: list, token_id: str = "29m8",
     logger.info("Gathering data for %d bot(s)...", len(bot_names))
 
     all_data = []
-    failed_bots = []
+    failed_bots = {}  # name -> error message
     results = run_per_bot(
         lambda name: collect_balances(name, token_id, verbose=verbose),
         bot_names,
+        max_workers=min(len(bot_names), 50),
     )
     for bot_name, result in results:
         if isinstance(result, Exception):
             logger.warning("Failed to get balances for bot '%s': %s", bot_name, result)
-            failed_bots.append(bot_name)
+            failed_bots[bot_name] = str(result)
         else:
             all_data.append(result)
     if not all_data:
@@ -936,14 +937,14 @@ def run_all_balances(bot_names: list, token_id: str = "29m8",
             bot_entry["note"] = d.note
         bots_data.append(bot_entry)
 
-    for name in failed_bots:
+    for name, error_msg in failed_bots.items():
         bots_data.append({
             "name": name,
             "principal": "",
             "odin_sats": None,
             "tokens": None,
             "has_odin_account": None,
-            "note": "Balance check failed for this bot.",
+            "note": f"Balance check failed: {error_msg}",
         })
 
     wallet_total_sats = wallet_balance + wallet_pending + wallet_withdrawal

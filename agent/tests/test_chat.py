@@ -13,6 +13,7 @@ from iconfucius.cli.chat import (
     _check_pypi_version,
     _describe_tool_call,
     _fmt_sats,
+    _fmt_tokens,
     _generate_startup,
     _get_language_code,
     _format_api_error,
@@ -272,6 +273,54 @@ class TestFmtSats:
         assert _fmt_sats("all") == "all"
 
 
+class TestFmtTokens:
+    """Tests for _fmt_tokens — human-readable token amount with USD."""
+
+    @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100_000.0)
+    @patch("iconfucius.tokens.fetch_token_data",
+           return_value={"price": 1500, "divisibility": 8, "decimals": 3})
+    def test_valid_amount(self, _mock_fetch, _mock_rate):
+        """Valid amount returns formatted tokens with USD."""
+        result = _fmt_tokens(100.0, "29m8")
+        assert "tokens" in result
+        assert "$" in result
+
+    @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100_000.0)
+    @patch("iconfucius.tokens.fetch_token_data",
+           return_value={"price": 1500, "divisibility": 8, "decimals": 3})
+    def test_string_amount(self, _mock_fetch, _mock_rate):
+        """String amount '60' is parsed correctly."""
+        result = _fmt_tokens("60", "29m8")
+        assert "tokens" in result
+        assert "$" in result
+
+    def test_none_amount_fallback(self):
+        """None amount falls back to simple string."""
+        result = _fmt_tokens(None, "29m8")
+        assert "tokens" in result
+
+    def test_invalid_string_fallback(self):
+        """Non-numeric string falls back to simple string."""
+        result = _fmt_tokens("?", "29m8")
+        assert "?" in result
+        assert "tokens" in result
+
+    @patch("iconfucius.tokens.fetch_token_data", return_value=None)
+    def test_no_token_data_fallback(self, _mock_fetch):
+        """Fallback when fetch_token_data returns None."""
+        result = _fmt_tokens(100.0, "unknown")
+        assert "tokens" in result
+
+    @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100_000.0)
+    @patch("iconfucius.tokens.fetch_token_data",
+           return_value={"price": 0, "divisibility": 8, "decimals": 3})
+    def test_zero_price(self, _mock_fetch, _mock_rate):
+        """Zero price still returns formatted result."""
+        result = _fmt_tokens(100.0, "29m8")
+        assert "tokens" in result
+        assert "$0.000" in result
+
+
 class TestBotTarget:
     def test_all_bots(self):
         """Verify all bots."""
@@ -367,8 +416,9 @@ class TestDescribeToolCall:
             "trade_sell",
             {"token_id": "29m8", "amount": "5000000", "bot_name": "bot-1"},
         )
-        # 5,000,000 raw sub-units / 10^8 divisibility = 0.050 tokens
-        assert "0.050 tokens" in desc
+        # amount is display tokens (human-readable), not raw sub-units
+        assert "5,000,000" in desc
+        assert "tokens" in desc
 
     def test_withdraw(self):
         """Verify withdraw."""
@@ -875,9 +925,8 @@ class TestRunToolLoop:
             messages = []
             _run_tool_loop(backend, messages, "system", [], "TestBot")
 
-        # Only the non-confirmable tool ran
-        mock_exec.assert_called_once_with("wallet_balance", {},
-                                          persona_name="")
+        # Declining the batch stops the entire loop immediately
+        mock_exec.assert_not_called()
 
     def test_max_iterations_guard(self, capsys):
         """Loop stops after MAX_TOOL_ITERATIONS and prints warning."""
@@ -1140,20 +1189,20 @@ class TestChatHintsPlacement:
                     "status": "ok", "config_exists": True, "wallet_exists": True,
                     "env_exists": True, "has_api_key": True, "ready": True,
                 }
-            if name == "wallet_balance":
-                return {
-                    "status": "ok",
-                    "_display": "Wallet: 50,000 sats",
-                    "wallet_ckbtc_sats": 50000,
-                    "total_odin_sats": 0,
-                    "total_token_value_sats": 0,
-                    "portfolio_sats": 50000,
-                    "constraints": {"min_deposit_sats": 5000, "min_trade_sats": 500},
-                }
             return {"status": "error", "error": f"Unknown tool: {name}"}
 
+        wallet_data = {
+            "balance_sats": 50000, "pending_sats": 0,
+            "withdrawal_balance_sats": 0, "active_withdrawal_count": 0,
+            "address_btc_sats": 0, "principal": "abc",
+            "btc_address": "bc1q", "btc_usd_rate": 60000.0,
+            "_display": "Wallet: 50,000 sats",
+        }
+
         with patch("builtins.input", side_effect=EOFError), \
-             patch("iconfucius.cli.chat.execute_tool", side_effect=_mock_exec):
+             patch("iconfucius.cli.chat.execute_tool", side_effect=_mock_exec), \
+             patch("iconfucius.cli.balance.run_wallet_balance",
+                   return_value=wallet_data):
             from iconfucius.cli.chat import run_chat
             run_chat("iconfucius", "bot-1")
 
@@ -1607,9 +1656,22 @@ class TestVerboseFlag:
                 }
             return {"status": "error", "error": f"Unknown tool: {name}"}
 
-        with patch("builtins.input", side_effect=["", "hello", EOFError]), \
+        wallet_data = {
+            "balance_sats": 50000, "pending_sats": 0,
+            "withdrawal_balance_sats": 0, "active_withdrawal_count": 0,
+            "address_btc_sats": 0, "principal": "abc",
+            "btc_address": "bc1q", "btc_usd_rate": 60000.0,
+            "_display": "Wallet info",
+        }
+
+        # Wizard prompts: "y" (accept bots), "n" (decline minter),
+        # then "", "hello", EOFError for chat
+        with patch("builtins.input",
+                   side_effect=["y", "n", "", "hello", EOFError]), \
              patch("iconfucius.cli.chat.execute_tool",
                    side_effect=_mock_exec) as mock_exec, \
+             patch("iconfucius.cli.balance.run_wallet_balance",
+                   return_value=wallet_data), \
              patch("iconfucius.cli.concurrent.set_progress_callback"), \
              patch("iconfucius.cli.concurrent.set_status_callback"), \
              patch("iconfucius.cli.chat._run_tool_loop",
@@ -1617,10 +1679,228 @@ class TestVerboseFlag:
             from iconfucius.cli.chat import run_chat
             run_chat("iconfucius", "bot-1", verbose=True)
 
-        # Verify wallet_balance was called during startup
+        # Verify wallet_balance was called via execute_tool (bot check)
         wallet_calls = [c for c in mock_exec.call_args_list
                         if c[0][0] == "wallet_balance"]
         assert len(wallet_calls) == 1
+
+
+# ---------------------------------------------------------------------------
+# Startup balance wizard
+# ---------------------------------------------------------------------------
+
+# Shared wallet data returned by run_wallet_balance mock
+_WALLET_DATA = {
+    "balance_sats": 10000,
+    "pending_sats": 0,
+    "withdrawal_balance_sats": 0,
+    "active_withdrawal_count": 0,
+    "address_btc_sats": 0,
+    "principal": "abc-123",
+    "btc_address": "bc1qtest",
+    "btc_usd_rate": 60000.0,
+    "_display": "Wallet: 10,000 sats",
+}
+
+# Shared bot balance result returned by execute_tool mock
+_BOT_BALANCE_RESULT = {
+    "status": "ok",
+    "_display": "Bot holdings table",
+    "wallet_ckbtc_sats": 10000,
+    "total_odin_sats": 5000,
+    "total_token_value_sats": 1000,
+    "portfolio_sats": 16000,
+    "constraints": {"min_deposit_sats": 5000, "min_trade_sats": 500},
+}
+
+
+def _setup_wizard_test(mock_load, mock_backend_factory, tmp_path, monkeypatch):
+    """Common setup for startup wizard tests."""
+    monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+    (tmp_path / "iconfucius.toml").write_text(
+        '[settings]\n[bots.bot-1]\ndescription = "Bot 1"\n'
+    )
+    cfg._cached_config = None
+    cfg._cached_config_path = None
+
+    persona = _make_persona(name="IConfucius")
+    mock_load.return_value = persona
+    backend = MagicMock()
+    backend.model = "claude-sonnet-4-6"
+    mock_backend_factory.return_value = backend
+
+
+class TestStartupBalanceWizard:
+    """Startup wizard: wallet check → optional bots → optional minter."""
+
+    @patch("iconfucius.cli.chat._generate_startup",
+           return_value=("Greeting", "Goodbye!"))
+    @patch("iconfucius.cli.chat.create_backend")
+    @patch("iconfucius.cli.chat.load_persona")
+    def test_wallet_only_decline_all(self, mock_load, mock_backend_factory,
+                                      _mock_startup,
+                                      tmp_path, monkeypatch, capsys):
+        """User declines bots and minter — only wallet displayed."""
+        _setup_wizard_test(mock_load, mock_backend_factory, tmp_path, monkeypatch)
+
+        def _mock_exec(name, _args=None, **_kw):
+            if name == "setup_status":
+                return {
+                    "status": "ok", "config_exists": True, "wallet_exists": True,
+                    "env_exists": True, "has_api_key": True, "ready": True,
+                }
+            return {"status": "error", "error": f"Unknown tool: {name}"}
+
+        # "n" for bots, "n" for minter, then EOFError to exit chat
+        with patch("builtins.input", side_effect=["n", "n", EOFError]), \
+             patch("iconfucius.cli.chat.execute_tool", side_effect=_mock_exec), \
+             patch("iconfucius.cli.balance.run_wallet_balance",
+                   return_value=dict(_WALLET_DATA)):
+            from iconfucius.cli.chat import run_chat
+            run_chat("iconfucius", "bot-1")
+
+        captured = capsys.readouterr().out
+        assert "Wallet: 10,000 sats" in captured
+        # Bot holdings should NOT appear
+        assert "Bot holdings table" not in captured
+
+    @patch("iconfucius.cli.chat._generate_startup",
+           return_value=("Greeting", "Goodbye!"))
+    @patch("iconfucius.cli.chat.create_backend")
+    @patch("iconfucius.cli.chat.load_persona")
+    def test_wallet_plus_bots(self, mock_load, mock_backend_factory,
+                               _mock_startup,
+                               tmp_path, monkeypatch, capsys):
+        """User accepts bots, declines minter."""
+        _setup_wizard_test(mock_load, mock_backend_factory, tmp_path, monkeypatch)
+
+        exec_log = []
+
+        def _mock_exec(name, args=None, **kw):
+            exec_log.append((name, args))
+            if name == "setup_status":
+                return {
+                    "status": "ok", "config_exists": True, "wallet_exists": True,
+                    "env_exists": True, "has_api_key": True, "ready": True,
+                }
+            if name == "wallet_balance":
+                return dict(_BOT_BALANCE_RESULT)
+            return {"status": "error", "error": f"Unknown tool: {name}"}
+
+        # "y" (accept bots), "n" (decline minter), EOFError to exit
+        with patch("builtins.input", side_effect=["y", "n", EOFError]), \
+             patch("iconfucius.cli.chat.execute_tool", side_effect=_mock_exec), \
+             patch("iconfucius.cli.balance.run_wallet_balance",
+                   return_value=dict(_WALLET_DATA)):
+            from iconfucius.cli.chat import run_chat
+            run_chat("iconfucius", "bot-1")
+
+        captured = capsys.readouterr().out
+        assert "Bot holdings table" in captured
+
+        # execute_tool called with ckbtc_minter=False
+        wallet_calls = [(n, a) for n, a in exec_log if n == "wallet_balance"]
+        assert len(wallet_calls) == 1
+        assert wallet_calls[0][1] == {"ckbtc_minter": False}
+
+    @patch("iconfucius.cli.chat._generate_startup",
+           return_value=("Greeting", "Goodbye!"))
+    @patch("iconfucius.cli.chat.create_backend")
+    @patch("iconfucius.cli.chat.load_persona")
+    def test_wallet_plus_minter_no_bots(self, mock_load, mock_backend_factory,
+                                         _mock_startup,
+                                         tmp_path, monkeypatch, capsys):
+        """User declines bots, accepts minter."""
+        _setup_wizard_test(mock_load, mock_backend_factory, tmp_path, monkeypatch)
+
+        minter_data = dict(_WALLET_DATA)
+        minter_data["_display"] = "Minter status here"
+
+        # "n" (decline bots), "y" (accept minter), EOFError to exit
+        with patch("builtins.input", side_effect=["n", "y", EOFError]), \
+             patch("iconfucius.cli.chat.execute_tool") as mock_exec, \
+             patch("iconfucius.cli.balance.run_wallet_balance") as mock_rwb:
+            # First call = background wallet check, second = minter check
+            mock_rwb.side_effect = [dict(_WALLET_DATA), minter_data]
+            mock_exec.side_effect = lambda name, *a, **kw: {
+                "status": "ok", "config_exists": True, "wallet_exists": True,
+                "env_exists": True, "has_api_key": True, "ready": True,
+            } if name == "setup_status" else {}
+
+            from iconfucius.cli.chat import run_chat
+            run_chat("iconfucius", "bot-1")
+
+        captured = capsys.readouterr().out
+        assert "Minter status here" in captured
+
+        # run_wallet_balance called twice: first without minter, then with
+        calls = mock_rwb.call_args_list
+        assert calls[0] == ((), {"ckbtc_minter": False})
+        assert calls[1] == ((), {"ckbtc_minter": True})
+
+    @patch("iconfucius.cli.chat._generate_startup",
+           return_value=("Greeting", "Goodbye!"))
+    @patch("iconfucius.cli.chat.create_backend")
+    @patch("iconfucius.cli.chat.load_persona")
+    def test_wallet_plus_bots_and_minter(self, mock_load, mock_backend_factory,
+                                          _mock_startup,
+                                          tmp_path, monkeypatch, capsys):
+        """User accepts both bots and minter — single execute_tool call."""
+        _setup_wizard_test(mock_load, mock_backend_factory, tmp_path, monkeypatch)
+
+        exec_log = []
+
+        def _mock_exec(name, args=None, **kw):
+            exec_log.append((name, args))
+            if name == "setup_status":
+                return {
+                    "status": "ok", "config_exists": True, "wallet_exists": True,
+                    "env_exists": True, "has_api_key": True, "ready": True,
+                }
+            if name == "wallet_balance":
+                return dict(_BOT_BALANCE_RESULT)
+            return {"status": "error", "error": f"Unknown tool: {name}"}
+
+        # "y" (accept bots), "y" (accept minter), EOFError to exit
+        with patch("builtins.input", side_effect=["y", "y", EOFError]), \
+             patch("iconfucius.cli.chat.execute_tool", side_effect=_mock_exec), \
+             patch("iconfucius.cli.balance.run_wallet_balance",
+                   return_value=dict(_WALLET_DATA)):
+            from iconfucius.cli.chat import run_chat
+            run_chat("iconfucius", "bot-1")
+
+        # execute_tool called with ckbtc_minter=True
+        wallet_calls = [(n, a) for n, a in exec_log if n == "wallet_balance"]
+        assert len(wallet_calls) == 1
+        assert wallet_calls[0][1] == {"ckbtc_minter": True}
+
+    @patch("iconfucius.cli.chat._generate_startup",
+           return_value=("Greeting", "Goodbye!"))
+    @patch("iconfucius.cli.chat.create_backend")
+    @patch("iconfucius.cli.chat.load_persona")
+    def test_wallet_error_continues(self, mock_load, mock_backend_factory,
+                                     _mock_startup,
+                                     tmp_path, monkeypatch, capsys):
+        """If the background wallet check raises, startup continues."""
+        _setup_wizard_test(mock_load, mock_backend_factory, tmp_path, monkeypatch)
+
+        def _mock_exec(name, _args=None, **_kw):
+            if name == "setup_status":
+                return {
+                    "status": "ok", "config_exists": True, "wallet_exists": True,
+                    "env_exists": True, "has_api_key": True, "ready": True,
+                }
+            return {"status": "error", "error": f"Unknown tool: {name}"}
+
+        with patch("builtins.input", side_effect=EOFError), \
+             patch("iconfucius.cli.chat.execute_tool", side_effect=_mock_exec), \
+             patch("iconfucius.cli.balance.run_wallet_balance",
+                   side_effect=ConnectionError("Network timeout")):
+            from iconfucius.cli.chat import run_chat
+            run_chat("iconfucius", "bot-1")
+
+        captured = capsys.readouterr().out
+        assert "Greeting" in captured
 
 
 # ---------------------------------------------------------------------------
@@ -1688,9 +1968,21 @@ class TestBotHoldingsDisplay:
             captured_system["value"] = system
             raise EOFError  # exit immediately
 
-        with patch("builtins.input", side_effect=["", "hello", EOFError]), \
+        wallet_data = {
+            "balance_sats": 50000, "pending_sats": 0,
+            "withdrawal_balance_sats": 0, "active_withdrawal_count": 0,
+            "address_btc_sats": 0, "principal": "abc",
+            "btc_address": "bc1q", "btc_usd_rate": 60000.0,
+            "_display": "Wallet info",
+        }
+
+        # Wizard: "y" (accept bots), "n" (decline minter), then chat inputs
+        with patch("builtins.input",
+                   side_effect=["y", "n", "", "hello", EOFError]), \
              patch("iconfucius.cli.chat.execute_tool",
                    side_effect=_mock_exec), \
+             patch("iconfucius.cli.balance.run_wallet_balance",
+                   return_value=wallet_data), \
              patch("iconfucius.cli.concurrent.set_progress_callback"), \
              patch("iconfucius.cli.concurrent.set_status_callback"), \
              patch("iconfucius.cli.chat._run_tool_loop",
@@ -1764,9 +2056,19 @@ class TestStartupNextStepAutoLoop:
             auto_loop_called["count"] += 1
             raise EOFError  # exit immediately
 
+        wallet_data = {
+            "balance_sats": 0, "pending_sats": 0,
+            "withdrawal_balance_sats": 0, "active_withdrawal_count": 0,
+            "address_btc_sats": 0, "principal": "abc",
+            "btc_address": "bc1q", "btc_usd_rate": 60000.0,
+            "_display": "",
+        }
+
         with patch("builtins.input", side_effect=EOFError), \
              patch("iconfucius.cli.chat.execute_tool",
                    side_effect=_mock_exec), \
+             patch("iconfucius.cli.balance.run_wallet_balance",
+                   return_value=wallet_data), \
              patch("iconfucius.cli.concurrent.set_progress_callback"), \
              patch("iconfucius.cli.concurrent.set_status_callback"), \
              patch("iconfucius.cli.chat._run_tool_loop",

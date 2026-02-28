@@ -221,3 +221,129 @@ service : {
     getFeeTokens : () -> (variant { Ok : FeeTokensRecord; Err : ApiError }) query;
 }
 """
+
+# ---------------------------------------------------------------------------
+# ckBTC minter (mqygn-kiaaa-aaaar-qaadq-cai)
+# Subset of methods used by iconfucius.  Full .did file stored at:
+#   candid_files/ckbtc_minter_candid/mqygn-kiaaa-aaaar-qaadq-cai.did
+# ---------------------------------------------------------------------------
+
+CKBTC_MINTER_CANDID = """
+type Account = record { owner : principal; subaccount : opt blob };
+
+type Utxo = record {
+    outpoint : record { txid : vec nat8; vout : nat32 };
+    value : nat64;
+    height : nat32;
+};
+
+type PendingUtxo = record {
+    outpoint : record { txid : vec nat8; vout : nat32 };
+    value : nat64;
+    confirmations : nat32;
+};
+
+type SuspendedReason = variant {
+    ValueTooSmall;
+    Quarantined;
+};
+
+type SuspendedUtxo = record {
+    utxo : Utxo;
+    reason : SuspendedReason;
+    earliest_retry : nat64;
+};
+
+type UtxoStatus = variant {
+    ValueTooSmall : Utxo;
+    Tainted : Utxo;
+    Checked : Utxo;
+    Minted : record {
+        block_index : nat64;
+        minted_amount : nat64;
+        utxo : Utxo;
+    };
+};
+
+type UpdateBalanceError = variant {
+    NoNewUtxos : record {
+        current_confirmations : opt nat32;
+        required_confirmations : nat32;
+        pending_utxos : opt vec PendingUtxo;
+        suspended_utxos : opt vec SuspendedUtxo;
+    };
+    AlreadyProcessing;
+    TemporarilyUnavailable : text;
+    GenericError : record { error_message : text; error_code : nat64 };
+};
+
+type RetrieveBtcArgs = record {
+    address : text;
+    amount : nat64;
+};
+
+type RetrieveBtcOk = record {
+    block_index : nat64;
+};
+
+type RetrieveBtcError = variant {
+    MalformedAddress : text;
+    AlreadyProcessing;
+    AmountTooLow : nat64;
+    InsufficientFunds : record { balance : nat64 };
+    TemporarilyUnavailable : text;
+    GenericError : record { error_message : text; error_code : nat64 };
+};
+
+type ReimbursementReason = variant {
+    CallFailed;
+    TaintedDestination : record {
+        kyt_fee : nat64;
+        kyt_provider : principal;
+    };
+};
+
+type ReimbursedDeposit = record {
+    account : Account;
+    mint_block_index : nat64;
+    amount : nat64;
+    reason : ReimbursementReason;
+};
+
+type ReimbursementRequest = record {
+    account : Account;
+    amount : nat64;
+    reason : ReimbursementReason;
+};
+
+type WithdrawalReimbursementReason = variant {
+    invalid_transaction : record {
+        too_many_inputs : record {
+            num_inputs : nat64;
+            max_num_inputs : nat64;
+        };
+    };
+};
+
+type RetrieveBtcStatusV2 = variant {
+    Unknown;
+    Pending;
+    Signing;
+    Sending : record { txid : blob };
+    Submitted : record { txid : blob };
+    AmountTooLow;
+    Confirmed : record { txid : blob };
+    Reimbursed : ReimbursedDeposit;
+    WillReimburse : ReimbursementRequest;
+};
+
+service : {
+    get_btc_address : (record { owner : opt principal; subaccount : opt blob }) -> (text);
+    get_known_utxos : (record { owner : opt principal; subaccount : opt blob }) -> (vec Utxo) query;
+    update_balance : (record { owner : opt principal; subaccount : opt blob }) -> (variant { Ok : vec UtxoStatus; Err : UpdateBalanceError });
+    get_withdrawal_account : () -> (Account);
+    estimate_withdrawal_fee : (record { amount : opt nat64 }) -> (record { bitcoin_fee : nat64; minter_fee : nat64 }) query;
+    retrieve_btc : (RetrieveBtcArgs) -> (variant { Ok : RetrieveBtcOk; Err : RetrieveBtcError });
+    retrieve_btc_status_v2 : (record { block_index : nat64 }) -> (RetrieveBtcStatusV2) query;
+}
+"""

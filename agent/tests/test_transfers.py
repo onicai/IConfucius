@@ -113,11 +113,13 @@ class TestCreateIcrc1Canister:
 class TestCreateCkbtcMinter:
     @patch("iconfucius.transfers.Canister")
     def test_creates_minter(self, MockCanister):
-        """Verify creates minter."""
+        """Verify creates minter with embedded candid (no auto-fetch)."""
         agent = MagicMock()
         create_ckbtc_minter(agent)
         MockCanister.assert_called_once()
-        assert MockCanister.call_args.kwargs["auto_fetch_candid"] is True
+        assert "candid_str" in MockCanister.call_args.kwargs
+        assert MockCanister.call_args.kwargs["candid_str"] is not None
+        assert "auto_fetch_candid" not in MockCanister.call_args.kwargs
 
 
 # ---------------------------------------------------------------------------
