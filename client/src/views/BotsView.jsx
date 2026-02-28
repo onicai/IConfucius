@@ -134,8 +134,8 @@ export default function BotsView({ btcUsd, refreshKey = 0 }) {
         <h4 className="text-sm font-semibold mb-2">Bot Commands (via Chat)</h4>
         <div className="text-xs text-dim leading-relaxed space-y-1">
           <div><code className="text-accent">"fund bot-1 with 10000 sats"</code> — Transfer ckBTC from wallet to a bot</div>
-          <div><code className="text-accent">"buy 5000 sats of ODINDOG on bot-1"</code> — Buy a token on Odin.fun</div>
-          <div><code className="text-accent">"sell all ODINDOG on bot-1"</code> — Sell token holdings</div>
+          <div><code className="text-accent">"buy 5000 sats of ICONFUCIUS on bot-1"</code> — Buy a token on Odin.fun</div>
+          <div><code className="text-accent">"sell all ICONFUCIUS on bot-1"</code> — Sell token holdings</div>
           <div><code className="text-accent">"withdraw bot-1"</code> — Move funds back to wallet</div>
         </div>
       </div>

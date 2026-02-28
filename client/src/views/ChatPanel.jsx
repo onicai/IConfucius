@@ -244,7 +244,7 @@ export default function ChatPanel({ onAction, focusSignal = 0 }) {
             <div className="text-accent text-base mb-2">&#x5b54;</div>
             Ask me anything about trading.
             <br />
-            <span className="text-[0.65rem]">Try: "What's my balance?" or "Buy 5000 sats of ODINDOG"</span>
+            <span className="text-[0.65rem]">Try: "What's my balance?" or "Buy 5000 sats of ICONFUCIUS"</span>
           </div>
         )}
         {messages.map((m, i) => (

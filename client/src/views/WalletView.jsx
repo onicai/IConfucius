@@ -332,7 +332,7 @@ export default function WalletView({ btcUsd, refreshKey = 0 }) {
         <div className="text-xs text-dim leading-relaxed space-y-1">
           <div><span className="text-accent font-medium">1.</span> Send BTC to your <span className="text-text">BTC Deposit Address</span> above (min 10,000 sats). After ~6 confirmations it becomes ckBTC in your wallet.</div>
           <div><span className="text-accent font-medium">2.</span> Use the <span className="text-text">Chat</span> tab to fund your bots: <code className="text-accent">"fund bot-1 with 10000 sats"</code></div>
-          <div><span className="text-accent font-medium">3.</span> Trade via Chat: <code className="text-accent">"buy 5000 sats of ODINDOG on bot-1"</code></div>
+          <div><span className="text-accent font-medium">3.</span> Trade via Chat: <code className="text-accent">"buy 5000 sats of ICONFUCIUS on bot-1"</code></div>
         </div>
       </div>
 

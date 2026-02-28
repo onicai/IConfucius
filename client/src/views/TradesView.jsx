@@ -55,6 +55,28 @@ function TradeCard({ trade, btcUsd }) {
   );
 }
 
+function TradeChatExamples() {
+  const examples = [
+    "fund bot-1 with 10000 sats",
+    "buy 5000 sats of ICONFUCIUS on bot-1",
+    "sell all ICONFUCIUS on bot-1",
+    "withdraw bot-1",
+  ];
+  return (
+    <div className="bg-surface border border-border rounded-xl p-4 mt-4">
+      <h4 className="text-sm font-semibold mb-2">Trade in Chat</h4>
+      <p className="text-xs text-dim mb-2">Use the Chat panel with prompts like:</p>
+      <div className="space-y-1">
+        {examples.map((x) => (
+          <div key={x} className="text-xs text-dim">
+            <code className="text-accent">{x}</code>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function TradesView({ btcUsd, refreshKey = 0 }) {
   const { data, loading, error, refetch } = useFetch(
     () => getWalletTrades(),
@@ -88,6 +110,7 @@ export default function TradesView({ btcUsd, refreshKey = 0 }) {
           ))}
         </div>
       )}
+      {trades.length < 3 && !loading && <TradeChatExamples />}
     </>
   );
 }
