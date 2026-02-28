@@ -66,6 +66,9 @@ const EXPLORE = [
 const ALL_SERVICES = [...PRIMARY, ...EXPLORE];
 
 const GRID_COLS = { 2: "grid-cols-2", 3: "grid-cols-3", 5: "grid-cols-5" };
+const CHAT_WIDTH_KEY = "iconfucius_chat_panel_width";
+const DEFAULT_CHAT_WIDTH = 380;
+const MIN_CHAT_WIDTH = 320;
 
 function renderTileGroup(items, active, onToggle) {
   const hasActive = active !== null;
@@ -114,7 +117,19 @@ export default function App() {
   const [chatOpen, setChatOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [chatFocusTick, setChatFocusTick] = useState(0);
+  const [chatWidth, setChatWidth] = useState(() => {
+    if (typeof window === "undefined") return DEFAULT_CHAT_WIDTH;
+    const saved = Number(window.localStorage.getItem(CHAT_WIDTH_KEY));
+    return Number.isFinite(saved) ? saved : DEFAULT_CHAT_WIDTH;
+  });
+  const [isResizingChat, setIsResizingChat] = useState(false);
   const userSelectedTabRef = useRef(false);
+
+  const clampChatWidth = useCallback((w) => {
+    if (typeof window === "undefined") return Math.max(MIN_CHAT_WIDTH, w);
+    const max = Math.max(420, Math.floor(window.innerWidth * 0.62));
+    return Math.min(max, Math.max(MIN_CHAT_WIDTH, w));
+  }, []);
 
   const handleAction = useCallback(() => {
     clearClientCache();
@@ -166,11 +181,43 @@ export default function App() {
     return () => { cancelled = true; };
   }, []);
 
+  useEffect(() => {
+    setChatWidth((w) => clampChatWidth(w));
+    window.localStorage.setItem(CHAT_WIDTH_KEY, String(clampChatWidth(chatWidth)));
+  }, [chatWidth, clampChatWidth]);
+
+  useEffect(() => {
+    function onWindowResize() {
+      setChatWidth((w) => clampChatWidth(w));
+    }
+    window.addEventListener("resize", onWindowResize);
+    return () => window.removeEventListener("resize", onWindowResize);
+  }, [clampChatWidth]);
+
   function toggleService(id) {
     userSelectedTabRef.current = true;
     setActive((prev) => prev === id ? null : id);
     setChatFocusTick((t) => t + 1);
   }
+
+  const beginResizeChat = useCallback((e) => {
+    e.preventDefault();
+    setIsResizingChat(true);
+
+    function onMove(ev) {
+      const next = window.innerWidth - ev.clientX;
+      setChatWidth(clampChatWidth(next));
+    }
+
+    function onUp() {
+      setIsResizingChat(false);
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    }
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }, [clampChatWidth]);
 
   const renderView = () => {
     switch (active) {
@@ -184,7 +231,7 @@ export default function App() {
   };
 
   return (
-    <div className="h-full flex flex-col">
+    <div className={`h-full flex flex-col ${isResizingChat ? "select-none" : ""}`}>
       {/* Header */}
       <header className="shrink-0 flex items-center justify-between px-4 py-3 border-b border-border lg:px-6">
         <h1 className="text-lg font-bold flex items-center gap-2.5">
@@ -251,8 +298,17 @@ export default function App() {
           )}
         </main>
 
-        {/* Chat panel — desktop: always visible sidebar */}
-        <aside className="hidden lg:flex w-[380px] shrink-0 border-l border-border">
+        {/* Chat panel — desktop: always visible + resizable */}
+        <div
+          className={`hidden lg:flex w-2 shrink-0 items-center justify-center cursor-col-resize ${
+            isResizingChat ? "bg-accent/10" : "hover:bg-surface-hover"
+          }`}
+          onMouseDown={beginResizeChat}
+          title="Drag to resize chat"
+        >
+          <div className="w-px h-full bg-border" />
+        </div>
+        <aside className="hidden lg:flex shrink-0 border-l border-border" style={{ width: `${chatWidth}px` }}>
           <ChatPanel onAction={handleAction} focusSignal={chatFocusTick} />
         </aside>
       </div>
