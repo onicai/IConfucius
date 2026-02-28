@@ -131,9 +131,9 @@ def _fund_one_bot(bot_name, amount, pem_content, verbose, btc_usd_rate):
         return {"status": "failed", "step": "deposit", "error": str(deposit_result["err"])}
 
     # Best-effort: query post-deposit Odin.Fun balance
-    MSAT_PER_SAT = 1000
     odin_balance_sats = None
     try:
+        from iconfucius.units import msat_to_sats
         anon_agent = Agent(Identity(anonymous=True), client)
         odin_anon = Canister(
             agent=anon_agent,
@@ -144,7 +144,7 @@ def _fund_one_bot(bot_name, amount, pem_content, verbose, btc_usd_rate):
             odin_anon.getBalance(bot_principal, "btc",
                                  verify_certificate=get_verify_certificates())
         )
-        odin_balance_sats = odin_balance_msat // MSAT_PER_SAT
+        odin_balance_sats = msat_to_sats(odin_balance_msat)
     except Exception:
         pass  # deposit succeeded; balance check is informational
 

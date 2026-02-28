@@ -1287,8 +1287,8 @@ class TestStartChatWizard:
     @patch("iconfucius.cli.chat.run_chat")
     @patch("iconfucius.skills.executor.execute_tool")
     @patch("builtins.input", side_effect=["y"])
-    def test_wallet_create_shows_address(self, mock_input, mock_exec, mock_chat):
-        """After wallet creation, wizard shows principal and deposit address."""
+    def test_wallet_create_skips_funding_instructions(self, mock_input, mock_exec, mock_chat):
+        """After wallet creation, wizard goes straight to chat (AI handles funding)."""
         calls = []
 
         def track_exec(name, args):
@@ -1298,15 +1298,14 @@ class TestStartChatWizard:
                 return self._no_wallet_status()
             if name == "wallet_create":
                 return {"status": "ok", "display": "Wallet created"}
-            if name == "how_to_fund_wallet":
-                return self._how_to_fund_wallet_result()
             return self._ready_status()
 
         mock_exec.side_effect = track_exec
         result = runner.invoke(app, [])
         assert "Wallet created." in result.output
-        assert "Option 1" in result.output
-        assert "Option 2" in result.output
+        # Funding instructions are NOT shown — the AI handles it via next_step
+        assert "Option 1" not in result.output
+        assert "how_to_fund_wallet" not in [c[0] for c in calls]
 
     # --- Full wizard flow ---
 

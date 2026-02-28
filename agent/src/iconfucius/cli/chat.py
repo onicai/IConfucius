@@ -7,6 +7,7 @@ import random
 import sys
 import threading
 import time
+from concurrent.futures import Future, ThreadPoolExecutor
 from urllib.request import urlopen
 
 from iconfucius import __version__
@@ -178,6 +179,27 @@ def _run_with_spinner(label: str, func, *args, **kwargs):
         finally:
             set_progress_callback(None)
             set_status_callback(None)
+
+
+class _CliWizardIO:
+    """CLI implementation of WizardIO — input(), _Spinner, print()."""
+
+    def prompt_yn(self, question: str, default_yes: bool = True) -> bool:
+        suffix = "[Y/n]" if default_yes else "[y/N]"
+        try:
+            answer = input(f"  {question} {suffix} ").strip().lower()
+            if default_yes:
+                return answer not in ("n", "no")
+            return answer in ("y", "yes")
+        except (KeyboardInterrupt, EOFError):
+            print()
+            return False
+
+    def run_with_feedback(self, label, func, *args, **kwargs):
+        return _run_with_spinner(label, func, *args, **kwargs)
+
+    def display(self, text):
+        print(text)
 
 
 def _get_language_code() -> str:
@@ -601,10 +623,22 @@ def _fmt_sats(val) -> str:
 
 
 def _fmt_tokens(amount, token_id: str) -> str:
-    """Format a token amount with USD value, safe for None."""
+    """Format a human-readable token amount with USD value, safe for None.
+
+    The AI provides token counts in human-readable form (e.g. 60 tokens).
+    fmt_tokens expects milli-subunits, so we convert first.
+    """
     try:
         from iconfucius.config import fmt_tokens
-        return fmt_tokens(float(amount), token_id)
+        from iconfucius.tokens import fetch_token_data
+        from iconfucius.units import display_to_millisubunits
+
+        human_amount = float(amount)
+        data = fetch_token_data(token_id)
+        divisibility = data.get("divisibility", 8) if data else 8
+        decimals = data.get("decimals", 3) if data else 3
+        msu = display_to_millisubunits(human_amount, divisibility, decimals)
+        return fmt_tokens(msu, token_id)
     except Exception:
         return f"{amount} tokens"
 
@@ -784,8 +818,9 @@ def _run_tool_loop(backend, messages: list[dict], system: str,
             if usd is not None and not b.input.get("amount"):
                 try:
                     from iconfucius.config import get_btc_to_usd_rate
+                    from iconfucius.units import usd_to_sats
                     rate = get_btc_to_usd_rate()
-                    sats = int((usd / rate) * 100_000_000)
+                    sats = usd_to_sats(float(usd), rate)
                     b.input["amount"] = sats
                     del b.input["amount_usd"]
                 except Exception:
@@ -832,6 +867,35 @@ def _run_tool_loop(backend, messages: list[dict], system: str,
         else:
             unconfirmed_iterations += 1
 
+        # User explicitly declined — stop the loop immediately instead of
+        # letting the AI retry with different parameters.
+        if confirm_blocks and not batch_approved:
+            declined_results = []
+            for block in tool_blocks:
+                declined_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": block.id,
+                    "content": json.dumps(
+                        {"status": "declined", "error": "User declined."}
+                    ),
+                })
+            # Also resolve any deferred write tool IDs to keep
+            # tool_use/tool_result pairs complete.
+            for block in response.content:
+                if block.type == "tool_use" and block.id in deferred_ids:
+                    declined_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": json.dumps({
+                            "status": "deferred",
+                            "error": "One state-changing operation at a time. "
+                                     "Retry this tool in your next response.",
+                        }),
+                    })
+            messages.append({"role": "user", "content": declined_results})
+            print("\n\033[2mOperation declined.\033[0m\n")
+            return
+
         # Execute each tool call
         confirm_ids = {b.id for b in confirm_blocks}
         tool_results = []
@@ -851,8 +915,8 @@ def _run_tool_loop(backend, messages: list[dict], system: str,
             use_spinner = meta.get("category") == "write" or block.name in (
                 "wallet_balance", "how_to_fund_wallet",
                 "wallet_monitor", "token_lookup", "token_price",
-                "token_discover", "account_lookup", "security_status",
-                "install_blst",
+                "token_discover", "account_lookup", "public_balance",
+                "security_status", "install_blst",
             )
 
             if use_spinner:
@@ -1076,6 +1140,14 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False,
     else:
         system += f"\n\nYou are trading as bot '{bot_name}'."
 
+    # Start wallet-only balance in background (no minter, no bots — fast)
+    wallet_future: Future | None = None
+    _bg_pool: ThreadPoolExecutor | None = None
+    if setup.get("wallet_exists"):
+        from iconfucius.cli.balance import run_wallet_balance
+        _bg_pool = ThreadPoolExecutor(max_workers=1)
+        wallet_future = _bg_pool.submit(run_wallet_balance, ckbtc_minter=False)
+
     # Verify API access with a startup greeting (also caches goodbye)
     lang = _get_language_code()
     try:
@@ -1119,24 +1191,96 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False,
         _update_cache["release_notes"] = release_notes
     print()
 
-    # Show wallet balance at startup — same path as AI-initiated wallet_balance
+    # --- Startup balance wizard ---
     startup_balance_result = None
-    if setup.get("wallet_exists"):
+    wallet_data = None
+    if wallet_future is not None:
+        from iconfucius.config import MIN_DEPOSIT_SATS, MIN_TRADE_SATS
+        from iconfucius.logging_config import get_logger
+        logger = get_logger()
+
+        # Collect wallet result (likely already done during greeting)
         try:
-            startup_balance_result = _run_with_spinner(
-                "Checking balances...",
-                execute_tool, "wallet_balance", {},
-                persona_name=persona_name,
-            )
-            if startup_balance_result and startup_balance_result.get("status") == "ok":
-                display_text = startup_balance_result.pop("_display", "")
+            if not wallet_future.done():
+                with _Spinner("Checking wallet..."):
+                    wallet_data = wallet_future.result()
+            else:
+                wallet_data = wallet_future.result()
+            if wallet_data:
+                display_text = wallet_data.pop("_display", "")
                 if display_text:
                     print(f"\n{display_text}\n")
         except (KeyboardInterrupt, EOFError):
-            print()  # user cancelled — continue to chat
+            wallet_future.cancel()
+            print()
         except Exception:
-            from iconfucius.logging_config import get_logger
-            get_logger().debug("Startup balance check failed", exc_info=True)
+            logger.debug("Startup wallet check failed", exc_info=True)
+        finally:
+            if _bg_pool is not None:
+                _bg_pool.shutdown(wait=False)
+
+        # Wizard prompts for optional checks
+        if wallet_data:
+            from iconfucius.wizard import Wizard
+            wiz = Wizard(_CliWizardIO())
+
+            check_bots = wiz.ask("Check bot balances?", default_yes=False)
+            check_minter = wiz.ask(
+                "Check ckBTC minter status for in/out BTC?",
+                default_yes=False,
+            )
+
+            if check_bots:
+                try:
+                    startup_balance_result = wiz.run(
+                        "Checking bot balances...",
+                        execute_tool, "wallet_balance",
+                        {"ckbtc_minter": check_minter},
+                        persona_name=persona_name,
+                    )
+                    if startup_balance_result and \
+                            startup_balance_result.get("status") == "ok":
+                        display_text = startup_balance_result.pop("_display", "")
+                        if display_text:
+                            wiz.show(f"\n{display_text}\n")
+                except Exception:
+                    logger.debug("Bot balance check failed", exc_info=True)
+            elif check_minter:
+                try:
+                    minter_data = wiz.run(
+                        "Checking ckBTC minter...",
+                        run_wallet_balance, ckbtc_minter=True,
+                    )
+                    if minter_data:
+                        display_text = minter_data.pop("_display", "")
+                        if display_text:
+                            wiz.show(f"\n{display_text}\n")
+                except Exception:
+                    logger.debug("Minter check failed", exc_info=True)
+
+            # Build AI seed from best available data
+            if startup_balance_result is None:
+                startup_balance_result = {
+                    "status": "ok",
+                    "wallet_ckbtc_sats": wallet_data.get("balance_sats", 0),
+                    "total_odin_sats": 0,
+                    "total_token_value_sats": 0,
+                    "portfolio_sats": wallet_data.get("balance_sats", 0),
+                    "constraints": {
+                        "min_deposit_sats": MIN_DEPOSIT_SATS,
+                        "min_trade_sats": MIN_TRADE_SATS,
+                    },
+                    "note": (
+                        "Bot balances were NOT checked at startup. "
+                        "Call wallet_balance with all_bots=true to get "
+                        "actual bot balances when the user asks."
+                    ),
+                }
+                if wallet_data.get("balance_sats", 0) == 0:
+                    startup_balance_result["next_step"] = (
+                        "Wallet is empty. Use how_to_fund_wallet to show "
+                        "the user how to deposit funds."
+                    )
 
     tools = get_tools_for_anthropic()
     messages: list[dict] = []

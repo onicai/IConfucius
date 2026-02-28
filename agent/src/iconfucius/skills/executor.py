@@ -305,6 +305,14 @@ def _handle_bot_list(args: dict) -> dict:
         return {"status": "error", "error": "No iconfucius.toml found. Run init first."}
 
     bot_names = get_bot_names()
+
+    # Include cached principals (no network calls)
+    from iconfucius.siwb import read_cached_principal
+    bots = []
+    for name in bot_names:
+        principal = read_cached_principal(name)
+        bots.append({"name": name, "principal": principal or ""})
+
     names_str = ", ".join(bot_names)
     display = f"{len(bot_names)} bot(s): {names_str}"
 
@@ -313,6 +321,7 @@ def _handle_bot_list(args: dict) -> dict:
         "display": display,
         "bot_names": bot_names,
         "bot_count": len(bot_names),
+        "bots": bots,
     }
 
 
@@ -348,13 +357,21 @@ def _handle_wallet_balance(args: dict) -> dict:
     display_text = data.pop("_display", "")
     totals = data.get("totals", {})
 
+    from iconfucius.config import get_btc_to_usd_rate
+    try:
+        btc_usd_rate = get_btc_to_usd_rate()
+    except Exception:
+        btc_usd_rate = None
+
     result = {
         "status": "ok",
         "_display": display_text,
+        "wallet_principal": data.get("wallet_principal", ""),
         "wallet_ckbtc_sats": data.get("wallet_ckbtc_sats", 0),
         "total_odin_sats": totals.get("odin_sats", 0),
         "total_token_value_sats": totals.get("token_value_sats", 0),
         "portfolio_sats": totals.get("portfolio_sats", 0),
+        "btc_usd_rate": btc_usd_rate,
         "constraints": {
             "min_deposit_sats": MIN_DEPOSIT_SATS,
             "min_trade_sats": MIN_TRADE_SATS,
@@ -381,6 +398,22 @@ def _handle_wallet_balance(args: dict) -> dict:
             if bot.get("note"):
                 entry["note"] = bot["note"]
             result["bots"].append(entry)
+    # Mark whether all requested bots returned complete balance data.
+    # Used by _record_balance_snapshot to skip incomplete snapshots.
+    all_bots_ok = all(
+        b.get("has_odin_account") is not None
+        for b in bots_list
+    )
+    result["all_bots_ok"] = all_bots_ok
+
+    # Surface warnings about failed bots so the AI can inform the user
+    warnings = []
+    for bot in bots_list:
+        if bot.get("note"):
+            warnings.append(f"{bot['name']}: {bot['note']}")
+    if warnings:
+        result["warnings"] = warnings
+
     # Add next_step guidance when wallet is empty
     wallet_empty = result["wallet_ckbtc_sats"] == 0
     if wallet_empty:
@@ -822,6 +855,125 @@ def _handle_account_lookup(args: dict) -> dict:
 
 
 
+def _handle_public_balance(args: dict) -> dict:
+    """Handle the public_balance tool call."""
+    from icp_agent import Agent, Client
+    from icp_canister import Canister
+    from icp_identity import Identity
+    from icp_principal import Principal
+
+    from iconfucius.candid import ODIN_TRADING_CANDID
+    from iconfucius.config import (
+        CKBTC_LEDGER_CANISTER_ID,
+        IC_HOST,
+        ODIN_API_URL,
+        ODIN_TRADING_CANISTER_ID,
+        fmt_sats,
+        get_btc_to_usd_rate,
+        get_verify_certificates,
+    )
+    from iconfucius.transfers import create_icrc1_canister, get_balance
+    from iconfucius.units import (
+        adjust_api_decimals,
+        millisubunit_value_sats,
+        msat_to_sats,
+    )
+
+    principal = (args.get("principal") or "").strip()
+    if not principal:
+        return {"status": "error", "error": "principal is required."}
+
+    try:
+        Principal.from_str(principal)
+    except Exception:
+        return {"status": "error", "error": f"Invalid IC principal: {principal}"}
+
+    try:
+        btc_usd_rate = get_btc_to_usd_rate()
+    except Exception:
+        btc_usd_rate = None
+
+    client = Client(url=IC_HOST)
+    anon_agent = Agent(Identity(anonymous=True), client)
+
+    # 1. ckBTC ledger balance (satoshis)
+    icrc1_canister = create_icrc1_canister(anon_agent)
+    ckbtc_sats = get_balance(icrc1_canister, principal)
+
+    # 2. Odin.fun canister BTC balance (millisatoshis → sats)
+    odin = Canister(
+        agent=anon_agent,
+        canister_id=ODIN_TRADING_CANISTER_ID,
+        candid_str=ODIN_TRADING_CANDID,
+    )
+    odin_balance_raw = odin.getBalance(
+        principal, "btc", verify_certificate=get_verify_certificates(),
+    )
+    if isinstance(odin_balance_raw, list) and len(odin_balance_raw) > 0:
+        item = odin_balance_raw[0]
+        odin_balance = (
+            item["value"] if isinstance(item, dict) and "value" in item else item
+        )
+    else:
+        odin_balance = odin_balance_raw
+    odin_btc_sats = (
+        msat_to_sats(odin_balance)
+        if isinstance(odin_balance, (int, float))
+        else 0
+    )
+
+    # 3. REST API token holdings
+    token_holdings = []
+    try:
+        url = f"{ODIN_API_URL}/user/{principal}/balances"
+        from iconfucius.http_utils import cffi_get_with_retry
+        resp = cffi_get_with_retry(url, timeout=10)
+        api_data = resp.json()
+        balances = api_data.get("data", [])
+        tokens = [b for b in balances if b.get("type") == "token"]
+        for t in tokens:
+            ticker = t.get("ticker", t.get("id", "?"))
+            token_id = t.get("id", "?")
+            raw_balance = t.get("balance", 0)
+            divisibility = t.get("divisibility", 8)
+            decimals = t.get("decimals", 0)
+            price = t.get("price", 0)
+            balance = adjust_api_decimals(raw_balance, decimals)
+            value_sats = millisubunit_value_sats(raw_balance, price, divisibility)
+            human_balance = balance / (10 ** divisibility) if divisibility > 0 else balance
+            token_holdings.append({
+                "ticker": ticker,
+                "token_id": token_id,
+                "balance": human_balance,
+                "value_sats": round(value_sats),
+            })
+    except Exception as exc:
+        from iconfucius.logging_config import get_logger
+        get_logger().debug(
+            "public_balance: token holdings fetch failed for %s: %s",
+            principal, exc,
+        )
+
+    # Build display
+    lines = [f"Public balance for {principal}:"]
+    lines.append(f"  ckBTC (ICRC-1 ledger): {fmt_sats(ckbtc_sats, btc_usd_rate)}")
+    lines.append(f"  Odin.fun BTC balance:  {fmt_sats(odin_btc_sats, btc_usd_rate)}")
+    if token_holdings:
+        lines.append("  Token holdings:")
+        for t in token_holdings:
+            val = f" ({fmt_sats(t['value_sats'], btc_usd_rate)})" if t["value_sats"] else ""
+            lines.append(f"    {t['ticker']} ({t['token_id']}): {t['balance']:.6g}{val}")
+
+    return {
+        "status": "ok",
+        "principal": principal,
+        "ckbtc_sats": ckbtc_sats,
+        "odin_btc_sats": odin_btc_sats,
+        "token_holdings": token_holdings,
+        "display": "\n".join(lines),
+    }
+
+
 def _handle_token_lookup(args: dict) -> dict:
     """Handle the token_lookup tool call."""
     from iconfucius.tokens import search_token
@@ -947,15 +1099,15 @@ def _handle_token_price(args: dict) -> dict:
         }
 
     # API returns BTC-denominated fields in millisatoshis (msat)
-    MSAT_PER_SAT = 1000
+    from iconfucius.units import MSAT_PER_SAT, msat_to_sats, sats_to_usd
     price_msat = data.get("price", 0)
     price_1h_msat = data.get("price_1h", 0)
     price_6h_msat = data.get("price_6h", 0)
     price_1d_msat = data.get("price_1d", 0)
-    marketcap_sats = data.get("marketcap", 0) // MSAT_PER_SAT
-    volume_24_sats = data.get("volume_24", 0) // MSAT_PER_SAT
+    marketcap_sats = msat_to_sats(data.get("marketcap", 0))
+    volume_24_sats = msat_to_sats(data.get("volume_24", 0))
     holder_count = data.get("holder_count", 0)
-    btc_liquidity_sats = data.get("btc_liquidity", 0) // MSAT_PER_SAT
+    btc_liquidity_sats = msat_to_sats(data.get("btc_liquidity", 0))
 
     # Price: API gives msat per token, convert to sats
     price_sats = price_msat / MSAT_PER_SAT
@@ -975,7 +1127,7 @@ def _handle_token_price(args: dict) -> dict:
 
     # Format price with appropriate precision (can be fractional sats)
     if btc_usd:
-        price_usd = (price_sats / 100_000_000) * btc_usd
+        price_usd = sats_to_usd(price_sats, btc_usd)
         price_str = f"{price_sats:,.3f} sats (${price_usd:.5f})"
     else:
         price_str = f"{price_sats:,.3f} sats"
@@ -1000,7 +1152,7 @@ def _handle_token_price(args: dict) -> dict:
         "token_name": token_name,
         "ticker": token_ticker,
         "price_sats": price_sats,
-        "price_usd": (price_sats / 100_000_000) * btc_usd if btc_usd else None,
+        "price_usd": sats_to_usd(price_sats, btc_usd) if btc_usd else None,
         "change_1h": _pct_change(price_msat, price_1h_msat),
         "change_6h": _pct_change(price_msat, price_6h_msat),
         "change_24h": _pct_change(price_msat, price_1d_msat),
@@ -1086,33 +1238,36 @@ def _handle_fund(args: dict) -> dict:
 def _usd_to_sats(amount_usd: float) -> int:
     """Convert a USD amount to satoshis using the live BTC/USD rate."""
     from iconfucius.config import get_btc_to_usd_rate
+    from iconfucius.units import usd_to_sats
 
     btc_usd = get_btc_to_usd_rate()
-    return int((amount_usd / btc_usd) * 100_000_000)
+    return usd_to_sats(amount_usd, btc_usd)
 
 
 _MAX_RAW_TOKENS = 2**63  # guard against bogus price data
 
 
-def _tokens_to_subunits(amount: float, token_id: str) -> int:
-    """Convert human-readable token count to raw sub-units.
+def _tokens_to_millisubunits(amount: float, token_id: str) -> int:
+    """Convert display tokens to canister milli-subunits.
 
-    Example: 1000.0 tokens with divisibility=8 → 100_000_000_000
+    Example: 100.0 tokens with div=8, dec=3 → 10_000_000_000_000
     """
     from iconfucius.tokens import fetch_token_data
+    from iconfucius.units import display_to_millisubunits
 
     data = fetch_token_data(token_id)
     divisibility = data.get("divisibility", 8) if data else 8
-    return int(amount * (10 ** divisibility))
+    decimals = data.get("decimals", 3) if data else 3
+    return display_to_millisubunits(amount, divisibility, decimals)
 
 
 def _usd_to_tokens(amount_usd: float, token_id: str) -> int:
-    """Convert a USD amount to raw token sub-units using live price data.
+    """Convert a USD amount to milli-subunits using live price data.
 
-    Returns the raw token amount (not display tokens).
-    Formula: raw_tokens = sats * 10^6 * 10^div / price
+    Returns the token amount in canister milli-subunits.
     """
     from iconfucius.tokens import fetch_token_data
+    from iconfucius.units import millisubunits_from_sats
 
     data = fetch_token_data(token_id)
     if not data or not data.get("price"):
@@ -1121,14 +1276,15 @@ def _usd_to_tokens(amount_usd: float, token_id: str) -> int:
     sats = _usd_to_sats(amount_usd)
     price = data["price"]
     divisibility = data.get("divisibility", 8)
-    raw_tokens = int(sats * 1_000_000 * (10 ** divisibility) / price)
+    decimals = data.get("decimals", 3)
+    msu = millisubunits_from_sats(sats, price, divisibility, decimals)
 
-    if raw_tokens > _MAX_RAW_TOKENS:
+    if msu > _MAX_RAW_TOKENS:
         raise ValueError(
-            f"Token amount too large ({raw_tokens}). "
+            f"Token amount too large ({msu}). "
             f"Token price ({price}) may be stale or incorrect."
         )
-    return raw_tokens
+    return msu
 
 
 def _handle_trade_buy(args: dict) -> dict:
@@ -1188,13 +1344,18 @@ def _handle_trade_sell(args: dict) -> dict:
     if not all([token_id, amount, bot_names]):
         return {"status": "error", "error": "'token_id', 'amount' (or 'amount_usd'), and at least one bot are required."}
 
-    # Convert human-readable token count to raw sub-units for the canister
+    # Convert human-readable token count to milli-subunits for the canister
     if not amount_is_subunits and str(amount).lower() != "all":
-        amount = _tokens_to_subunits(float(amount), token_id)
+        _log.info("trade_sell: converting display tokens %s to milli-subunits (token=%s)", amount, token_id)
+        amount = _tokens_to_millisubunits(float(amount), token_id)
+        _log.info("trade_sell: converted to milli-subunits: %s", amount)
+    else:
+        _log.info("trade_sell: amount already in milli-subunits or 'all': %s (is_subunits=%s)", amount, amount_is_subunits)
 
     from iconfucius.cli.concurrent import report_status, run_per_bot
     from iconfucius.cli.trade import run_trade
 
+    _log.info("trade_sell: calling run_trade(sell, %s, amount=%s)", token_id, amount)
     report_status(f"selling {token_id} for {len(bot_names)} bot(s)...")
     results = run_per_bot(
         lambda name: run_trade(name, "sell", token_id, str(amount)),
@@ -1349,9 +1510,9 @@ def _handle_token_transfer(args: dict) -> dict:
             "error": "token_id, amount, to_address, and at least one bot are required.",
         }
 
-    # Convert human-readable token count to raw sub-units for the canister
+    # Convert human-readable token count to milli-subunits for the canister
     if str(amount).lower() != "all":
-        amount = _tokens_to_subunits(float(amount), token_id)
+        amount = _tokens_to_millisubunits(float(amount), token_id)
 
     from iconfucius.cli.concurrent import report_status, run_per_bot
     from iconfucius.cli.transfer import run_transfer
@@ -1362,16 +1523,50 @@ def _handle_token_transfer(args: dict) -> dict:
         bot_names,
     )
 
-    succeeded, failed = [], []
+    succeeded, failed, fee_blocked = [], [], []
     for bot_name, result in results:
         if isinstance(result, Exception):
             failed.append({"bot": bot_name, "error": str(result)})
+        elif isinstance(result, dict) and result.get("error_type") == "insufficient_btc_for_fee":
+            fee_blocked.append(result)
         elif isinstance(result, dict) and result.get("status") == "error":
             failed.append({"bot": bot_name, "error": result.get("error", "")})
         elif isinstance(result, dict) and result.get("status") == "ok":
             succeeded.append({"bot": bot_name, **result})
         else:
             failed.append({"bot": bot_name, "error": f"Unexpected result: {result}"})
+
+    # Pass through structured data so the AI can present options
+    # with correct constraints (min_trade_sats, min_deposit_sats)
+    if fee_blocked:
+        blocked = [
+            {
+                "bot_name": b["bot_name"],
+                "error_type": b.get("error_type", "insufficient_btc_for_fee"),
+                "error": b["error"],
+                "fee_sats": b["fee_sats"],
+                "min_deposit_sats": b.get("min_deposit_sats"),
+                "min_trade_sats": b.get("min_trade_sats"),
+                "options": b.get("options", []),
+            }
+            for b in fee_blocked
+        ]
+        fb = blocked[0]  # keep compatibility fields
+        return {
+            "status": "partial",
+            "display": "\n".join(
+                f"  {b['bot_name']}: FAILED — {b['error']}" for b in blocked
+            ),
+            "succeeded": len(succeeded),
+            "failed": len(fee_blocked) + len(failed),
+            "error_type": fb["error_type"],
+            "bot_name": fb["bot_name"],
+            "fee_sats": fb["fee_sats"],
+            "min_deposit_sats": fb.get("min_deposit_sats"),
+            "min_trade_sats": fb.get("min_trade_sats"),
+            "options": fb.get("options", []),
+            "fee_blocked": blocked,
+        }
 
     lines = []
     if succeeded:
@@ -1534,18 +1729,27 @@ def _record_trade(tool_name: str, args: dict, result: dict,
     }
 
     is_sell_all = str(amount).lower() == "all"
+
+    def _safe_float(val, default=0.0):
+        try:
+            return float(val)
+        except (ValueError, TypeError):
+            return default
+
     if action == "BUY":
-        amount_int = 0 if is_sell_all else int(float(amount)) if amount else 0
+        amount_int = 0 if is_sell_all else int(_safe_float(amount))
         entry["amount_sats"] = amount_int
         if price:
-            entry["est_tokens"] = round(amount_int * 1_000_000 / price, 2)
+            from iconfucius.units import display_tokens_from_sats
+            entry["est_tokens"] = round(display_tokens_from_sats(amount_int, price), 2)
     elif is_sell_all:
         entry["tokens_sold"] = "all"
     else:
-        display_tokens = float(amount) if amount else 0.0
+        display_tokens = _safe_float(amount)
         entry["tokens_sold"] = display_tokens
         if price:
-            entry["est_sats_received"] = round(display_tokens * price / 1_000_000)
+            from iconfucius.units import sats_from_display_tokens
+            entry["est_sats_received"] = sats_from_display_tokens(display_tokens, price)
 
     if price:
         entry["price_sats"] = price
@@ -1569,6 +1773,11 @@ def _record_balance_snapshot(result: dict, persona_name: str) -> None:
 
     from iconfucius.memory import append_balance_snapshot
 
+    # Only record when all bots returned complete data
+    if not result.get("all_bots_ok", False):
+        _log.debug("Skipping balance snapshot: incomplete bot data")
+        return
+
     try:
         from iconfucius.config import get_btc_to_usd_rate
         btc_usd = get_btc_to_usd_rate()
@@ -1583,7 +1792,8 @@ def _record_balance_snapshot(result: dict, persona_name: str) -> None:
 
     portfolio_usd = None
     if btc_usd:
-        portfolio_usd = round((portfolio_sats / 100_000_000) * btc_usd, 2)
+        from iconfucius.units import sats_to_usd as _sats_to_usd
+        portfolio_usd = round(_sats_to_usd(portfolio_sats, btc_usd), 2)
 
     snapshot = {
         "ts": datetime.now(timezone.utc).isoformat(),
@@ -1718,6 +1928,7 @@ _HANDLERS: dict[str, callable] = {
     "security_status": _handle_security_status,
     "install_blst": _handle_install_blst,
     "account_lookup": _handle_account_lookup,
+    "public_balance": _handle_public_balance,
     "token_lookup": _handle_token_lookup,
     "token_discover": _handle_token_discover,
     "token_price": _handle_token_price,

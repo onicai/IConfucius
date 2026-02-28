@@ -1,8 +1,7 @@
 """iconfucius.accounts — Odin.fun account resolution and lookup."""
 
-from curl_cffi import requests as cffi_requests
-
 from iconfucius.config import ODIN_API_URL
+from iconfucius.http_utils import cffi_get_with_retry
 
 
 def _search_odin_account(address: str) -> dict | None:
@@ -14,11 +13,9 @@ def _search_odin_account(address: str) -> dict | None:
     Returns the full user dict if found, None otherwise.
     """
     try:
-        resp = cffi_requests.get(
+        resp = cffi_get_with_retry(
             f"{ODIN_API_URL}/users",
             params={"search": address, "env": "production"},
-            impersonate="chrome",
-            headers={"Accept": "application/json"},
             timeout=10,
         )
         if resp.status_code != 200:

@@ -102,48 +102,43 @@ def fmt_sats(sats, btc_usd_rate) -> str:
         btc_usd_rate: BTC/USD rate, or None to skip USD.
     """
     if btc_usd_rate:
-        usd = (sats / 100_000_000) * btc_usd_rate
+        from iconfucius.units import sats_to_usd
+        usd = sats_to_usd(sats, btc_usd_rate)
         return f"{sats:,} sats (${usd:.3f})"
     return f"{sats:,} sats"
 
 
 def fmt_tokens(count, token_id: str) -> str:
-    """Format a raw token balance with USD value for display.
+    """Format a token balance in milli-subunits with USD value for display.
 
     Args:
-        count: Token count in raw sub-units (as returned by canister getBalance).
+        count: Token count in milli-subunits (as returned by canister
+               getBalance or used in token_trade).
         token_id: Odin token ID (e.g. '29m8').
 
     Returns:
         e.g. '1,000.000 tokens ($5.00)' or '1,000.000 tokens' on failure.
     """
-    from decimal import Decimal
-
     try:
-        raw_amount = int(count)
+        msu = int(count)
     except (TypeError, ValueError):
         return f"{count} tokens"
     try:
-        from curl_cffi import requests as cffi_requests
-        resp = cffi_requests.get(
-            f"{ODIN_API_URL}/token/{token_id}",
-            impersonate="chrome",
-            headers={"Accept": "application/json"},
-            timeout=10,
-        )
-        if resp.status_code != 200:
+        from iconfucius.tokens import fetch_token_data
+        from iconfucius.units import (millisubunit_value_sats,
+                                      millisubunits_to_display, sats_to_usd)
+
+        info = fetch_token_data(token_id)
+        if not info:
             return f"{count} tokens"
-        info = resp.json()
-        price = Decimal(str(info.get("price", 0)))
+        price = info.get("price", 0)
         divisibility = int(info.get("divisibility", 8))
-        # Convert raw sub-units to human-readable token count for display
-        scale = Decimal(10) ** divisibility
-        display_amount = Decimal(raw_amount) / scale if divisibility > 0 else Decimal(raw_amount)
+        decimals = int(info.get("decimals", 3))
+        display_amount = millisubunits_to_display(msu, divisibility, decimals)
         label = f"{display_amount:,.3f} tokens"
         btc_usd_rate = get_btc_to_usd_rate()
-        value_microsats = (Decimal(raw_amount) * price) / scale
-        value_sats = value_microsats / 1_000_000
-        usd = (value_sats / Decimal(100_000_000)) * Decimal(str(btc_usd_rate))
+        value_sats = millisubunit_value_sats(msu, price, divisibility)
+        usd = sats_to_usd(value_sats, btc_usd_rate)
         return f"{label} (${usd:,.3f})"
     except Exception:
         return f"{count} tokens"

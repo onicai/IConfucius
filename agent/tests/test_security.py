@@ -66,15 +66,15 @@ class TestUsdToSatsEdgeCases:
 
     @patch("iconfucius.config.get_btc_to_usd_rate", return_value=0.0)
     def test_zero_rate_raises(self, _mock):
-        """Division by zero rate must raise, not silently return infinity."""
-        with pytest.raises(ZeroDivisionError):
+        """Zero rate must raise ValueError."""
+        with pytest.raises(ValueError, match="btc_usd_rate must be > 0"):
             _usd_to_sats(10.0)
 
     @patch("iconfucius.config.get_btc_to_usd_rate", return_value=-100_000.0)
-    def test_negative_rate_inverts_sign(self, _mock):
-        """Negative rate flips the sign — callers must validate."""
-        result = _usd_to_sats(10.0)
-        assert result < 0
+    def test_negative_rate_raises(self, _mock):
+        """Negative rate must raise ValueError."""
+        with pytest.raises(ValueError, match="btc_usd_rate must be > 0"):
+            _usd_to_sats(10.0)
 
     @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100_000.0)
     def test_very_small_usd_truncates_to_zero(self, _mock):

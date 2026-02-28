@@ -41,64 +41,64 @@ def _get_balance_side_effect(token_balance, btc_msat=200_000):
 # ---------------------------------------------------------------------------
 
 class TestResolveOdinAccount:
-    @patch(f"{A}.cffi_requests")
-    def test_resolves_valid_principal(self, mock_requests):
+    @patch(f"{A}.cffi_get_with_retry")
+    def test_resolves_valid_principal(self, mock_get):
         """Verify resolves valid principal."""
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {"data": [{"principal": "abc-def"}]}
-        mock_requests.get.return_value = mock_resp
+        mock_get.return_value = mock_resp
 
         from iconfucius.accounts import resolve_odin_account
         assert resolve_odin_account("abc-def") == "abc-def"
 
-    @patch(f"{A}.cffi_requests")
-    def test_resolves_btc_address_to_principal(self, mock_requests):
+    @patch(f"{A}.cffi_get_with_retry")
+    def test_resolves_btc_address_to_principal(self, mock_get):
         """Verify resolves btc address to principal."""
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {"data": [{"principal": "resolved-principal-xyz"}]}
-        mock_requests.get.return_value = mock_resp
+        mock_get.return_value = mock_resp
 
         from iconfucius.accounts import resolve_odin_account
         assert resolve_odin_account("bc1qfakeaddress") == "resolved-principal-xyz"
 
-    @patch(f"{A}.cffi_requests")
-    def test_returns_none_for_unknown_address(self, mock_requests):
+    @patch(f"{A}.cffi_get_with_retry")
+    def test_returns_none_for_unknown_address(self, mock_get):
         """Verify returns none for unknown address."""
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {"data": []}
-        mock_requests.get.return_value = mock_resp
+        mock_get.return_value = mock_resp
 
         from iconfucius.accounts import resolve_odin_account
         assert resolve_odin_account("zzzzz-zzzzz-zzzzz-zzzzz-zzz") is None
 
-    @patch(f"{A}.cffi_requests")
-    def test_returns_none_on_404(self, mock_requests):
+    @patch(f"{A}.cffi_get_with_retry")
+    def test_returns_none_on_404(self, mock_get):
         """Verify returns none on 404."""
         mock_resp = MagicMock()
         mock_resp.status_code = 404
-        mock_requests.get.return_value = mock_resp
+        mock_get.return_value = mock_resp
 
         from iconfucius.accounts import resolve_odin_account
         assert resolve_odin_account("zzzzz-zzzzz-zzzzz-zzzzz-zzz") is None
 
-    @patch(f"{A}.cffi_requests")
-    def test_returns_none_on_api_error(self, mock_requests):
+    @patch(f"{A}.cffi_get_with_retry")
+    def test_returns_none_on_api_error(self, mock_get):
         """Verify returns none on api error."""
-        mock_requests.get.side_effect = Exception("connection error")
+        mock_get.side_effect = Exception("connection error")
 
         from iconfucius.accounts import resolve_odin_account
         assert resolve_odin_account("dxqin-ibe62-ihc5d-ql3na-dqe") is None
 
-    @patch(f"{A}.cffi_requests")
-    def test_returns_none_on_empty_json(self, mock_requests):
+    @patch(f"{A}.cffi_get_with_retry")
+    def test_returns_none_on_empty_json(self, mock_get):
         """Verify returns none on empty json."""
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {}
-        mock_requests.get.return_value = mock_resp
+        mock_get.return_value = mock_resp
 
         from iconfucius.accounts import resolve_odin_account
         assert resolve_odin_account("dxqin-ibe62-ihc5d-ql3na-dqe") is None
@@ -109,8 +109,8 @@ class TestResolveOdinAccount:
 # ---------------------------------------------------------------------------
 
 class TestLookupOdinAccount:
-    @patch(f"{A}.cffi_requests")
-    def test_returns_account_details(self, mock_requests):
+    @patch(f"{A}.cffi_get_with_retry")
+    def test_returns_account_details(self, mock_get):
         """Verify returns account details."""
         mock_resp = MagicMock()
         mock_resp.status_code = 200
@@ -127,7 +127,7 @@ class TestLookupOdinAccount:
             "following_count": 5,
             "created_at": "2024-01-01",
         }]}
-        mock_requests.get.return_value = mock_resp
+        mock_get.return_value = mock_resp
 
         from iconfucius.accounts import lookup_odin_account
         result = lookup_odin_account("abc-def")
@@ -137,21 +137,21 @@ class TestLookupOdinAccount:
         assert result["btc_wallet_address"] == "bc1qwallet"
         assert result["follower_count"] == 10
 
-    @patch(f"{A}.cffi_requests")
-    def test_returns_none_for_unknown(self, mock_requests):
+    @patch(f"{A}.cffi_get_with_retry")
+    def test_returns_none_for_unknown(self, mock_get):
         """Verify returns none for unknown."""
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {"data": []}
-        mock_requests.get.return_value = mock_resp
+        mock_get.return_value = mock_resp
 
         from iconfucius.accounts import lookup_odin_account
         assert lookup_odin_account("zzzzz-zzzzz") is None
 
-    @patch(f"{A}.cffi_requests")
-    def test_returns_none_on_error(self, mock_requests):
+    @patch(f"{A}.cffi_get_with_retry")
+    def test_returns_none_on_error(self, mock_get):
         """Verify returns none on error."""
-        mock_requests.get.side_effect = Exception("network error")
+        mock_get.side_effect = Exception("network error")
 
         from iconfucius.accounts import lookup_odin_account
         assert lookup_odin_account("abc-def") is None

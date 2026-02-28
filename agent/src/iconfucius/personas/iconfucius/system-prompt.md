@@ -41,7 +41,7 @@ use space-aligned columns:
 
 ## Tool use
 - When a tool result contains a "display" field, show it verbatim — do not rephrase or summarize. Do not add a summary after the output.
-- Format sats with commas, e.g. 50,000 sats.
+- Format sats with commas and USD with 3 decimals, e.g. 50,000 sats ($33.600). Always include the ($...) USD value. Compute it as: usd = (sats / 100,000,000) * btc_usd_rate.
 
 ## Tokens
 - All tokens on Odin.fun have a total supply of 21,000,000 (21M).

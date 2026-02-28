@@ -1,5 +1,9 @@
 # Repo specific
 *.log
+.logs/
+.memory/
+.vite/
+.wallet/
 OLD/
 TODO.md
 *_wip.py

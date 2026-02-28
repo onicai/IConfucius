@@ -13,37 +13,18 @@ Examples:
 import argparse
 import sys
 
-from curl_cffi import requests as cffi_requests
 from icp_agent import Agent, Client
 from icp_canister import Canister
 from icp_principal import Principal
 
 from iconfucius.config import fmt_sats, fmt_tokens, get_btc_to_usd_rate
-from iconfucius.config import IC_HOST, MIN_TRADE_SATS, ODIN_API_URL, ODIN_TRADING_CANISTER_ID, get_verify_certificates, log, require_wallet, set_verbose
+from iconfucius.config import IC_HOST, MIN_TRADE_SATS, ODIN_TRADING_CANISTER_ID, get_verify_certificates, log, require_wallet, set_verbose
 from iconfucius.siwb import siwb_login, load_session
-
-# Odin uses millisatoshis (msat) for BTC amounts
-# 1 sat = 1000 msat
-MSAT_PER_SAT = 1000
+from iconfucius.tokens import fetch_token_data
+from iconfucius.units import MSAT_PER_SAT, msat_to_sats, sats_to_msat, millisubunit_value_sats, millisubunits_from_sats, millisubunits_to_display
 
 from iconfucius.candid import ODIN_TRADING_CANDID
 from iconfucius.transfers import patch_delegate_sender, unwrap_canister_result
-
-
-def _fetch_token_info(token_id: str) -> dict | None:
-    """Fetch token info (ticker, price, divisibility) from Odin API."""
-    try:
-        resp = cffi_requests.get(
-            f"{ODIN_API_URL}/token/{token_id}",
-            impersonate="chrome",
-            headers={"Accept": "application/json"},
-            timeout=10,
-        )
-        if resp.status_code == 200:
-            return resp.json()
-    except Exception:
-        pass
-    return None
 
 
 # ---------------------------------------------------------------------------
@@ -63,7 +44,7 @@ def run_trade(bot_name: str, action: str, token_id: str, amount: str,
         bot_name: Name of the bot to trade with.
         action: Trade action ('buy' or 'sell').
         token_id: Token ID to trade.
-        amount: Amount in sats (buy), tokens (sell), or 'all' (sell entire balance).
+        amount: Amount in sats (buy), milli-subunits (sell), or 'all' (sell entire balance).
         verbose: If True, enable detailed logging.
     """
     from iconfucius.logging_config import get_logger
@@ -76,11 +57,15 @@ def run_trade(bot_name: str, action: str, token_id: str, amount: str,
     if action not in ("buy", "sell"):
         return {"status": "error", "error": f"action must be 'buy' or 'sell', got '{action}'"}
 
+    logger.info("run_trade: action=%s, token=%s, amount=%s (type=%s) (bot=%s)",
+                action, token_id, amount, type(amount).__name__, bot_name)
+
     sell_all = amount.lower() == "all"
     if sell_all and action != "sell":
         return {"status": "error", "error": "'all' amount is only supported for sell, not buy"}
     if not sell_all:
         amount_int = int(amount)
+        logger.info("run_trade: amount_int=%d (bot=%s)", amount_int, bot_name)
         if action == "buy" and amount_int < MIN_TRADE_SATS:
             return {"status": "error",
                     "error": f"Minimum buy amount is {MIN_TRADE_SATS:,} sats, got {amount_int:,}"}
@@ -96,7 +81,7 @@ def run_trade(bot_name: str, action: str, token_id: str, amount: str,
         return fmt_sats(sats, btc_usd_rate)
 
     # Fetch token info (ticker name, price)
-    token_info = _fetch_token_info(token_id)
+    token_info = fetch_token_data(token_id)
     ticker = token_info.get("ticker", token_id) if token_info else token_id
     token_price = token_info.get("price", 0) if token_info else 0
     token_divisibility = 8  # Odin default
@@ -146,7 +131,7 @@ def run_trade(bot_name: str, action: str, token_id: str, amount: str,
         odin.getBalance(bot_principal_text, "btc",
                              verify_certificate=get_verify_certificates())
     )
-    btc_before_sats = btc_before_msat // MSAT_PER_SAT
+    btc_before_sats = msat_to_sats(btc_before_msat)
     token_before = unwrap_canister_result(
         odin.getBalance(bot_principal_text, token_id,
                              verify_certificate=get_verify_certificates())
@@ -174,20 +159,25 @@ def run_trade(bot_name: str, action: str, token_id: str, amount: str,
                     "reason": f"No {token_label} to sell"}
         amount_int = token_before
 
-    # Check minimum trade value for sell
+    # Check minimum trade value for sell (amount_int is in milli-subunits)
     if action == "sell" and token_price:
-        sell_value_microsats = (amount_int * token_price) / (10 ** token_divisibility)
-        sell_value_sats = int(sell_value_microsats / 1_000_000)
+        sell_value_sats = int(millisubunit_value_sats(amount_int, token_price, token_divisibility))
+        logger.info("run_trade: sell check: amount_int=%d, token_price=%d, sell_value_sats=%d, min=%d (bot=%s)",
+                    amount_int, token_price, sell_value_sats, MIN_TRADE_SATS, bot_name)
         if sell_value_sats < MIN_TRADE_SATS:
+            # Compute minimum milli-subunits needed to meet MIN_TRADE_SATS
+            min_msu = millisubunits_from_sats(MIN_TRADE_SATS, token_price, token_divisibility) + 1
+            min_display = f"{millisubunits_to_display(min_msu):,.3f}"
             return {"status": "skipped", "bot_name": bot_name,
                     "reason": f"Sell value too low: {_fmt(sell_value_sats)} "
-                              f"(minimum {MIN_TRADE_SATS:,} sats)"}
+                              f"(minimum {MIN_TRADE_SATS:,} sats). "
+                              f"Minimum tokens to sell: {min_display}"}
 
     # -----------------------------------------------------------------------
     # Step 3: Execute trade
     # -----------------------------------------------------------------------
     if action == "buy":
-        amount_msat = amount_int * MSAT_PER_SAT
+        amount_msat = sats_to_msat(amount_int)
         trade_request = {
             "tokenid": token_id,
             "typeof": {"buy": None},
@@ -205,6 +195,7 @@ def run_trade(bot_name: str, action: str, token_id: str, amount: str,
         logger.info("Step 3: Sell %s %s (bot=%s)...", fmt_tokens(amount_int, token_id), token_label, bot_name)
 
     log(f"  Trade request: {trade_request}")
+    logger.info("Step 3: Canister call: token_trade(%s) (bot=%s)", trade_request, bot_name)
 
     result = unwrap_canister_result(
         odin.token_trade(trade_request, verify_certificate=get_verify_certificates())
