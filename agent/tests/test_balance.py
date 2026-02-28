@@ -387,8 +387,8 @@ class TestCollectBalances:
     @patch("iconfucius.cli.balance.Client")
     @patch("iconfucius.cli.balance.Identity")
     @patch("iconfucius.cli.balance.read_cached_principal", return_value="principal-abc")
-    def test_collects_all_data(self, mock_read_principal, MockId, MockClient,
-                               MockAgent, MockCanister, mock_cffi):
+    def test_collects_all_data(self, _mock_read_principal, _MockId, _MockClient,
+                               _MockAgent, MockCanister, mock_cffi):
         """Verify collects all data."""
         # Mock Odin canister getBalance
         mock_odin = MagicMock()
@@ -453,8 +453,8 @@ class TestCollectBalances:
     @patch("iconfucius.cli.balance.Client")
     @patch("iconfucius.cli.balance.Identity")
     @patch("iconfucius.cli.balance.read_cached_principal", return_value="principal-abc")
-    def test_decimals_correction(self, mock_read_principal, MockId, MockClient,
-                                  MockAgent, MockCanister, mock_cffi):
+    def test_decimals_correction(self, _mock_read_principal, _MockId, _MockClient,
+                                  _MockAgent, MockCanister, mock_cffi):
         """API balance with decimals=3 should be divided by 1000."""
         mock_odin = MagicMock()
         mock_odin.getBalance.return_value = [{"value": 0}]
@@ -490,8 +490,8 @@ class TestCollectBalances:
     @patch("iconfucius.cli.balance.Client")
     @patch("iconfucius.cli.balance.Identity")
     @patch("iconfucius.cli.balance.read_cached_principal", return_value="principal-abc")
-    def test_decimals_zero_no_correction(self, mock_read_principal, MockId, MockClient,
-                                          MockAgent, MockCanister, mock_cffi):
+    def test_decimals_zero_no_correction(self, _mock_read_principal, _MockId, _MockClient,
+                                          _MockAgent, MockCanister, mock_cffi):
         """When decimals=0 (or absent), balance is stored unchanged."""
         mock_odin = MagicMock()
         mock_odin.getBalance.return_value = [{"value": 0}]
@@ -515,7 +515,7 @@ class TestCollectBalances:
         assert result.token_holdings[0]["balance"] == 50_000_000_000
 
     @patch("iconfucius.cli.balance.read_cached_principal", return_value="principal-abc")
-    def test_no_odin_account_returns_early(self, mock_read_principal):
+    def test_no_odin_account_returns_early(self, _mock_read_principal):
         """Bot without Odin.fun account returns immediately with has_odin_account=False."""
         with patch("iconfucius.accounts.resolve_odin_account", return_value=None):
             result = collect_balances("bot-1", verbose=False)
@@ -555,8 +555,8 @@ class TestCollectBalances:
     @patch("iconfucius.cli.balance.Client")
     @patch("iconfucius.cli.balance.Identity")
     @patch("iconfucius.cli.balance.read_cached_principal", return_value="principal-abc")
-    def test_public_api_no_jwt(self, mock_read_principal, MockId, MockClient,
-                                MockAgent, MockCanister, mock_cffi):
+    def test_public_api_no_jwt(self, _mock_read_principal, _MockId, _MockClient,
+                                _MockAgent, MockCanister, mock_cffi):
         """REST API call must NOT include an Authorization header."""
         mock_odin = MagicMock()
         mock_odin.getBalance.return_value = [{"value": 0}]
@@ -700,8 +700,8 @@ class TestRunAllBalances:
     @patch("iconfucius.cli.balance._collect_wallet_info")
     @patch("iconfucius.cli.balance.collect_balances")
     @patch("iconfucius.cli.balance._fetch_btc_usd_rate", return_value=100_000.0)
-    def test_failed_bot_includes_error_message(self, mock_rate, mock_collect,
-                                                mock_wallet, mock_holdings,
+    def test_failed_bot_includes_error_message(self, _mock_rate, mock_collect,
+                                                mock_wallet, _mock_holdings,
                                                 odin_project):
         """Failed bots include the actual error message in their note."""
         mock_wallet.return_value = (
