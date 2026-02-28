@@ -40,7 +40,9 @@ def sats_to_msat(sats: int) -> int:
 
 def usd_to_sats(amount_usd: float, btc_usd_rate: float) -> int:
     """Convert a USD amount to satoshis given BTC/USD rate."""
-    return int((amount_usd / btc_usd_rate) * SATS_PER_BTC)
+    if btc_usd_rate <= 0:
+        raise ValueError("btc_usd_rate must be > 0")
+    return round((amount_usd / btc_usd_rate) * SATS_PER_BTC)
 
 
 def sats_to_usd(sats: int, btc_usd_rate: float) -> float:

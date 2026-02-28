@@ -274,7 +274,7 @@ def format_conversation_log(path: str | Path, max_text: int = 200) -> str:
                         continue
                     if block.get("type") == "text":
                         lines.append(f"  {role.upper()}: "
-                                     f"{block['text'][:max_text]}")
+                                     f"{block.get('text', '')[:max_text]}")
                     elif block.get("type") != "tool_result":
                         lines.append(f"  {role.upper()} [{block.get('type')}]")
 

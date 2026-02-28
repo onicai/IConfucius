@@ -879,6 +879,19 @@ def _run_tool_loop(backend, messages: list[dict], system: str,
                         {"status": "declined", "error": "User declined."}
                     ),
                 })
+            # Also resolve any deferred write tool IDs to keep
+            # tool_use/tool_result pairs complete.
+            for block in response.content:
+                if block.type == "tool_use" and block.id in deferred_ids:
+                    declined_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": json.dumps({
+                            "status": "deferred",
+                            "error": "One state-changing operation at a time. "
+                                     "Retry this tool in your next response.",
+                        }),
+                    })
             messages.append({"role": "user", "content": declined_results})
             print("\n\033[2mOperation declined.\033[0m\n")
             return

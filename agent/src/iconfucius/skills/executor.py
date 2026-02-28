@@ -931,6 +931,7 @@ def _handle_public_balance(args: dict) -> dict:
             url,
             impersonate="chrome",
             headers={"Accept": "application/json"},
+            timeout=10,
         )
         api_data = resp.json()
         balances = api_data.get("data", [])
@@ -951,8 +952,12 @@ def _handle_public_balance(args: dict) -> dict:
                 "balance": human_balance,
                 "value_sats": round(value_sats),
             })
-    except Exception:
-        pass
+    except Exception as exc:
+        from iconfucius.logging_config import get_logger
+        get_logger().debug(
+            "public_balance: token holdings fetch failed for %s: %s",
+            principal, exc,
+        )
 
     # Build display
     lines = [f"Public balance for {principal}:"]

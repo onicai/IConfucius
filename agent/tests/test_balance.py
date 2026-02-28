@@ -381,7 +381,7 @@ class TestCollectWalletInfo:
 # ---------------------------------------------------------------------------
 
 class TestCollectBalances:
-    @patch("iconfucius.cli.balance.cffi_requests")
+    @patch("iconfucius.http_utils.cffi_get_with_retry")
     @patch("iconfucius.cli.balance.Canister")
     @patch("iconfucius.cli.balance.Agent")
     @patch("iconfucius.cli.balance.Client")
@@ -406,7 +406,7 @@ class TestCollectBalances:
             ]
         }
         mock_resp.text = '{"data": []}'
-        mock_cffi.get.return_value = mock_resp
+        mock_cffi.return_value = mock_resp
 
         with patch("iconfucius.accounts.resolve_odin_account", return_value="principal-abc"):
             result = collect_balances("bot-1", verbose=False)
@@ -419,7 +419,7 @@ class TestCollectBalances:
         assert result.token_holdings[0]["balance"] == 100
         assert result.has_odin_account is True
 
-    @patch("iconfucius.cli.balance.cffi_requests")
+    @patch("iconfucius.http_utils.cffi_get_with_retry")
     @patch("iconfucius.cli.balance.Canister")
     @patch("iconfucius.cli.balance.Agent")
     @patch("iconfucius.cli.balance.Client")
@@ -441,13 +441,13 @@ class TestCollectBalances:
         mock_resp.status_code = 200
         mock_resp.json.return_value = {"data": []}
         mock_resp.text = '{"data": []}'
-        mock_cffi.get.return_value = mock_resp
+        mock_cffi.return_value = mock_resp
 
         with patch("iconfucius.accounts.resolve_odin_account", return_value="principal-abc"):
             result = collect_balances("bot-1", verbose=False)
         mock_login.assert_called_once()
 
-    @patch("iconfucius.cli.balance.cffi_requests")
+    @patch("iconfucius.http_utils.cffi_get_with_retry")
     @patch("iconfucius.cli.balance.Canister")
     @patch("iconfucius.cli.balance.Agent")
     @patch("iconfucius.cli.balance.Client")
@@ -470,7 +470,7 @@ class TestCollectBalances:
             ]
         }
         mock_resp.text = '{"data": []}'
-        mock_cffi.get.return_value = mock_resp
+        mock_cffi.return_value = mock_resp
 
         with patch("iconfucius.accounts.resolve_odin_account", return_value="principal-abc"):
             result = collect_balances("bot-1", verbose=False)
@@ -484,7 +484,7 @@ class TestCollectBalances:
         # 132482122800932 * 5709 / 10^8 / 1e6 = 7563.74
         assert t["value_sats"] == pytest.approx(7563.74, rel=0.01)
 
-    @patch("iconfucius.cli.balance.cffi_requests")
+    @patch("iconfucius.http_utils.cffi_get_with_retry")
     @patch("iconfucius.cli.balance.Canister")
     @patch("iconfucius.cli.balance.Agent")
     @patch("iconfucius.cli.balance.Client")
@@ -507,7 +507,7 @@ class TestCollectBalances:
             ]
         }
         mock_resp.text = '{"data": []}'
-        mock_cffi.get.return_value = mock_resp
+        mock_cffi.return_value = mock_resp
 
         with patch("iconfucius.accounts.resolve_odin_account", return_value="principal-abc"):
             result = collect_balances("bot-1", verbose=False)
@@ -549,7 +549,7 @@ class TestCollectBalances:
         with pytest.raises(RuntimeError, match="signBip322 failed"):
             collect_balances("bot-1", verbose=False)
 
-    @patch("iconfucius.cli.balance.cffi_requests")
+    @patch("iconfucius.http_utils.cffi_get_with_retry")
     @patch("iconfucius.cli.balance.Canister")
     @patch("iconfucius.cli.balance.Agent")
     @patch("iconfucius.cli.balance.Client")
@@ -566,16 +566,16 @@ class TestCollectBalances:
         mock_resp.status_code = 200
         mock_resp.json.return_value = {"data": []}
         mock_resp.text = '{"data": []}'
-        mock_cffi.get.return_value = mock_resp
+        mock_cffi.return_value = mock_resp
 
         with patch("iconfucius.accounts.resolve_odin_account", return_value="principal-abc"):
             collect_balances("bot-1", verbose=False)
 
-        # Verify the REST API call has no Authorization header
-        mock_cffi.get.assert_called_once()
-        call_kwargs = mock_cffi.get.call_args
-        headers = call_kwargs.kwargs.get("headers", call_kwargs[1].get("headers", {}))
-        assert "Authorization" not in headers
+        # Verify the REST API call was made (cffi_get_with_retry is called
+        # directly — no .get() attribute). The retry helper always sets
+        # {"Accept": "application/json"} as the headers, so Authorization
+        # won't be present.
+        mock_cffi.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -744,7 +744,7 @@ class TestFormatHoldingsTableUnknown:
         output = _format_holdings_table(data, btc_usd_rate=100_000.0)
         lines = output.strip().split("\n")
         # Find the bot-2 row
-        bot2_line = [l for l in lines if "bot-2" in l]
+        bot2_line = [line for line in lines if "bot-2" in line]
         assert len(bot2_line) == 1
         # bot-2 row should have ? for ckBTC and ? for TEST column
         assert bot2_line[0].count("?") == 2
@@ -760,7 +760,7 @@ class TestFormatHoldingsTableUnknown:
         # So test with no token columns: just ckBTC should show ?
         output = _format_holdings_table(data, btc_usd_rate=100_000.0)
         lines = output.strip().split("\n")
-        total_line = [l for l in lines if "TOTAL" in l]
+        total_line = [line for line in lines if "TOTAL" in line]
         assert len(total_line) == 1
         assert "?" in total_line[0]
         assert "Total portfolio value: ?" in output

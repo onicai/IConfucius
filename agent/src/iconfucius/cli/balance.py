@@ -17,7 +17,6 @@ Checks:
 from dataclasses import dataclass, field
 
 import requests
-from curl_cffi import requests as cffi_requests
 from icp_agent import Agent, Client
 from icp_canister import Canister
 from icp_identity import Identity
@@ -156,11 +155,8 @@ def collect_balances(bot_name: str, token_id: str = "29m8",
 
     url = f"{ODIN_API_URL}/user/{bot_principal_text}/balances"
     log(f"GET {url}")
-    resp = cffi_requests.get(
-        url,
-        impersonate="chrome",
-        headers={"Accept": "application/json"},
-    )
+    from iconfucius.http_utils import cffi_get_with_retry
+    resp = cffi_get_with_retry(url)
     log(f"Status: {resp.status_code}")
     log(f"Response: {resp.text[:1000]}")
 
