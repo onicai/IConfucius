@@ -60,7 +60,7 @@ function TradeChatExamples() {
     "fund bot-1 with 10000 sats",
     "buy 5000 sats of ICONFUCIUS on bot-1",
     "sell all ICONFUCIUS on bot-1",
-    "withdraw bot-1",
+    "withdraw bot-1 (moves funds back to wallet, not external BTC)",
   ];
   return (
     <div className="bg-surface border border-border rounded-xl p-4 mt-4">
