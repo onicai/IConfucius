@@ -2168,9 +2168,8 @@ class TestPublicBalanceExecutor:
     def test_no_wallet_required(self):
         """public_balance should NOT call require_wallet."""
         with patch("iconfucius.config.require_wallet") as mock_rw:
-            # Will fail on canister calls — that's fine, we get an error dict.
-            # We just check that require_wallet is never called.
+            # Use invalid principal to fail fast before any network calls.
             execute_tool("public_balance", {
-                "principal": "aamu4-v26cr-pc5oe-35oal-b3tju-srmh5-cpqql-rkqzf-umm4n-vlahk-hqe",
+                "principal": "not-a-principal",
             })
             mock_rw.assert_not_called()

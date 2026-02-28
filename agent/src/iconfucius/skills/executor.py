@@ -1542,6 +1542,7 @@ def _handle_token_transfer(args: dict) -> dict:
         blocked = [
             {
                 "bot_name": b["bot_name"],
+                "error_type": b.get("error_type", "insufficient_btc_for_fee"),
                 "error": b["error"],
                 "fee_sats": b["fee_sats"],
                 "min_deposit_sats": b.get("min_deposit_sats"),
