@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, Component } from "react";
+import { useState, useEffect, useCallback, useRef, Component } from "react";
 import { getBtcPrice, getWalletStatus, getWalletInfo, getWalletBalances } from "./api";
 import { clearClientCache, preloadCache } from "./hooks";
 import TokensView from "./views/TokensView";
@@ -114,6 +114,7 @@ export default function App() {
   const [chatOpen, setChatOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [chatFocusTick, setChatFocusTick] = useState(0);
+  const userSelectedTabRef = useRef(false);
 
   const handleAction = useCallback(() => {
     clearClientCache();
@@ -121,19 +122,52 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+
     getBtcPrice().then(setBtcUsd);
     fetch("/api/odin/tokens?limit=1")
       .then((r) => setProxyOk(r.ok))
       .catch(() => setProxyOk(false));
-    getWalletStatus()
-      .then((s) => setSdkOk(s.sdk_available))
-      .catch(() => setSdkOk(false));
+
+    (async () => {
+      try {
+        const s = await getWalletStatus();
+        if (cancelled) return;
+        setSdkOk(s.sdk_available);
+
+        // If wallet/setup isn't ready, default to Wallet tab.
+        if (!s.sdk_available || !s.ready) {
+          if (!userSelectedTabRef.current) setActive("wallet");
+          return;
+        }
+
+        // If no tradable funds (wallet + bot sats + token value), default to Wallet.
+        const b = await getWalletBalances();
+        if (cancelled) return;
+        const totals = b?.totals || {};
+        const tradableSats =
+          Number(totals.wallet_sats || 0) +
+          Number(totals.odin_sats || 0) +
+          Number(totals.token_value_sats || 0);
+
+        if (tradableSats <= 0 && !userSelectedTabRef.current) {
+          setActive("wallet");
+        }
+      } catch {
+        if (cancelled) return;
+        setSdkOk(false);
+        if (!userSelectedTabRef.current) setActive("wallet");
+      }
+    })();
+
     // Eagerly preload slow data so tiles open instantly
     preloadCache("wallet_info", getWalletInfo);
     preloadCache("wallet_balances", getWalletBalances);
+    return () => { cancelled = true; };
   }, []);
 
   function toggleService(id) {
+    userSelectedTabRef.current = true;
     setActive((prev) => prev === id ? null : id);
     setChatFocusTick((t) => t + 1);
   }
