@@ -857,7 +857,6 @@ def _handle_account_lookup(args: dict) -> dict:
 
 def _handle_public_balance(args: dict) -> dict:
     """Handle the public_balance tool call."""
-    from curl_cffi import requests as cffi_requests
     from icp_agent import Agent, Client
     from icp_canister import Canister
     from icp_identity import Identity
@@ -927,12 +926,8 @@ def _handle_public_balance(args: dict) -> dict:
     token_holdings = []
     try:
         url = f"{ODIN_API_URL}/user/{principal}/balances"
-        resp = cffi_requests.get(
-            url,
-            impersonate="chrome",
-            headers={"Accept": "application/json"},
-            timeout=10,
-        )
+        from iconfucius.http_utils import cffi_get_with_retry
+        resp = cffi_get_with_retry(url, timeout=10)
         api_data = resp.json()
         balances = api_data.get("data", [])
         tokens = [b for b in balances if b.get("type") == "token"]

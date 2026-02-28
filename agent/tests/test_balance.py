@@ -444,7 +444,7 @@ class TestCollectBalances:
         mock_cffi.return_value = mock_resp
 
         with patch("iconfucius.accounts.resolve_odin_account", return_value="principal-abc"):
-            result = collect_balances("bot-1", verbose=False)
+            collect_balances("bot-1", verbose=False)
         mock_login.assert_called_once()
 
     @patch("iconfucius.http_utils.cffi_get_with_retry")

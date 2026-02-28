@@ -2116,7 +2116,7 @@ class TestPublicBalanceExecutor:
     @patch("icp_canister.Canister")
     @patch("icp_agent.Agent")
     @patch("icp_agent.Client")
-    @patch("curl_cffi.requests.get")
+    @patch("iconfucius.http_utils.cffi_get_with_retry")
     def test_valid_principal_returns_balances(
         self, mock_cffi_get, _mock_client, _mock_agent, mock_canister,
         mock_icrc1, mock_get_bal, _mock_verify, _mock_rate,

@@ -160,7 +160,7 @@ def read_conversation_log(path: str | Path) -> list[dict]:
     path = Path(path)
     records: list[dict] = []
 
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if not line:
