@@ -14,7 +14,7 @@ Web UI for the IConfucius Runes trading agent. Provides wallet management, bot m
 
 ```bash
 # 1. Install frontend dependencies
-cd client
+cd agent/client
 npm install
 
 # 2. Start the proxy server (in one terminal)
