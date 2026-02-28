@@ -265,6 +265,19 @@ def _session_path(bot_name: str) -> str:
     return os.path.join(_session_dir(), filename)
 
 
+def read_cached_principal(bot_name: str) -> str | None:
+    """Read bot_principal_text from cache without JWT validation."""
+    path = _session_path(bot_name)
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path, "r") as f:
+            data = json.load(f)
+        return data.get("bot_principal_text") or None
+    except Exception:
+        return None
+
+
 def save_session(session: dict, bot_name: str) -> str:
     """Save session to .cache/session_{bot_name}.json.
 

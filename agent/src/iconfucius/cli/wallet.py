@@ -537,6 +537,11 @@ def _send_ckbtc(
     from iconfucius.logging_config import get_logger
     logger = get_logger()
 
+    # Guard: reject self-sends (only costs the fee, no funds leave the wallet)
+    if to_principal == wallet_principal:
+        return {"status": "error",
+                "error": "Cannot send to your own wallet. The destination is the same as the sender."}
+
     is_send_all = amount.lower() == "all"
 
     # Determine amount

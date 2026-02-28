@@ -392,6 +392,29 @@ class TestWalletSendCkbtc:
         assert result.exit_code == 0
         assert "Sending all: 4,990 sats" in result.output
 
+    @patch(f"{TR}.unwrap_canister_result", side_effect=lambda x: x)
+    @patch(f"{TR}.get_balance", return_value=5000)
+    @patch(f"{TR}.create_icrc1_canister")
+    @patch(AG)
+    @patch(CL)
+    @patch(ID)
+    def test_send_ckbtc_self_send_rejected(self, MockIdentity, MockClient,
+                                            MockAgent, mock_create,
+                                            mock_get_bal, mock_unwrap,
+                                            odin_project):
+        """Verify sending ckBTC to own wallet is rejected."""
+        mock_id = MagicMock()
+        mock_id.sender.return_value = MagicMock(
+            __str__=lambda s: "ctrl-principal"
+        )
+        MockIdentity.from_pem.return_value = mock_id
+        MockIdentity.return_value = MagicMock()
+
+        # Send to the same principal as the wallet identity
+        result = runner.invoke(app, ["wallet", "send", "1000", "ctrl-principal"])
+        assert result.exit_code == 1
+        assert "Cannot send to your own wallet" in result.output
+
 
 # ---------------------------------------------------------------------------
 # wallet send (BTC)

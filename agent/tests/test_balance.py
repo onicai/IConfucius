@@ -14,7 +14,7 @@ from iconfucius.cli.balance import (
     collect_balances,
     run_all_balances,
 )
-from iconfucius.config import fmt_sats
+from iconfucius.config import fmt_sats, fmt_tokens
 
 
 # ---------------------------------------------------------------------------
@@ -38,6 +38,77 @@ class TestSatsStr:
         result = fmt_sats(0, 100_000.0)
         assert "0 sats" in result
         assert "$0.000" in result
+
+
+# ---------------------------------------------------------------------------
+# fmt_tokens (config.py)
+# ---------------------------------------------------------------------------
+
+class TestFmtTokens:
+    """Tests for config.fmt_tokens — milli-subunit balance with USD."""
+
+    @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100_000.0)
+    @patch("iconfucius.tokens.fetch_token_data",
+           return_value={"price": 1500, "divisibility": 8, "decimals": 3})
+    def test_valid_msu_amount(self, _mock_fetch, _mock_rate):
+        """10^11 milli-subunits (1 display token) at price 1500 msat."""
+        result = fmt_tokens(100_000_000_000, "29m8")
+        assert "1.000 tokens" in result
+        assert "$" in result
+
+    @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100_000.0)
+    @patch("iconfucius.tokens.fetch_token_data",
+           return_value={"price": 1500, "divisibility": 8, "decimals": 3})
+    def test_string_msu_amount(self, _mock_fetch, _mock_rate):
+        """String milli-subunit value is parsed to int correctly."""
+        result = fmt_tokens("100000000000", "29m8")
+        assert "1.000 tokens" in result
+        assert "$" in result
+
+    def test_invalid_count_fallback(self):
+        """Non-numeric count falls back to simple string."""
+        result = fmt_tokens("abc", "29m8")
+        assert result == "abc tokens"
+
+    def test_none_count_fallback(self):
+        """None count falls back to simple string."""
+        result = fmt_tokens(None, "29m8")
+        assert result == "None tokens"
+
+    @patch("iconfucius.tokens.fetch_token_data", return_value=None)
+    def test_no_token_data_fallback(self, _mock_fetch):
+        """Fallback when token not found."""
+        result = fmt_tokens(100_000_000_000, "unknown")
+        assert "100000000000 tokens" in result
+
+    @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100_000.0)
+    @patch("iconfucius.tokens.fetch_token_data",
+           return_value={"price": 0, "divisibility": 8, "decimals": 3})
+    def test_zero_price_shows_zero_usd(self, _mock_fetch, _mock_rate):
+        """Zero price shows $0.000."""
+        result = fmt_tokens(100_000_000_000, "29m8")
+        assert "1.000 tokens" in result
+        assert "$0.000" in result
+
+    @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100_000.0)
+    @patch("iconfucius.tokens.fetch_token_data",
+           return_value={"price": 180, "divisibility": 8, "decimals": 3})
+    def test_realistic_balance(self, _mock_fetch, _mock_rate):
+        """Realistic balance in milli-subunits at price 180."""
+        # 27,714,118.937 display tokens * 10^11 = 2_771_411_893_700_000_000 msu
+        msu = 2_771_411_893_700_000_000
+        result = fmt_tokens(msu, "29m8")
+        assert "27,714,118.937 tokens" in result
+        assert "$" in result
+
+    @patch("iconfucius.config.get_btc_to_usd_rate",
+           side_effect=Exception("offline"))
+    @patch("iconfucius.tokens.fetch_token_data",
+           return_value={"price": 1500, "divisibility": 8, "decimals": 3})
+    def test_rate_failure_fallback(self, _mock_fetch, _mock_rate):
+        """Falls back when btc_usd rate call fails."""
+        result = fmt_tokens(100_000_000_000, "29m8")
+        assert "tokens" in result
 
 
 # ---------------------------------------------------------------------------
@@ -310,18 +381,15 @@ class TestCollectWalletInfo:
 # ---------------------------------------------------------------------------
 
 class TestCollectBalances:
-    @patch("iconfucius.cli.balance.cffi_requests")
+    @patch("iconfucius.http_utils.cffi_get_with_retry")
     @patch("iconfucius.cli.balance.Canister")
     @patch("iconfucius.cli.balance.Agent")
     @patch("iconfucius.cli.balance.Client")
     @patch("iconfucius.cli.balance.Identity")
-    @patch("iconfucius.cli.balance.load_session")
-    def test_collects_all_data(self, mock_load, MockId, MockClient,
-                               MockAgent, MockCanister, mock_cffi,
-                               mock_siwb_auth):
+    @patch("iconfucius.cli.balance.read_cached_principal", return_value="principal-abc")
+    def test_collects_all_data(self, _mock_read_principal, _MockId, _MockClient,
+                               _MockAgent, MockCanister, mock_cffi):
         """Verify collects all data."""
-        mock_load.return_value = mock_siwb_auth
-
         # Mock Odin canister getBalance
         mock_odin = MagicMock()
         mock_odin.getBalance.return_value = [{"value": 5000000}]  # 5000 sats in msat
@@ -338,7 +406,7 @@ class TestCollectBalances:
             ]
         }
         mock_resp.text = '{"data": []}'
-        mock_cffi.get.return_value = mock_resp
+        mock_cffi.return_value = mock_resp
 
         with patch("iconfucius.accounts.resolve_odin_account", return_value="principal-abc"):
             result = collect_balances("bot-1", verbose=False)
@@ -351,20 +419,21 @@ class TestCollectBalances:
         assert result.token_holdings[0]["balance"] == 100
         assert result.has_odin_account is True
 
-    @patch("iconfucius.cli.balance.cffi_requests")
+    @patch("iconfucius.http_utils.cffi_get_with_retry")
     @patch("iconfucius.cli.balance.Canister")
     @patch("iconfucius.cli.balance.Agent")
     @patch("iconfucius.cli.balance.Client")
     @patch("iconfucius.cli.balance.Identity")
     @patch("iconfucius.cli.balance.siwb_login")
-    @patch("iconfucius.cli.balance.load_session", return_value=None)
-    def test_falls_back_to_siwb_login(self, _mock_load,
+    @patch("iconfucius.cli.balance.read_cached_principal", return_value=None)
+    def test_falls_back_to_siwb_login(self, _mock_read_principal,
                                        mock_login,
                                        _MockId, _MockClient, _MockAgent,
-                                       MockCanister, mock_cffi,
-                                       mock_siwb_auth):
-        """Verify falls back to siwb login."""
-        mock_login.return_value = mock_siwb_auth
+                                       MockCanister, mock_cffi):
+        """When no cached principal, falls back to SIWB login."""
+        mock_login.return_value = {
+            "bot_principal_text": "principal-abc",
+        }
         mock_odin = MagicMock()
         mock_odin.getBalance.return_value = [{"value": 0}]
         MockCanister.return_value = mock_odin
@@ -372,24 +441,21 @@ class TestCollectBalances:
         mock_resp.status_code = 200
         mock_resp.json.return_value = {"data": []}
         mock_resp.text = '{"data": []}'
-        mock_cffi.get.return_value = mock_resp
+        mock_cffi.return_value = mock_resp
 
         with patch("iconfucius.accounts.resolve_odin_account", return_value="principal-abc"):
-            result = collect_balances("bot-1", verbose=False)
+            collect_balances("bot-1", verbose=False)
         mock_login.assert_called_once()
 
-    @patch("iconfucius.cli.balance.cffi_requests")
+    @patch("iconfucius.http_utils.cffi_get_with_retry")
     @patch("iconfucius.cli.balance.Canister")
     @patch("iconfucius.cli.balance.Agent")
     @patch("iconfucius.cli.balance.Client")
     @patch("iconfucius.cli.balance.Identity")
-    @patch("iconfucius.cli.balance.load_session")
-    def test_decimals_correction(self, mock_load, MockId, MockClient,
-                                  MockAgent, MockCanister, mock_cffi,
-                                  mock_siwb_auth):
+    @patch("iconfucius.cli.balance.read_cached_principal", return_value="principal-abc")
+    def test_decimals_correction(self, _mock_read_principal, _MockId, _MockClient,
+                                  _MockAgent, MockCanister, mock_cffi):
         """API balance with decimals=3 should be divided by 1000."""
-        mock_load.return_value = mock_siwb_auth
-
         mock_odin = MagicMock()
         mock_odin.getBalance.return_value = [{"value": 0}]
         MockCanister.return_value = mock_odin
@@ -404,7 +470,7 @@ class TestCollectBalances:
             ]
         }
         mock_resp.text = '{"data": []}'
-        mock_cffi.get.return_value = mock_resp
+        mock_cffi.return_value = mock_resp
 
         with patch("iconfucius.accounts.resolve_odin_account", return_value="principal-abc"):
             result = collect_balances("bot-1", verbose=False)
@@ -418,18 +484,15 @@ class TestCollectBalances:
         # 132482122800932 * 5709 / 10^8 / 1e6 = 7563.74
         assert t["value_sats"] == pytest.approx(7563.74, rel=0.01)
 
-    @patch("iconfucius.cli.balance.cffi_requests")
+    @patch("iconfucius.http_utils.cffi_get_with_retry")
     @patch("iconfucius.cli.balance.Canister")
     @patch("iconfucius.cli.balance.Agent")
     @patch("iconfucius.cli.balance.Client")
     @patch("iconfucius.cli.balance.Identity")
-    @patch("iconfucius.cli.balance.load_session")
-    def test_decimals_zero_no_correction(self, mock_load, MockId, MockClient,
-                                          MockAgent, MockCanister, mock_cffi,
-                                          mock_siwb_auth):
+    @patch("iconfucius.cli.balance.read_cached_principal", return_value="principal-abc")
+    def test_decimals_zero_no_correction(self, _mock_read_principal, _MockId, _MockClient,
+                                          _MockAgent, MockCanister, mock_cffi):
         """When decimals=0 (or absent), balance is stored unchanged."""
-        mock_load.return_value = mock_siwb_auth
-
         mock_odin = MagicMock()
         mock_odin.getBalance.return_value = [{"value": 0}]
         MockCanister.return_value = mock_odin
@@ -444,18 +507,16 @@ class TestCollectBalances:
             ]
         }
         mock_resp.text = '{"data": []}'
-        mock_cffi.get.return_value = mock_resp
+        mock_cffi.return_value = mock_resp
 
         with patch("iconfucius.accounts.resolve_odin_account", return_value="principal-abc"):
             result = collect_balances("bot-1", verbose=False)
         # No decimals field → no correction
         assert result.token_holdings[0]["balance"] == 50_000_000_000
 
-    @patch("iconfucius.cli.balance.load_session")
-    def test_no_odin_account_returns_early(self, mock_load, mock_siwb_auth):
+    @patch("iconfucius.cli.balance.read_cached_principal", return_value="principal-abc")
+    def test_no_odin_account_returns_early(self, _mock_read_principal):
         """Bot without Odin.fun account returns immediately with has_odin_account=False."""
-        mock_load.return_value = mock_siwb_auth
-
         with patch("iconfucius.accounts.resolve_odin_account", return_value=None):
             result = collect_balances("bot-1", verbose=False)
         assert isinstance(result, BotBalances)
@@ -465,28 +526,56 @@ class TestCollectBalances:
         assert result.token_holdings is None
 
     @patch("iconfucius.cli.balance.siwb_login")
-    @patch("iconfucius.cli.balance.load_session", return_value=None)
-    def test_insufficient_funds_returns_note(self, _mock_load,
+    @patch("iconfucius.cli.balance.read_cached_principal", return_value=None)
+    def test_insufficient_funds_returns_note(self, _mock_read_principal,
                                               mock_login):
-        """InsufficientFunds during siwb_login returns BotBalances with funding note."""
+        """InsufficientFunds during siwb_login for uncached bot returns graceful note."""
         mock_login.side_effect = RuntimeError(
-            "icrc2_approve for fee payment failed: {'InsufficientFunds': {'balance': 0}}"
+            "icrc2_approve for fee payment failed: {'InsufficientFunds': {'balance': 7}}"
         )
         result = collect_balances("bot-1", verbose=False)
         assert isinstance(result, BotBalances)
         assert result.bot_name == "bot-1"
         assert result.bot_principal == ""
         assert result.odin_sats is None
-        assert "how_to_fund_wallet" in result.note
+        assert "not yet initialized" in result.note
 
     @patch("iconfucius.cli.balance.siwb_login")
-    @patch("iconfucius.cli.balance.load_session", return_value=None)
-    def test_other_runtime_errors_propagate(self, _mock_load,
+    @patch("iconfucius.cli.balance.read_cached_principal", return_value=None)
+    def test_other_runtime_errors_propagate(self, _mock_read_principal,
                                              mock_login):
-        """RuntimeErrors not related to InsufficientFunds still propagate."""
+        """RuntimeErrors from siwb_login propagate."""
         mock_login.side_effect = RuntimeError("signBip322 failed: timeout")
         with pytest.raises(RuntimeError, match="signBip322 failed"):
             collect_balances("bot-1", verbose=False)
+
+    @patch("iconfucius.http_utils.cffi_get_with_retry")
+    @patch("iconfucius.cli.balance.Canister")
+    @patch("iconfucius.cli.balance.Agent")
+    @patch("iconfucius.cli.balance.Client")
+    @patch("iconfucius.cli.balance.Identity")
+    @patch("iconfucius.cli.balance.read_cached_principal", return_value="principal-abc")
+    def test_public_api_no_jwt(self, _mock_read_principal, _MockId, _MockClient,
+                                _MockAgent, MockCanister, mock_cffi):
+        """REST API call must NOT include an Authorization header."""
+        mock_odin = MagicMock()
+        mock_odin.getBalance.return_value = [{"value": 0}]
+        MockCanister.return_value = mock_odin
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"data": []}
+        mock_resp.text = '{"data": []}'
+        mock_cffi.return_value = mock_resp
+
+        with patch("iconfucius.accounts.resolve_odin_account", return_value="principal-abc"):
+            collect_balances("bot-1", verbose=False)
+
+        # Verify the REST API call was made and no Authorization header sent
+        mock_cffi.assert_called_once()
+        _args, kwargs = mock_cffi.call_args
+        headers = kwargs.get("headers", {}) or {}
+        assert "Authorization" not in headers
 
 
 # ---------------------------------------------------------------------------
@@ -606,3 +695,72 @@ class TestRunAllBalances:
 
         result = run_all_balances(bot_names=["bot-1"])
         assert result is None
+
+    @patch("iconfucius.cli.balance._format_holdings_table", return_value="table")
+    @patch("iconfucius.cli.balance._collect_wallet_info")
+    @patch("iconfucius.cli.balance.collect_balances")
+    @patch("iconfucius.cli.balance._fetch_btc_usd_rate", return_value=100_000.0)
+    def test_failed_bot_includes_error_message(self, _mock_rate, mock_collect,
+                                                mock_wallet, _mock_holdings,
+                                                odin_project):
+        """Failed bots include the actual error message in their note."""
+        mock_wallet.return_value = (
+            {"principal": "p", "btc_address": "bc1", "balance_sats": 50000,
+             "pending_sats": 0, "withdrawal_balance_sats": 0,
+             "active_withdrawal_count": 0, "address_btc_sats": 0},
+            ["wallet line"],
+        )
+        # bot-1 succeeds, bot-2 raises a connection error
+        def side_effect(name, *a, **kw):
+            if name == "bot-1":
+                return BotBalances("bot-1", "abc", odin_sats=1000.0,
+                                   has_odin_account=True, token_holdings=[])
+            raise ConnectionError("Could not connect to server")
+        mock_collect.side_effect = side_effect
+
+        result = run_all_balances(bot_names=["bot-1", "bot-2"])
+        assert result is not None
+        bots = result["bots"]
+        failed = [b for b in bots if b["name"] == "bot-2"]
+        assert len(failed) == 1
+        assert "Could not connect to server" in failed[0]["note"]
+
+
+class TestFormatHoldingsTableUnknown:
+    """Tests for ? display when odin_sats is None (API failure)."""
+
+    def test_unknown_bot_shows_question_marks_for_tokens(self):
+        """When odin_sats is None, token columns should show ? not 0."""
+        data = [
+            BotBalances("bot-1", "abc", odin_sats=1000.0,
+                        token_holdings=[
+                            {"ticker": "TEST", "token_id": "t1",
+                             "balance": 10_000_000_000, "divisibility": 8,
+                             "value_sats": 50}
+                        ]),
+            BotBalances("bot-2", "def", odin_sats=None,
+                        token_holdings=None),
+        ]
+        output = _format_holdings_table(data, btc_usd_rate=100_000.0)
+        lines = output.strip().split("\n")
+        # Find the bot-2 row
+        bot2_line = [line for line in lines if "bot-2" in line]
+        assert len(bot2_line) == 1
+        # bot-2 row should have ? for ckBTC and ? for TEST column
+        assert bot2_line[0].count("?") == 2
+
+    def test_all_unknown_totals_show_question_marks(self):
+        """When all bots have odin_sats=None, TOTAL row shows ? for all columns."""
+        data = [
+            BotBalances("bot-1", "abc", odin_sats=None, token_holdings=None),
+            BotBalances("bot-2", "def", odin_sats=None, token_holdings=None),
+        ]
+        # Need at least one ticker column to test — but with all None,
+        # all_tickers will be empty since token_holdings is None for both.
+        # So test with no token columns: just ckBTC should show ?
+        output = _format_holdings_table(data, btc_usd_rate=100_000.0)
+        lines = output.strip().split("\n")
+        total_line = [line for line in lines if "TOTAL" in line]
+        assert len(total_line) == 1
+        assert "?" in total_line[0]
+        assert "Total portfolio value: ?" in output

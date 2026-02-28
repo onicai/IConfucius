@@ -59,10 +59,10 @@ TOOLS: list[dict] = [
     {
         "name": "bot_list",
         "description": (
-            "List all configured bots (names and count). "
-            "Fast — reads config only, no network calls. "
+            "List all configured bots with names and IC principals. "
+            "Fast — reads config and cache only, no network calls. "
             "Use this when the user asks how many bots they have, "
-            "or wants to see bot names."
+            "wants to see bot names, or asks for bot principals/addresses."
         ),
         "input_schema": {
             "type": "object",
@@ -236,6 +236,26 @@ TOOLS: list[dict] = [
             "type": "object",
             "properties": {},
             "required": [],
+        },
+        "requires_confirmation": False,
+        "category": "read",
+    },
+    {
+        "name": "public_balance",
+        "description": (
+            "Check ckBTC balance and Odin.fun holdings for any IC principal. "
+            "Public on-chain query — no authentication needed. "
+            "Returns ckBTC balance, Odin.fun BTC balance, and token holdings."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "principal": {
+                    "type": "string",
+                    "description": "IC principal to check.",
+                },
+            },
+            "required": ["principal"],
         },
         "requires_confirmation": False,
         "category": "read",
