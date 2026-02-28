@@ -40,6 +40,39 @@ function ResultBox({ result }) {
   );
 }
 
+function truncateMiddle(text, head = 8, tail = 8) {
+  if (!text || text.length <= head + tail + 3) return text || "";
+  return `${text.slice(0, head)}...${text.slice(-tail)}`;
+}
+
+function AddressWithCopy({ value }) {
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-[0.78rem] font-mono leading-tight" title={value}>
+        {truncateMiddle(value)}
+      </span>
+      <button
+        onClick={handleCopy}
+        className="shrink-0 px-2 py-0.5 rounded-md text-[0.65rem] font-medium bg-surface-hover border border-border text-dim hover:text-text cursor-pointer transition-colors"
+      >
+        {copied ? "Copied" : "Copy"}
+      </button>
+    </div>
+  );
+}
+
 function DownloadBackupButton({ className = "" }) {
   return (
     <button onClick={() => { const a = document.createElement("a"); a.href = "/api/wallet/backup"; a.download = "iconfucius-identity-private.pem"; a.click(); }}
@@ -262,12 +295,12 @@ function WalletInfoCards({ btcUsd, refreshKey = 0 }) {
         )}
         <StatCard
           label="Wallet Principal"
-          value={<span className="text-[0.7rem] break-all leading-tight">{data.principal}</span>}
+          value={<AddressWithCopy value={data.principal} />}
           help="Your Internet Computer identity. Use this to receive ckBTC directly."
         />
         <StatCard
           label="BTC Deposit Address"
-          value={<span className="text-[0.7rem] break-all leading-tight">{data.btc_address}</span>}
+          value={<AddressWithCopy value={data.btc_address} />}
           sub={<a href={`https://mempool.space/address/${data.btc_address}`} target="_blank" rel="noopener noreferrer">View on mempool.space</a>}
           help="Send native BTC here to fund your wallet. After ~6 confirmations it auto-converts to ckBTC."
         />
