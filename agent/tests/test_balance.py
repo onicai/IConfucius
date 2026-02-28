@@ -571,11 +571,11 @@ class TestCollectBalances:
         with patch("iconfucius.accounts.resolve_odin_account", return_value="principal-abc"):
             collect_balances("bot-1", verbose=False)
 
-        # Verify the REST API call was made (cffi_get_with_retry is called
-        # directly — no .get() attribute). The retry helper always sets
-        # {"Accept": "application/json"} as the headers, so Authorization
-        # won't be present.
+        # Verify the REST API call was made and no Authorization header sent
         mock_cffi.assert_called_once()
+        _args, kwargs = mock_cffi.call_args
+        headers = kwargs.get("headers", {}) or {}
+        assert "Authorization" not in headers
 
 
 # ---------------------------------------------------------------------------

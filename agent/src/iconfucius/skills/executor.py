@@ -1539,10 +1539,23 @@ def _handle_token_transfer(args: dict) -> dict:
     # Pass through structured data so the AI can present options
     # with correct constraints (min_trade_sats, min_deposit_sats)
     if fee_blocked:
-        fb = fee_blocked[0]
+        blocked = [
+            {
+                "bot_name": b["bot_name"],
+                "error": b["error"],
+                "fee_sats": b["fee_sats"],
+                "min_deposit_sats": b.get("min_deposit_sats"),
+                "min_trade_sats": b.get("min_trade_sats"),
+                "options": b.get("options", []),
+            }
+            for b in fee_blocked
+        ]
+        fb = blocked[0]  # keep compatibility fields
         return {
             "status": "partial",
-            "display": f"  {fb['bot_name']}: FAILED — {fb['error']}",
+            "display": "\n".join(
+                f"  {b['bot_name']}: FAILED — {b['error']}" for b in blocked
+            ),
             "succeeded": len(succeeded),
             "failed": len(fee_blocked) + len(failed),
             "error_type": fb["error_type"],
@@ -1551,6 +1564,7 @@ def _handle_token_transfer(args: dict) -> dict:
             "min_deposit_sats": fb.get("min_deposit_sats"),
             "min_trade_sats": fb.get("min_trade_sats"),
             "options": fb.get("options", []),
+            "fee_blocked": blocked,
         }
 
     lines = []
