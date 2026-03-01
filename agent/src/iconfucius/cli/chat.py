@@ -985,12 +985,10 @@ def _check_pypi_version() -> tuple[str | None, str]:
         (latest_version, release_notes) — version is None when up-to-date.
     """
     try:
+        from packaging.version import Version
         with urlopen("https://pypi.org/pypi/iconfucius/json", timeout=3) as resp:
             latest = json.loads(resp.read())["info"]["version"]
-        def _ver_tuple(v: str) -> tuple:
-            """Parse a version string into a comparable tuple."""
-            return tuple(int(x) for x in v.split("."))
-        if _ver_tuple(latest) <= _ver_tuple(__version__):
+        if Version(latest) <= Version(__version__):
             return None, ""
         # Fetch release notes from GitHub (best-effort)
         notes = ""

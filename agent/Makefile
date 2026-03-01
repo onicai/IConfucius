@@ -1,6 +1,6 @@
 # Makefile for iconfucius Python package
 
-.PHONY: help install install-dev install-blst build clean publish-test publish test lint \
+.PHONY: help install install-dev install-blst bundle-ui build clean publish-test publish test lint \
        e2e-setup e2e-fund-check-ckbtc e2e-fund-check-btc \
        e2e-trade-bot-1 e2e-trade-all-bots \
        e2e-transfer-bot-1 \
@@ -13,7 +13,8 @@ help:
 	@echo ""
 	@echo "  make install       Install package in current environment"
 	@echo "  make install-dev   Install package with dev dependencies"
-	@echo "  make build         Build sdist and wheel distributions"
+	@echo "  make bundle-ui     Bundle React UI into client/static/"
+	@echo "  make build         Bundle UI + build sdist and wheel"
 	@echo "  make clean         Remove build artifacts"
 	@echo "  make test          Run pytest"
 	@echo "  make install-blst  Install blst for IC certificate verification"
@@ -74,7 +75,15 @@ install-blst:
 # Building
 # ---------------------------------------------------------------------------
 
-build: clean
+bundle-ui:
+	@if [ -f scripts/bundle_client.sh ]; then \
+		echo "Bundling UI client..."; \
+		bash scripts/bundle_client.sh; \
+	else \
+		echo "Skipping UI bundle (scripts/bundle_client.sh not found)"; \
+	fi
+
+build: clean bundle-ui
 	pip install --quiet build
 	python -m build
 
