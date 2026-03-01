@@ -10,9 +10,6 @@ import pytest
 
 from iconfucius.ai import AIBackend, ClaudeBackend, LoggingBackend, cached_system
 from iconfucius.conversation_log import ConversationLogger, _MAX_LOG_FILES
-from iconfucius.logging_config import _reset_session_stamp
-
-
 _FAKE_JWT = (
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
     "eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIn0."
@@ -20,17 +17,11 @@ _FAKE_JWT = (
 )
 
 
-@pytest.fixture(autouse=True)
-def _fresh_session_stamp():
-    """Reset the shared session stamp before each test."""
-    _reset_session_stamp()
-
-
 class TestConversationLogger:
 
     def test_creates_dir_with_0700(self, tmp_path):
         """Verify creates dir with 0700."""
-        logger = ConversationLogger(base_dir=tmp_path)
+        logger = ConversationLogger(stamp="test", base_dir=tmp_path)
         conv_dir = tmp_path / ".logs" / "conversations"
         mode = stat.S_IMODE(conv_dir.stat().st_mode)
         assert mode == 0o700
@@ -38,14 +29,14 @@ class TestConversationLogger:
 
     def test_creates_file_with_0600(self, tmp_path):
         """Verify creates file with 0600."""
-        logger = ConversationLogger(base_dir=tmp_path)
+        logger = ConversationLogger(stamp="test", base_dir=tmp_path)
         mode = stat.S_IMODE(logger.path_cached.stat().st_mode)
         assert mode == 0o600
         logger.close()
 
     def test_writes_valid_jsonl(self, tmp_path):
         """Verify writes valid jsonl."""
-        logger = ConversationLogger(base_dir=tmp_path)
+        logger = ConversationLogger(stamp="test", base_dir=tmp_path)
         logger.log_interaction(
             call_type="chat",
             model="test-model",
@@ -76,7 +67,7 @@ class TestConversationLogger:
 
     def test_jwt_scrubbed(self, tmp_path):
         """Verify jwt scrubbed."""
-        logger = ConversationLogger(base_dir=tmp_path)
+        logger = ConversationLogger(stamp="test", base_dir=tmp_path)
         logger.log_interaction(
             call_type="chat",
             model="test-model",
@@ -94,7 +85,7 @@ class TestConversationLogger:
 
     def test_sequence_increments(self, tmp_path):
         """Verify sequence increments."""
-        logger = ConversationLogger(base_dir=tmp_path)
+        logger = ConversationLogger(stamp="test", base_dir=tmp_path)
         for _ in range(3):
             logger.log_interaction(
                 call_type="chat",
@@ -113,7 +104,7 @@ class TestConversationLogger:
 
     def test_tools_omitted_for_chat(self, tmp_path):
         """Verify tools omitted for chat."""
-        logger = ConversationLogger(base_dir=tmp_path)
+        logger = ConversationLogger(stamp="test", base_dir=tmp_path)
         logger.log_interaction(
             call_type="chat",
             model="m",
@@ -139,7 +130,7 @@ class TestConversationLogger:
         assert len(list(conv_dir.glob("*-ai-cached.jsonl"))) == _MAX_LOG_FILES + extra
 
         # Creating a new logger triggers cleanup
-        logger = ConversationLogger(base_dir=tmp_path)
+        logger = ConversationLogger(stamp="test", base_dir=tmp_path)
         logger.close()
 
         remaining = sorted(conv_dir.glob("*-ai-cached.jsonl"))
@@ -155,7 +146,7 @@ class TestConversationLogger:
         for i in range(5):
             (conv_dir / f"20260101-{i:06d}-ai-cached.jsonl").write_text("")
 
-        logger = ConversationLogger(base_dir=tmp_path)
+        logger = ConversationLogger(stamp="test", base_dir=tmp_path)
         logger.close()
 
         remaining = list(conv_dir.glob("*-ai-cached.jsonl"))
@@ -163,7 +154,7 @@ class TestConversationLogger:
 
     def test_tools_included_for_chat_with_tools(self, tmp_path):
         """Verify tools included for chat with tools."""
-        logger = ConversationLogger(base_dir=tmp_path)
+        logger = ConversationLogger(stamp="test", base_dir=tmp_path)
         logger.log_interaction(
             call_type="chat_with_tools",
             model="m",
@@ -181,7 +172,7 @@ class TestConversationLogger:
 
     def test_raw_openai_response_logged(self, tmp_path):
         """raw_openai_response is included in log entry when provided."""
-        logger = ConversationLogger(base_dir=tmp_path)
+        logger = ConversationLogger(stamp="test", base_dir=tmp_path)
         raw = {"choices": [{"message": {"content": "hi"}}]}
         logger.log_interaction(
             call_type="chat_with_tools",
@@ -201,7 +192,7 @@ class TestConversationLogger:
 
     def test_raw_openai_response_omitted_when_none(self, tmp_path):
         """raw_openai_response is not in log entry when None."""
-        logger = ConversationLogger(base_dir=tmp_path)
+        logger = ConversationLogger(stamp="test", base_dir=tmp_path)
         logger.log_interaction(
             call_type="chat",
             model="m",
@@ -218,7 +209,7 @@ class TestConversationLogger:
 
     def test_no_full_file_created(self, tmp_path):
         """Only the cached log file is created, no full file."""
-        logger = ConversationLogger(base_dir=tmp_path)
+        logger = ConversationLogger(stamp="test", base_dir=tmp_path)
         logger.log_interaction(
             call_type="chat",
             model="m",
@@ -261,7 +252,7 @@ class TestLoggingBackend:
 
     def test_chat_delegates_and_logs(self, tmp_path):
         """Verify chat delegates and logs."""
-        logger = ConversationLogger(base_dir=tmp_path)
+        logger = ConversationLogger(stamp="test", base_dir=tmp_path)
         backend = LoggingBackend(_FakeBackend(), logger)
 
         result = backend.chat(
@@ -278,7 +269,7 @@ class TestLoggingBackend:
 
     def test_chat_with_tools_delegates_and_logs(self, tmp_path):
         """Verify chat with tools delegates and logs."""
-        logger = ConversationLogger(base_dir=tmp_path)
+        logger = ConversationLogger(stamp="test", base_dir=tmp_path)
         backend = LoggingBackend(_FakeBackend(), logger)
 
         result = backend.chat_with_tools(
@@ -297,7 +288,7 @@ class TestLoggingBackend:
 
     def test_logs_errors_and_reraises(self, tmp_path):
         """Verify logs errors and reraises."""
-        logger = ConversationLogger(base_dir=tmp_path)
+        logger = ConversationLogger(stamp="test", base_dir=tmp_path)
 
         class _FailBackend(AIBackend):
             model = "fail-model"
@@ -317,7 +308,7 @@ class TestLoggingBackend:
 
     def test_proxies_model_property(self, tmp_path):
         """Verify proxies model property."""
-        logger = ConversationLogger(base_dir=tmp_path)
+        logger = ConversationLogger(stamp="test", base_dir=tmp_path)
         backend = LoggingBackend(_FakeBackend(), logger)
 
         assert backend.model == "fake-model"
@@ -327,7 +318,7 @@ class TestLoggingBackend:
 
     def test_list_models_delegates(self, tmp_path):
         """Verify list models delegates."""
-        logger = ConversationLogger(base_dir=tmp_path)
+        logger = ConversationLogger(stamp="test", base_dir=tmp_path)
         backend = LoggingBackend(_FakeBackend(), logger)
 
         models = backend.list_models()
@@ -349,7 +340,7 @@ class TestPromptCaching:
 
     def test_logging_backend_logs_system_as_api_format(self, tmp_path):
         """LoggingBackend logs system in API format (list[dict] with cache_control)."""
-        logger = ConversationLogger(base_dir=tmp_path)
+        logger = ConversationLogger(stamp="test", base_dir=tmp_path)
         backend = LoggingBackend(_FakeBackend(), logger)
 
         backend.chat_with_tools(
@@ -372,7 +363,7 @@ class TestCachedLogFile:
 
     def test_first_call_writes_full_system_and_tools(self, tmp_path):
         """Verify first call writes full system and tools."""
-        logger = ConversationLogger(base_dir=tmp_path)
+        logger = ConversationLogger(stamp="test", base_dir=tmp_path)
         system = cached_system("You are wise.")
         tools = [{"name": "t1"}, {"name": "t2"}]
 
@@ -394,7 +385,7 @@ class TestCachedLogFile:
 
     def test_second_identical_call_uses_cached_placeholder(self, tmp_path):
         """Verify second identical call uses cached placeholder."""
-        logger = ConversationLogger(base_dir=tmp_path)
+        logger = ConversationLogger(stamp="test", base_dir=tmp_path)
         system = cached_system("You are wise.")
         tools = [{"name": "t1"}]
 
@@ -425,7 +416,7 @@ class TestCachedLogFile:
 
     def test_changed_system_resets_cache(self, tmp_path):
         """Verify changed system resets cache."""
-        logger = ConversationLogger(base_dir=tmp_path)
+        logger = ConversationLogger(stamp="test", base_dir=tmp_path)
         tools = [{"name": "t1"}]
 
         logger.log_interaction(
@@ -460,7 +451,7 @@ class TestCachedLogFile:
 
     def test_chat_only_caches_system(self, tmp_path):
         """chat() calls (no tools) should still cache system when unchanged."""
-        logger = ConversationLogger(base_dir=tmp_path)
+        logger = ConversationLogger(stamp="test", base_dir=tmp_path)
         system = cached_system("sys")
 
         for _ in range(2):
@@ -491,7 +482,7 @@ class TestCachedMessages:
 
     def test_first_call_logs_all_messages(self, tmp_path):
         """Verify first call logs all messages."""
-        logger = ConversationLogger(base_dir=tmp_path)
+        logger = ConversationLogger(stamp="test", base_dir=tmp_path)
         msgs = [{"role": "user", "content": "hello"}]
         logger.log_interaction(
             call_type="chat", model="m", system="s",
@@ -504,7 +495,7 @@ class TestCachedMessages:
 
     def test_second_call_caches_prior_messages(self, tmp_path):
         """Verify second call caches prior messages."""
-        logger = ConversationLogger(base_dir=tmp_path)
+        logger = ConversationLogger(stamp="test", base_dir=tmp_path)
 
         msgs1 = [{"role": "user", "content": "hello"}]
         logger.log_interaction(
@@ -536,7 +527,7 @@ class TestCachedMessages:
 
     def test_growing_conversation(self, tmp_path):
         """Simulate 3 turns of a growing conversation."""
-        logger = ConversationLogger(base_dir=tmp_path)
+        logger = ConversationLogger(stamp="test", base_dir=tmp_path)
 
         turn1 = [{"role": "user", "content": "a"}]
         turn2 = turn1 + [{"role": "assistant", "content": "b"},
@@ -574,7 +565,7 @@ class TestLoggingBackendMessageCaching:
 
     def test_chat_caches_messages_across_turns(self, tmp_path):
         """Simulate 3 chat turns — logger should only log new messages."""
-        logger = ConversationLogger(base_dir=tmp_path)
+        logger = ConversationLogger(stamp="test", base_dir=tmp_path)
         backend = LoggingBackend(_FakeBackend(), logger)
 
         # Turn 1: user sends first message
@@ -623,7 +614,7 @@ class TestLoggingBackendMessageCaching:
 
     def test_chat_with_tools_caches_messages(self, tmp_path):
         """Same test but with chat_with_tools, which includes tool_use blocks."""
-        logger = ConversationLogger(base_dir=tmp_path)
+        logger = ConversationLogger(stamp="test", base_dir=tmp_path)
         backend = LoggingBackend(_FakeBackend(), logger)
 
         # Turn 1
@@ -660,7 +651,7 @@ class TestLoggingBackendMessageCaching:
 
     def test_single_message_turn_not_cached(self, tmp_path):
         """First call and calls with same message count should not cache."""
-        logger = ConversationLogger(base_dir=tmp_path)
+        logger = ConversationLogger(stamp="test", base_dir=tmp_path)
         backend = LoggingBackend(_FakeBackend(), logger)
 
         # Two separate single-message turns (e.g. greeting + first user msg)

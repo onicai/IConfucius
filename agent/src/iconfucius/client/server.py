@@ -27,6 +27,7 @@ import time
 import traceback
 import uuid
 import webbrowser
+from datetime import datetime, timezone
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from socketserver import ThreadingMixIn
@@ -388,7 +389,9 @@ def _handle_chat_start(body):
 
     try:
         from iconfucius.persona import load_persona
-        from iconfucius.ai import ClaudeBackend, APIKeyMissingError
+        from iconfucius.ai import ClaudeBackend, LoggingBackend, APIKeyMissingError
+        from iconfucius.conversation_log import ConversationLogger
+        from iconfucius.logging_config import create_session_logger
         from iconfucius.skills.definitions import get_tools_for_anthropic
     except ImportError as e:
         return 503, {"error": f"Missing dependency: {e}"}
@@ -414,6 +417,15 @@ def _handle_chat_start(body):
     session_id = str(uuid.uuid4())
     persona_key = persona_name.lower().replace(" ", "")
 
+    # Per-session logging: unique stamp → separate log files per chat
+    stamp = (
+        datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        + f"-web-{session_id[:8]}"
+    )
+    conv_logger = ConversationLogger(stamp=stamp)
+    session_logger = create_session_logger(stamp)
+    backend = LoggingBackend(backend, conv_logger)
+
     _chat_sessions[session_id] = {
         "backend": backend,
         "messages": [],
@@ -422,6 +434,8 @@ def _handle_chat_start(body):
         "persona_name": persona.name,
         "persona_key": persona_key,
         "pending_confirm": None,
+        "conv_logger": conv_logger,
+        "session_logger": session_logger,
     }
 
     return 200, {
@@ -433,6 +447,8 @@ def _handle_chat_start(body):
 
 def _handle_chat_message(body):
     """Send a user message and run the tool loop."""
+    from iconfucius.logging_config import set_session_logger, clear_session_logger
+
     sid = body.get("session_id")
     text = body.get("text", "").strip()
     if not sid or sid not in _chat_sessions:
@@ -444,16 +460,21 @@ def _handle_chat_message(body):
     session["pending_confirm"] = None
     session["messages"].append({"role": "user", "content": text})
 
+    set_session_logger(session["session_logger"])
     try:
         result = _run_web_tool_loop(session)
         return 200, result
     except Exception as e:
         traceback.print_exc()
         return 500, {"error": str(e)}
+    finally:
+        clear_session_logger()
 
 
 def _handle_chat_confirm(body):
     """Handle user confirmation for pending tool calls."""
+    from iconfucius.logging_config import set_session_logger, clear_session_logger
+
     sid = body.get("session_id")
     approved = body.get("approved", False)
     if not sid or sid not in _chat_sessions:
@@ -472,28 +493,28 @@ def _handle_chat_confirm(body):
     persona_key = session.get("persona_key", "")
 
     confirm_ids = {b.id for b in confirm_blocks}
+
+    set_session_logger(session["session_logger"])
     try:
         tool_results = _execute_tool_blocks(tool_blocks, confirm_ids, approved, persona_key)
-    except Exception as e:
-        traceback.print_exc()
-        return 500, {"error": str(e)}
 
-    for block in response.content:
-        if block.type == "tool_use" and block.id in deferred_ids:
-            tool_results.append({
-                "type": "tool_result",
-                "tool_use_id": block.id,
-                "content": json.dumps({"status": "deferred", "error": "Deferred: only one write tool type per turn."}),
-            })
+        for block in response.content:
+            if block.type == "tool_use" and block.id in deferred_ids:
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": block.id,
+                    "content": json.dumps({"status": "deferred", "error": "Deferred: only one write tool type per turn."}),
+                })
 
-    session["messages"].append({"role": "user", "content": tool_results})
+        session["messages"].append({"role": "user", "content": tool_results})
 
-    try:
         result = _run_web_tool_loop(session)
         return 200, result
     except Exception as e:
         traceback.print_exc()
         return 500, {"error": str(e)}
+    finally:
+        clear_session_logger()
 
 
 def _handle_chat_settings(body):
@@ -632,8 +653,8 @@ def _handle_wallet_info(*, bypass_cache=False):
             "project_root": os.environ.get("ICONFUCIUS_ROOT", ""),
         }
     btc_usd = result.get("btc_usd_rate")
-    balance = result.get("balance_sats", 0)
-    pending = result.get("pending_sats", 0)
+    balance = result.get("balance_sats") or 0
+    pending = result.get("pending_sats") or 0
     resp = 200, {
         "principal": result.get("principal", ""),
         "btc_address": result.get("btc_address", ""),
@@ -666,18 +687,19 @@ def _handle_wallet_balances(*, bypass_cache=False):
             btc_usd = get_btc_to_usd_rate()
         except Exception:
             pass
-    wallet_sats = result.get("wallet_ckbtc_sats", 0)
-    pending_sats = result.get("wallet_pending_sats", 0)
+    wallet_sats = result.get("wallet_ckbtc_sats") or 0
+    pending_sats = result.get("wallet_pending_sats") or 0
     bots = []
     for b in result.get("bots", []):
+        odin_sats = b.get("odin_sats") or 0
         bot_entry = {
             "name": b["name"], "principal": b.get("principal", ""),
-            "odin_sats": b.get("odin_sats", 0),
+            "odin_sats": odin_sats,
             "has_odin_account": b.get("has_odin_account", False),
             "tokens": b.get("tokens", []),
         }
         if btc_usd:
-            bot_entry["odin_usd"] = (b.get("odin_sats", 0) / 1e8) * btc_usd
+            bot_entry["odin_usd"] = (odin_sats / 1e8) * btc_usd
         bots.append(bot_entry)
     totals = result.get("totals", {})
     resp = 200, {
@@ -690,11 +712,11 @@ def _handle_wallet_balances(*, bypass_cache=False):
         },
         "bots": bots,
         "totals": {
-            "odin_sats": totals.get("odin_sats", 0),
-            "token_value_sats": totals.get("token_value_sats", 0),
-            "wallet_sats": totals.get("wallet_sats", 0),
-            "portfolio_sats": totals.get("portfolio_sats", 0),
-            "portfolio_usd": (totals.get("portfolio_sats", 0) / 1e8) * btc_usd if btc_usd else None,
+            "odin_sats": totals.get("odin_sats") or 0,
+            "token_value_sats": totals.get("token_value_sats") or 0,
+            "wallet_sats": totals.get("wallet_sats") or 0,
+            "portfolio_sats": totals.get("portfolio_sats") or 0,
+            "portfolio_usd": ((totals.get("portfolio_sats") or 0) / 1e8) * btc_usd if btc_usd else None,
         },
         "btc_usd_rate": btc_usd,
     }
@@ -815,6 +837,12 @@ class UIHandler(BaseHTTPRequestHandler):
         return json.loads(raw)
 
     def do_POST(self):
+        try:
+            self._do_POST()
+        except BrokenPipeError:
+            pass
+
+    def _do_POST(self):
         parsed = urlparse(self.path)
         path = parsed.path
 
@@ -850,6 +878,12 @@ class UIHandler(BaseHTTPRequestHandler):
         _json_response(self, status, data)
 
     def do_GET(self):
+        try:
+            self._do_GET()
+        except BrokenPipeError:
+            pass
+
+    def _do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
         refresh = "refresh" in parsed.query
@@ -954,6 +988,26 @@ def run_server(port: int = 55129, open_browser: bool = True):
 
     Called by ``iconfucius ui`` or ``python -m iconfucius.client.server``.
     """
+    # Server-level log — global logger writes to *-iconfucius-server.log
+    if _HAS_ICONFUCIUS:
+        from iconfucius.logging_config import create_session_logger, get_session_stamp
+        stamp = get_session_stamp()
+        server_logger = create_session_logger(
+            stamp, suffix="-iconfucius-server.log"
+        )
+        # Install as the global logger so any get_logger() call from threads
+        # without a session logger (cache warming, startup) goes here.
+        import logging
+        global_logger = logging.getLogger("iconfucius")
+        # Clear any existing handlers (from prior runs / tests), attach server log
+        for h in global_logger.handlers[:]:
+            h.close()
+            global_logger.removeHandler(h)
+        for h in server_logger.handlers:
+            global_logger.addHandler(h)
+        global_logger.setLevel(logging.DEBUG)
+        global_logger.propagate = False
+
     try:
         server = ThreadingHTTPServer(("127.0.0.1", port), UIHandler)
     except OSError as exc:
