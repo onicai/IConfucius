@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "iconfucius"
-version = "0.8.0"
+version = "0.9.0rc3"
 description = "IConfucius | Wisdom for Bitcoin Markets"
 readme = "README.md"
 license = "MIT"
@@ -72,7 +72,7 @@ include = ["iconfucius*"]
 exclude = ["canisters*"]
 
 [tool.setuptools.package-data]
-iconfucius = ["py.typed", "*.toml", "personas/**/*.toml", "personas/**/*.md"]
+iconfucius = ["py.typed", "*.toml", "personas/**/*.toml", "personas/**/*.md", "client/static/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

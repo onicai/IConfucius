@@ -1,14 +1,15 @@
-"""Lightweight proxy for the Odin.fun API and iconfucius wallet + chat.
+"""IConfucius UI server — API proxy + static file serving.
 
-Uses curl_cffi with Chrome TLS fingerprint impersonation to bypass
-Cloudflare bot detection. Exposes wallet/balance endpoints when the
-iconfucius SDK is installed and a project is initialized.
+Serves the pre-built React UI from ``client/static/`` and proxies
+Odin.fun API requests via curl_cffi (Chrome TLS fingerprint).
 
 Usage:
-    python proxy-server.py                          # default: CWD as project root
-    ICONFUCIUS_ROOT=/path/to/project python proxy-server.py
+    iconfucius ui                                   # recommended
+    python -m iconfucius.client.server              # direct
+    ICONFUCIUS_ROOT=/path/to/project iconfucius ui  # explicit project root
 
 Endpoints:
+    /*                   Static files (React SPA with index.html fallback)
     /api/odin/*          Proxy to https://api.odin.fun/v1/*
     /api/wallet/info     Wallet principal, ckBTC balance, BTC deposit address
     /api/wallet/balances Full portfolio: wallet + all bot holdings
@@ -18,19 +19,50 @@ Endpoints:
 """
 
 import json
+import mimetypes
 import os
 import sys
 import threading
 import time
 import traceback
 import uuid
+import webbrowser
+from datetime import datetime, timezone
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from pathlib import Path
 from socketserver import ThreadingMixIn
 from urllib.parse import urlparse
 
 
 class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
     daemon_threads = True
+
+
+# ---------------------------------------------------------------------------
+# Static file serving
+# ---------------------------------------------------------------------------
+_STATIC_DIR = Path(__file__).parent / "static"
+
+
+def _resolve_static(url_path: str) -> Path | None:
+    """Map a URL path to a file inside _STATIC_DIR.
+
+    Returns None if the static directory doesn't exist or the path escapes it.
+    Falls back to index.html for SPA client-side routing.
+    """
+    if not _STATIC_DIR.is_dir():
+        return None
+    # Strip leading slash and normalise
+    relative = url_path.lstrip("/") or "index.html"
+    candidate = (_STATIC_DIR / relative).resolve()
+    # Prevent directory traversal
+    if not str(candidate).startswith(str(_STATIC_DIR.resolve())):
+        return None
+    if candidate.is_file():
+        return candidate
+    # SPA fallback — let React Router handle the route
+    index = _STATIC_DIR / "index.html"
+    return index if index.is_file() else None
 
 
 # ---------------------------------------------------------------------------
@@ -81,27 +113,11 @@ except ImportError:
     print("curl_cffi is required: pip install curl_cffi")
     sys.exit(1)
 
-PORT = 3001
 ODIN_API = "https://api.odin.fun/v1"
 
+# Default to current working directory — the user's iconfucius project.
 if "ICONFUCIUS_ROOT" not in os.environ:
-    os.environ["ICONFUCIUS_ROOT"] = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..")
-    )
-
-# If setup files were previously created in client/, prefer that location so
-# setup status and wallet operations point to the same project directory.
-_repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-_client_root = os.path.abspath(os.path.dirname(__file__))
-_repo_cfg = os.path.join(_repo_root, "iconfucius.toml")
-_client_cfg = os.path.join(_client_root, "iconfucius.toml")
-_repo_wallet = os.path.join(_repo_root, ".wallet", "identity-private.pem")
-_client_wallet = os.path.join(_client_root, ".wallet", "identity-private.pem")
-
-if (not os.path.exists(_repo_cfg) and not os.path.exists(_repo_wallet)) and (
-    os.path.exists(_client_cfg) or os.path.exists(_client_wallet)
-):
-    os.environ["ICONFUCIUS_ROOT"] = _client_root
+    os.environ["ICONFUCIUS_ROOT"] = os.getcwd()
 
 
 def _load_env_file():
@@ -139,27 +155,10 @@ except ImportError:
 
 
 def _sync_project_root():
-    """Pick the best project root based on existing config/wallet files."""
-    current = os.environ.get("ICONFUCIUS_ROOT", _repo_root)
-    candidates = [_repo_root, _client_root]
-
-    def _score(root: str) -> tuple[int, int]:
-        cfg = os.path.exists(os.path.join(root, "iconfucius.toml"))
-        pem = os.path.exists(os.path.join(root, ".wallet", "identity-private.pem"))
-        # Prefer wallet presence first, then config presence.
-        return (1 if pem else 0, 1 if cfg else 0)
-
-    best = current
-    best_score = _score(current)
-    for c in candidates:
-        s = _score(c)
-        if s > best_score:
-            best = c
-            best_score = s
-
-    if best != current:
-        os.environ["ICONFUCIUS_ROOT"] = best
-        _load_env_file()
+    """Ensure ICONFUCIUS_ROOT points to a directory with config/wallet files."""
+    current = os.environ.get("ICONFUCIUS_ROOT", os.getcwd())
+    os.environ["ICONFUCIUS_ROOT"] = current
+    _load_env_file()
 
 
 # ---------------------------------------------------------------------------
@@ -390,7 +389,9 @@ def _handle_chat_start(body):
 
     try:
         from iconfucius.persona import load_persona
-        from iconfucius.ai import ClaudeBackend, APIKeyMissingError
+        from iconfucius.ai import ClaudeBackend, LoggingBackend, APIKeyMissingError
+        from iconfucius.conversation_log import ConversationLogger
+        from iconfucius.logging_config import create_session_logger
         from iconfucius.skills.definitions import get_tools_for_anthropic
     except ImportError as e:
         return 503, {"error": f"Missing dependency: {e}"}
@@ -416,6 +417,15 @@ def _handle_chat_start(body):
     session_id = str(uuid.uuid4())
     persona_key = persona_name.lower().replace(" ", "")
 
+    # Per-session logging: unique stamp → separate log files per chat
+    stamp = (
+        datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        + f"-web-{session_id[:8]}"
+    )
+    conv_logger = ConversationLogger(stamp=stamp)
+    session_logger = create_session_logger(stamp)
+    backend = LoggingBackend(backend, conv_logger)
+
     _chat_sessions[session_id] = {
         "backend": backend,
         "messages": [],
@@ -424,6 +434,8 @@ def _handle_chat_start(body):
         "persona_name": persona.name,
         "persona_key": persona_key,
         "pending_confirm": None,
+        "conv_logger": conv_logger,
+        "session_logger": session_logger,
     }
 
     return 200, {
@@ -435,6 +447,8 @@ def _handle_chat_start(body):
 
 def _handle_chat_message(body):
     """Send a user message and run the tool loop."""
+    from iconfucius.logging_config import set_session_logger, clear_session_logger
+
     sid = body.get("session_id")
     text = body.get("text", "").strip()
     if not sid or sid not in _chat_sessions:
@@ -446,16 +460,21 @@ def _handle_chat_message(body):
     session["pending_confirm"] = None
     session["messages"].append({"role": "user", "content": text})
 
+    set_session_logger(session["session_logger"])
     try:
         result = _run_web_tool_loop(session)
         return 200, result
     except Exception as e:
         traceback.print_exc()
         return 500, {"error": str(e)}
+    finally:
+        clear_session_logger()
 
 
 def _handle_chat_confirm(body):
     """Handle user confirmation for pending tool calls."""
+    from iconfucius.logging_config import set_session_logger, clear_session_logger
+
     sid = body.get("session_id")
     approved = body.get("approved", False)
     if not sid or sid not in _chat_sessions:
@@ -474,28 +493,28 @@ def _handle_chat_confirm(body):
     persona_key = session.get("persona_key", "")
 
     confirm_ids = {b.id for b in confirm_blocks}
+
+    set_session_logger(session["session_logger"])
     try:
         tool_results = _execute_tool_blocks(tool_blocks, confirm_ids, approved, persona_key)
-    except Exception as e:
-        traceback.print_exc()
-        return 500, {"error": str(e)}
 
-    for block in response.content:
-        if block.type == "tool_use" and block.id in deferred_ids:
-            tool_results.append({
-                "type": "tool_result",
-                "tool_use_id": block.id,
-                "content": json.dumps({"status": "deferred", "error": "Deferred: only one write tool type per turn."}),
-            })
+        for block in response.content:
+            if block.type == "tool_use" and block.id in deferred_ids:
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": block.id,
+                    "content": json.dumps({"status": "deferred", "error": "Deferred: only one write tool type per turn."}),
+                })
 
-    session["messages"].append({"role": "user", "content": tool_results})
+        session["messages"].append({"role": "user", "content": tool_results})
 
-    try:
         result = _run_web_tool_loop(session)
         return 200, result
     except Exception as e:
         traceback.print_exc()
         return 500, {"error": str(e)}
+    finally:
+        clear_session_logger()
 
 
 def _handle_chat_settings(body):
@@ -634,8 +653,8 @@ def _handle_wallet_info(*, bypass_cache=False):
             "project_root": os.environ.get("ICONFUCIUS_ROOT", ""),
         }
     btc_usd = result.get("btc_usd_rate")
-    balance = result.get("balance_sats", 0)
-    pending = result.get("pending_sats", 0)
+    balance = result.get("balance_sats") or 0
+    pending = result.get("pending_sats") or 0
     resp = 200, {
         "principal": result.get("principal", ""),
         "btc_address": result.get("btc_address", ""),
@@ -668,18 +687,19 @@ def _handle_wallet_balances(*, bypass_cache=False):
             btc_usd = get_btc_to_usd_rate()
         except Exception:
             pass
-    wallet_sats = result.get("wallet_ckbtc_sats", 0)
-    pending_sats = result.get("wallet_pending_sats", 0)
+    wallet_sats = result.get("wallet_ckbtc_sats") or 0
+    pending_sats = result.get("wallet_pending_sats") or 0
     bots = []
     for b in result.get("bots", []):
+        odin_sats = b.get("odin_sats") or 0
         bot_entry = {
             "name": b["name"], "principal": b.get("principal", ""),
-            "odin_sats": b.get("odin_sats", 0),
+            "odin_sats": odin_sats,
             "has_odin_account": b.get("has_odin_account", False),
             "tokens": b.get("tokens", []),
         }
         if btc_usd:
-            bot_entry["odin_usd"] = (b.get("odin_sats", 0) / 1e8) * btc_usd
+            bot_entry["odin_usd"] = (odin_sats / 1e8) * btc_usd
         bots.append(bot_entry)
     totals = result.get("totals", {})
     resp = 200, {
@@ -692,11 +712,11 @@ def _handle_wallet_balances(*, bypass_cache=False):
         },
         "bots": bots,
         "totals": {
-            "odin_sats": totals.get("odin_sats", 0),
-            "token_value_sats": totals.get("token_value_sats", 0),
-            "wallet_sats": totals.get("wallet_sats", 0),
-            "portfolio_sats": totals.get("portfolio_sats", 0),
-            "portfolio_usd": (totals.get("portfolio_sats", 0) / 1e8) * btc_usd if btc_usd else None,
+            "odin_sats": totals.get("odin_sats") or 0,
+            "token_value_sats": totals.get("token_value_sats") or 0,
+            "wallet_sats": totals.get("wallet_sats") or 0,
+            "portfolio_sats": totals.get("portfolio_sats") or 0,
+            "portfolio_usd": ((totals.get("portfolio_sats") or 0) / 1e8) * btc_usd if btc_usd else None,
         },
         "btc_usd_rate": btc_usd,
     }
@@ -803,7 +823,7 @@ def _handle_action_set_bots(body):
 # HTTP handler
 # ---------------------------------------------------------------------------
 
-class ProxyHandler(BaseHTTPRequestHandler):
+class UIHandler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
         self.send_response(204)
         self._cors_headers()
@@ -817,6 +837,12 @@ class ProxyHandler(BaseHTTPRequestHandler):
         return json.loads(raw)
 
     def do_POST(self):
+        try:
+            self._do_POST()
+        except BrokenPipeError:
+            pass
+
+    def _do_POST(self):
         parsed = urlparse(self.path)
         path = parsed.path
 
@@ -852,6 +878,12 @@ class ProxyHandler(BaseHTTPRequestHandler):
         _json_response(self, status, data)
 
     def do_GET(self):
+        try:
+            self._do_GET()
+        except BrokenPipeError:
+            pass
+
+    def _do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
         refresh = "refresh" in parsed.query
@@ -904,9 +936,8 @@ class ProxyHandler(BaseHTTPRequestHandler):
             return
 
         if not path.startswith("/api/odin"):
-            self.send_response(404)
-            self.end_headers()
-            self.wfile.write(b"Not found")
+            # Try static files (React SPA)
+            self._serve_static(path)
             return
 
         odin_path = path.replace("/api/odin", "", 1) or "/"
@@ -926,6 +957,22 @@ class ProxyHandler(BaseHTTPRequestHandler):
         except Exception as e:
             _json_response(self, 502, {"error": str(e)})
 
+    def _serve_static(self, url_path: str):
+        """Serve a file from the static directory, or 404."""
+        resolved = _resolve_static(url_path)
+        if resolved is None:
+            self.send_response(404)
+            self.end_headers()
+            self.wfile.write(b"Not found - run: ./scripts/bundle_client.sh")
+            return
+        content_type, _ = mimetypes.guess_type(str(resolved))
+        data = resolved.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", content_type or "application/octet-stream")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
     def _cors_headers(self):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
@@ -936,24 +983,68 @@ class ProxyHandler(BaseHTTPRequestHandler):
         print(f"  {args[0]} -> {status}" if args else fmt)
 
 
-def main():
-    server = ThreadingHTTPServer(("127.0.0.1", PORT), ProxyHandler)
-    print(f"IConfucius Dashboard Proxy on http://localhost:{PORT}")
+def run_server(port: int = 55129, open_browser: bool = True):
+    """Start the UI server.
+
+    Called by ``iconfucius ui`` or ``python -m iconfucius.client.server``.
+    """
+    # Server-level log — global logger writes to *-iconfucius-server.log
+    if _HAS_ICONFUCIUS:
+        from iconfucius.logging_config import create_session_logger, get_session_stamp
+        stamp = get_session_stamp()
+        server_logger = create_session_logger(
+            stamp, suffix="-iconfucius-server.log"
+        )
+        # Install as the global logger so any get_logger() call from threads
+        # without a session logger (cache warming, startup) goes here.
+        import logging
+        global_logger = logging.getLogger("iconfucius")
+        # Clear any existing handlers (from prior runs / tests), attach server log
+        for h in global_logger.handlers[:]:
+            h.close()
+            global_logger.removeHandler(h)
+        for h in server_logger.handlers:
+            global_logger.addHandler(h)
+        global_logger.setLevel(logging.DEBUG)
+        global_logger.propagate = False
+
+    try:
+        server = ThreadingHTTPServer(("127.0.0.1", port), UIHandler)
+    except OSError as exc:
+        if "Address already in use" in str(exc):
+            project = os.environ.get("ICONFUCIUS_ROOT", os.getcwd())
+            print(f"\nPort {port} is already in use.")
+            print(f"Another iconfucius ui is probably running.\n")
+            print(f"You can either:")
+            print(f"  1. Use the one already running at http://localhost:{port}")
+            print(f"  2. Start a second instance on a different port:")
+            print(f"     iconfucius ui --port {port + 1}\n")
+            print(f"Each project folder needs its own port.")
+            print(f"Current project: {project}")
+            sys.exit(1)
+        raise
+
+    url = f"http://localhost:{port}"
+    has_static = _STATIC_DIR.is_dir() and (_STATIC_DIR / "index.html").is_file()
+
+    print(f"IConfucius UI on {url}")
+    print(f"  Static files:  {'ready' if has_static else 'NOT BUILT — run ./scripts/bundle_client.sh'}")
     print(f"  Odin.fun API:  /api/odin/* -> {ODIN_API}/*")
-    print(f"  Wallet info:   /api/wallet/info")
-    print(f"  Bot balances:  /api/wallet/balances")
-    print(f"  SDK status:    /api/wallet/status")
-    print(f"  Chat:          /api/chat/start, message, confirm, settings")
     print(f"  SDK available: {_HAS_ICONFUCIUS}")
     print(f"  Project root:  {os.environ.get('ICONFUCIUS_ROOT', 'not set')}")
     print()
+
     _warm_cache()
+
+    if open_browser:
+        threading.Timer(0.5, webbrowser.open, args=(url,)).start()
+
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\nStopping proxy.")
+        print("\nStopping UI server.")
         server.server_close()
 
 
 if __name__ == "__main__":
-    main()
+    run_server()

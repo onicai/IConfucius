@@ -169,10 +169,11 @@ def collect_balances(bot_name: str, token_id: str = "29m8",
         for t in tokens:
             ticker = t.get("ticker", t.get("id", "?"))
             token_id = t.get("id", "?")
-            raw_balance = t.get("balance", 0)
-            divisibility = t.get("divisibility", 8)
-            decimals = t.get("decimals", 0)
-            price = t.get("price", 0)
+            raw_balance = t.get("balance") or 0
+            divisibility = t.get("divisibility") or 8
+            decimals = t.get("decimals")
+            decimals = decimals if decimals is not None else 3
+            price = t.get("price") or 0
             # Strip extra API decimals; result is still milli-subunits
             from iconfucius.units import adjust_api_decimals, millisubunit_value_sats
             balance = adjust_api_decimals(raw_balance, decimals)

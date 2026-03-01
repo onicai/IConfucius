@@ -984,6 +984,19 @@ def sweep(
                 print(f"{bot_name}: withdraw partial — {result.get('error', '')}")
 
 
+@app.command()
+def ui(
+    port: int = typer.Option(55129, "--port", "-p", help="Port to serve on"),
+    no_browser: bool = typer.Option(
+        False, "--no-browser", help="Don't open browser automatically"
+    ),
+):
+    """Launch the web UI."""
+    from iconfucius.client.server import run_server
+
+    run_server(port=port, open_browser=not no_browser)
+
+
 def main():
     """Entry point for the CLI."""
     sys.stdout.reconfigure(line_buffering=True)
