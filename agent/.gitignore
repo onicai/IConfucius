@@ -38,6 +38,7 @@ target/
 node_modules/
 dist/
 .svelte-kit/
+src/iconfucius/client/static/
 
 # environment variables
 .env

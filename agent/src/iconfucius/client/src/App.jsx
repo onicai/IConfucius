@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, Component } from "react";
-import { getBtcPrice, getWalletStatus, getWalletInfo, getWalletBalances } from "./api";
+import { getBtcPrice, getToken, getWalletStatus, getWalletInfo, getWalletBalances } from "./api";
 import { clearClientCache, preloadCache } from "./hooks";
 import TokensView from "./views/TokensView";
 import TradesView from "./views/TradesView";
@@ -115,6 +115,8 @@ export default function App() {
   const [proxyOk, setProxyOk] = useState(null);
   const [sdkOk, setSdkOk] = useState(null);
   const [chatOpen, setChatOpen] = useState(false);
+  const [projectRoot, setProjectRoot] = useState(null);
+  const [icfPriceUsd, setIcfPriceUsd] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [chatFocusTick, setChatFocusTick] = useState(0);
   const [chatWidth, setChatWidth] = useState(() => {
@@ -139,7 +141,16 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
 
-    getBtcPrice().then(setBtcUsd);
+    getBtcPrice().then((rate) => {
+      setBtcUsd(rate);
+      // Fetch ICONFUCIUS token price (29m8), convert msat→USD
+      getToken("29m8").then((t) => {
+        if (t?.price && rate) {
+          const sats = t.price / 1000; // msat → sats
+          setIcfPriceUsd((sats / 1e8) * rate);
+        }
+      }).catch(() => {});
+    });
     fetch("/api/odin/tokens?limit=1")
       .then((r) => setProxyOk(r.ok))
       .catch(() => setProxyOk(false));
@@ -149,6 +160,7 @@ export default function App() {
         const s = await getWalletStatus();
         if (cancelled) return;
         setSdkOk(s.sdk_available);
+        if (s.project_root) setProjectRoot(s.project_root);
 
         // If wallet/setup isn't ready, default to Wallet tab.
         if (!s.sdk_available || !s.ready) {
@@ -238,13 +250,23 @@ export default function App() {
           <img src="/icon.webp" alt="IConfucius" className="w-8 h-8 rounded-full object-cover ring-1 ring-accent/30" />
           <div className="flex flex-col leading-tight">
             <span className="text-accent">IConfucius</span>
-            <span className="text-[0.6rem] text-dim font-normal -mt-0.5">The Runes trading Agent</span>
+            <span className="text-[0.6rem] text-dim font-normal -mt-0.5 flex items-center gap-1">
+              {projectRoot ? (
+                <>
+                  {projectRoot.split("/").pop() || projectRoot}
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" className="opacity-40 hover:opacity-80 cursor-help shrink-0" title={projectRoot}>
+                    <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2"/><text x="12" y="17" textAnchor="middle" fontSize="14" fontWeight="bold" fill="currentColor">i</text>
+                  </svg>
+                </>
+              ) : "The Runes trading Agent"}
+            </span>
           </div>
         </h1>
         <div className="flex items-center gap-3 text-[0.7rem] text-dim">
-          {btcUsd && <span className="hidden sm:inline">BTC ${btcUsd.toLocaleString()}</span>}
-          <span className="flex items-center gap-1"><StatusDot ok={proxyOk} />{proxyOk ? "API" : "Offline"}</span>
-          <span className="flex items-center gap-1"><StatusDot ok={sdkOk} />{sdkOk ? "SDK" : "No SDK"}</span>
+          {btcUsd && <span className="hidden sm:inline">BTC ${Math.round(btcUsd).toLocaleString()}</span>}
+          {icfPriceUsd != null && <span className="hidden sm:inline">ICONFUCIUS ${icfPriceUsd < 0.01 ? icfPriceUsd.toFixed(4) : icfPriceUsd.toFixed(2)}</span>}
+          <span className="flex items-center gap-1"><StatusDot ok={proxyOk} />{proxyOk ? "Odin" : "Offline"}</span>
+          <span className="flex items-center gap-1"><StatusDot ok={sdkOk} />{sdkOk ? "Chat" : "No Chat"}</span>
           {/* Mobile chat toggle */}
           <button
             onClick={() => setChatOpen((o) => !o)}

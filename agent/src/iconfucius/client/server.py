@@ -1,14 +1,15 @@
-"""Lightweight proxy for the Odin.fun API and iconfucius wallet + chat.
+"""IConfucius UI server — API proxy + static file serving.
 
-Uses curl_cffi with Chrome TLS fingerprint impersonation to bypass
-Cloudflare bot detection. Exposes wallet/balance endpoints when the
-iconfucius SDK is installed and a project is initialized.
+Serves the pre-built React UI from ``client/static/`` and proxies
+Odin.fun API requests via curl_cffi (Chrome TLS fingerprint).
 
 Usage:
-    python proxy-server.py                          # default: CWD as project root
-    ICONFUCIUS_ROOT=/path/to/project python proxy-server.py
+    iconfucius ui                                   # recommended
+    python -m iconfucius.client.server              # direct
+    ICONFUCIUS_ROOT=/path/to/project iconfucius ui  # explicit project root
 
 Endpoints:
+    /*                   Static files (React SPA with index.html fallback)
     /api/odin/*          Proxy to https://api.odin.fun/v1/*
     /api/wallet/info     Wallet principal, ckBTC balance, BTC deposit address
     /api/wallet/balances Full portfolio: wallet + all bot holdings
@@ -18,19 +19,49 @@ Endpoints:
 """
 
 import json
+import mimetypes
 import os
 import sys
 import threading
 import time
 import traceback
 import uuid
+import webbrowser
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from pathlib import Path
 from socketserver import ThreadingMixIn
 from urllib.parse import urlparse
 
 
 class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
     daemon_threads = True
+
+
+# ---------------------------------------------------------------------------
+# Static file serving
+# ---------------------------------------------------------------------------
+_STATIC_DIR = Path(__file__).parent / "static"
+
+
+def _resolve_static(url_path: str) -> Path | None:
+    """Map a URL path to a file inside _STATIC_DIR.
+
+    Returns None if the static directory doesn't exist or the path escapes it.
+    Falls back to index.html for SPA client-side routing.
+    """
+    if not _STATIC_DIR.is_dir():
+        return None
+    # Strip leading slash and normalise
+    relative = url_path.lstrip("/") or "index.html"
+    candidate = (_STATIC_DIR / relative).resolve()
+    # Prevent directory traversal
+    if not str(candidate).startswith(str(_STATIC_DIR.resolve())):
+        return None
+    if candidate.is_file():
+        return candidate
+    # SPA fallback — let React Router handle the route
+    index = _STATIC_DIR / "index.html"
+    return index if index.is_file() else None
 
 
 # ---------------------------------------------------------------------------
@@ -81,27 +112,11 @@ except ImportError:
     print("curl_cffi is required: pip install curl_cffi")
     sys.exit(1)
 
-PORT = 3001
 ODIN_API = "https://api.odin.fun/v1"
 
+# Default to current working directory — the user's iconfucius project.
 if "ICONFUCIUS_ROOT" not in os.environ:
-    os.environ["ICONFUCIUS_ROOT"] = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..")
-    )
-
-# If setup files were previously created in client/, prefer that location so
-# setup status and wallet operations point to the same project directory.
-_repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-_client_root = os.path.abspath(os.path.dirname(__file__))
-_repo_cfg = os.path.join(_repo_root, "iconfucius.toml")
-_client_cfg = os.path.join(_client_root, "iconfucius.toml")
-_repo_wallet = os.path.join(_repo_root, ".wallet", "identity-private.pem")
-_client_wallet = os.path.join(_client_root, ".wallet", "identity-private.pem")
-
-if (not os.path.exists(_repo_cfg) and not os.path.exists(_repo_wallet)) and (
-    os.path.exists(_client_cfg) or os.path.exists(_client_wallet)
-):
-    os.environ["ICONFUCIUS_ROOT"] = _client_root
+    os.environ["ICONFUCIUS_ROOT"] = os.getcwd()
 
 
 def _load_env_file():
@@ -139,27 +154,10 @@ except ImportError:
 
 
 def _sync_project_root():
-    """Pick the best project root based on existing config/wallet files."""
-    current = os.environ.get("ICONFUCIUS_ROOT", _repo_root)
-    candidates = [_repo_root, _client_root]
-
-    def _score(root: str) -> tuple[int, int]:
-        cfg = os.path.exists(os.path.join(root, "iconfucius.toml"))
-        pem = os.path.exists(os.path.join(root, ".wallet", "identity-private.pem"))
-        # Prefer wallet presence first, then config presence.
-        return (1 if pem else 0, 1 if cfg else 0)
-
-    best = current
-    best_score = _score(current)
-    for c in candidates:
-        s = _score(c)
-        if s > best_score:
-            best = c
-            best_score = s
-
-    if best != current:
-        os.environ["ICONFUCIUS_ROOT"] = best
-        _load_env_file()
+    """Ensure ICONFUCIUS_ROOT points to a directory with config/wallet files."""
+    current = os.environ.get("ICONFUCIUS_ROOT", os.getcwd())
+    os.environ["ICONFUCIUS_ROOT"] = current
+    _load_env_file()
 
 
 # ---------------------------------------------------------------------------
@@ -803,7 +801,7 @@ def _handle_action_set_bots(body):
 # HTTP handler
 # ---------------------------------------------------------------------------
 
-class ProxyHandler(BaseHTTPRequestHandler):
+class UIHandler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
         self.send_response(204)
         self._cors_headers()
@@ -904,9 +902,8 @@ class ProxyHandler(BaseHTTPRequestHandler):
             return
 
         if not path.startswith("/api/odin"):
-            self.send_response(404)
-            self.end_headers()
-            self.wfile.write(b"Not found")
+            # Try static files (React SPA)
+            self._serve_static(path)
             return
 
         odin_path = path.replace("/api/odin", "", 1) or "/"
@@ -926,6 +923,22 @@ class ProxyHandler(BaseHTTPRequestHandler):
         except Exception as e:
             _json_response(self, 502, {"error": str(e)})
 
+    def _serve_static(self, url_path: str):
+        """Serve a file from the static directory, or 404."""
+        resolved = _resolve_static(url_path)
+        if resolved is None:
+            self.send_response(404)
+            self.end_headers()
+            self.wfile.write(b"Not found - run: ./scripts/bundle_client.sh")
+            return
+        content_type, _ = mimetypes.guess_type(str(resolved))
+        data = resolved.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", content_type or "application/octet-stream")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
     def _cors_headers(self):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
@@ -936,24 +949,48 @@ class ProxyHandler(BaseHTTPRequestHandler):
         print(f"  {args[0]} -> {status}" if args else fmt)
 
 
-def main():
-    server = ThreadingHTTPServer(("127.0.0.1", PORT), ProxyHandler)
-    print(f"IConfucius Dashboard Proxy on http://localhost:{PORT}")
+def run_server(port: int = 55129, open_browser: bool = True):
+    """Start the UI server.
+
+    Called by ``iconfucius ui`` or ``python -m iconfucius.client.server``.
+    """
+    try:
+        server = ThreadingHTTPServer(("127.0.0.1", port), UIHandler)
+    except OSError as exc:
+        if "Address already in use" in str(exc):
+            project = os.environ.get("ICONFUCIUS_ROOT", os.getcwd())
+            print(f"\nPort {port} is already in use.")
+            print(f"Another iconfucius ui is probably running.\n")
+            print(f"You can either:")
+            print(f"  1. Use the one already running at http://localhost:{port}")
+            print(f"  2. Start a second instance on a different port:")
+            print(f"     iconfucius ui --port {port + 1}\n")
+            print(f"Each project folder needs its own port.")
+            print(f"Current project: {project}")
+            sys.exit(1)
+        raise
+
+    url = f"http://localhost:{port}"
+    has_static = _STATIC_DIR.is_dir() and (_STATIC_DIR / "index.html").is_file()
+
+    print(f"IConfucius UI on {url}")
+    print(f"  Static files:  {'ready' if has_static else 'NOT BUILT — run ./scripts/bundle_client.sh'}")
     print(f"  Odin.fun API:  /api/odin/* -> {ODIN_API}/*")
-    print(f"  Wallet info:   /api/wallet/info")
-    print(f"  Bot balances:  /api/wallet/balances")
-    print(f"  SDK status:    /api/wallet/status")
-    print(f"  Chat:          /api/chat/start, message, confirm, settings")
     print(f"  SDK available: {_HAS_ICONFUCIUS}")
     print(f"  Project root:  {os.environ.get('ICONFUCIUS_ROOT', 'not set')}")
     print()
+
     _warm_cache()
+
+    if open_browser:
+        threading.Timer(0.5, webbrowser.open, args=(url,)).start()
+
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\nStopping proxy.")
+        print("\nStopping UI server.")
         server.server_close()
 
 
 if __name__ == "__main__":
-    main()
+    run_server()
