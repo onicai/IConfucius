@@ -1,12 +1,14 @@
 # Makefile for iconfucius Python package
 
-.PHONY: help install install-dev install-blst bundle-ui build clean publish-test publish test lint \
+.PHONY: all help install install-dev install-blst bundle-ui build clean publish-test publish test lint \
        e2e-setup e2e-fund-check-ckbtc e2e-fund-check-btc \
        e2e-trade-bot-1 e2e-trade-all-bots \
        e2e-transfer-bot-1 \
        e2e-wallet-balance-all-bots e2e-withdraw-bot-1 e2e-sweep \
        e2e-send-ckbtc e2e-send-check-ckbtc \
        e2e-send-btc e2e-send-check-btc e2e-clean
+
+all: build
 
 help:
 	@echo "iconfucius development commands:"

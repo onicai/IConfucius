@@ -431,6 +431,7 @@ def _handle_chat_start(body):
     backend = LoggingBackend(backend, conv_logger)
 
     _chat_sessions[session_id] = {
+        "lock": threading.Lock(),
         "backend": backend,
         "messages": [],
         "system": system,
@@ -462,22 +463,23 @@ def _handle_chat_message(body):
         return 400, {"error": "Message text is required"}
 
     session = _chat_sessions[sid]
-    session["pending_confirm"] = None
-    session["messages"].append({"role": "user", "content": text})
+    with session["lock"]:
+        session["pending_confirm"] = None
+        session["messages"].append({"role": "user", "content": text})
 
-    set_session_logger(session["session_logger"])
-    try:
-        result = _run_web_tool_loop(session)
-        return 200, result
-    except Exception as e:
-        traceback.print_exc()
-        url = _get_session_status_url(session)
-        err = {"error": _format_api_error(e)}
-        if url:
-            err["status_url"] = url
-        return 500, err
-    finally:
-        clear_session_logger()
+        set_session_logger(session["session_logger"])
+        try:
+            result = _run_web_tool_loop(session)
+            return 200, result
+        except Exception as e:
+            traceback.print_exc()
+            url = _get_session_status_url(session)
+            err = {"error": _format_api_error(e)}
+            if url:
+                err["status_url"] = url
+            return 500, err
+        finally:
+            clear_session_logger()
 
 
 def _handle_chat_confirm(body):
@@ -490,51 +492,55 @@ def _handle_chat_confirm(body):
         return 400, {"error": "Invalid or expired session_id"}
 
     session = _chat_sessions[sid]
-    pending = session.get("pending_confirm")
-    if not pending:
-        return 400, {"error": "No pending confirmation"}
+    with session["lock"]:
+        pending = session.get("pending_confirm")
+        if not pending:
+            return 400, {"error": "No pending confirmation"}
 
-    tool_blocks = pending["tool_blocks"]
-    confirm_blocks = pending["confirm_blocks"]
-    deferred_ids = pending["deferred_ids"]
-    response = pending["response"]
-    session["pending_confirm"] = None
-    persona_key = session.get("persona_key", "")
+        tool_blocks = pending["tool_blocks"]
+        confirm_blocks = pending["confirm_blocks"]
+        deferred_ids = pending["deferred_ids"]
+        response = pending["response"]
+        session["pending_confirm"] = None
+        persona_key = session.get("persona_key", "")
 
-    confirm_ids = {b.id for b in confirm_blocks}
+        confirm_ids = {b.id for b in confirm_blocks}
 
-    set_session_logger(session["session_logger"])
-    try:
-        tool_results = _execute_tool_blocks(tool_blocks, confirm_ids, approved, persona_key)
+        set_session_logger(session["session_logger"])
+        try:
+            tool_results = _execute_tool_blocks(tool_blocks, confirm_ids, approved, persona_key)
 
-        for block in response.content:
-            if block.type == "tool_use" and block.id in deferred_ids:
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": block.id,
-                    "content": json.dumps({"status": "deferred", "error": "Deferred: only one write tool type per turn."}),
-                })
+            for block in response.content:
+                if block.type == "tool_use" and block.id in deferred_ids:
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": json.dumps({"status": "deferred", "error": "Deferred: only one write tool type per turn."}),
+                    })
 
-        session["messages"].append({"role": "user", "content": tool_results})
+            session["messages"].append({"role": "user", "content": tool_results})
 
-        result = _run_web_tool_loop(session)
-        return 200, result
-    except Exception as e:
-        traceback.print_exc()
-        url = _get_session_status_url(session)
-        err = {"error": _format_api_error(e)}
-        if url:
-            err["status_url"] = url
-        return 500, err
-    finally:
-        clear_session_logger()
+            result = _run_web_tool_loop(session)
+            return 200, result
+        except Exception as e:
+            traceback.print_exc()
+            url = _get_session_status_url(session)
+            err = {"error": _format_api_error(e)}
+            if url:
+                err["status_url"] = url
+            return 500, err
+        finally:
+            clear_session_logger()
 
 
 def _handle_chat_settings(body):
     """Save API key to .env file."""
+    import stat
     api_key = body.get("api_key", "").strip()
     if not api_key:
         return 400, {"error": "api_key is required"}
+    if "\n" in api_key or "\r" in api_key:
+        return 400, {"error": "api_key must be a single line"}
 
     root = os.environ.get("ICONFUCIUS_ROOT", "")
     env_path = os.path.join(root, ".env") if root else ".env"
@@ -553,7 +559,9 @@ def _handle_chat_settings(body):
     if not found:
         lines.append(f"ANTHROPIC_API_KEY={api_key}\n")
 
-    with open(env_path, "w") as f:
+    fd = os.open(env_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
+                 stat.S_IRUSR | stat.S_IWUSR)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
         f.writelines(lines)
 
     os.environ["ANTHROPIC_API_KEY"] = api_key
@@ -1047,7 +1055,13 @@ class UIHandler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def _cors_headers(self):
-        self.send_header("Access-Control-Allow-Origin", "*")
+        origin = self.headers.get("Origin", "")
+        host = self.headers.get("Host", "localhost")
+        host_origin = f"http://{host}"
+        if not origin or origin == host_origin:
+            self.send_header("Access-Control-Allow-Origin", origin or host_origin)
+        else:
+            self.send_header("Access-Control-Allow-Origin", "null")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
 

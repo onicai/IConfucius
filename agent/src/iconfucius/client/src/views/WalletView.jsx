@@ -142,6 +142,7 @@ function SetupWizard({ status, onComplete }) {
     finally { setWalletLoading(false); }
   }
   async function handleImport(file) {
+    if (walletLoading) return;
     setWalletLoading(true); setWalletResult(null);
     try {
       const text = await file.text();
@@ -201,7 +202,10 @@ function SetupWizard({ status, onComplete }) {
                   <label className="text-[0.82rem]">
                     Bots:{" "}
                     <input type="number" min={1} max={100} value={numBots}
-                      onChange={(e) => setNumBots(Math.max(1, parseInt(e.target.value) || 1))}
+                      onChange={(e) => {
+                        const n = parseInt(e.target.value, 10);
+                        setNumBots(Number.isFinite(n) ? Math.min(100, Math.max(1, n)) : 1);
+                      }}
                       className="w-14 px-2 py-1 bg-bg border border-border rounded text-text text-sm" />
                   </label>
                 </div>
@@ -232,8 +236,8 @@ function SetupWizard({ status, onComplete }) {
                       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
                     </svg>
                     Import Backup
-                    <input type="file" accept=".pem" className="hidden"
-                      onChange={(e) => { if (e.target.files[0]) handleImport(e.target.files[0]); }} />
+                    <input type="file" accept=".pem" className="hidden" disabled={walletLoading}
+                      onChange={(e) => { if (e.target.files?.[0]) handleImport(e.target.files[0]); e.target.value = ""; }} />
                   </label>
                 </div>
                 <ResultBox result={walletResult} />
@@ -312,15 +316,23 @@ function WalletInfoCards({ btcUsd, refreshKey = 0 }) {
 export default function WalletView({ btcUsd, refreshKey = 0 }) {
   const [setupDone, setSetupDone] = useState(null);
   const [status, setStatus] = useState(null);
+  const [statusError, setStatusError] = useState(null);
 
   const checkStatus = useCallback(() => {
+    setStatusError(null);
     getWalletStatus()
       .then((s) => { setStatus(s); setSetupDone(s.sdk_available && s.config_exists && s.wallet_exists); })
-      .catch(() => { setStatus({ sdk_available: false }); setSetupDone(false); });
+      .catch((e) => { setStatus(null); setSetupDone(false); setStatusError(e?.message || "Unable to reach wallet status endpoint."); });
   }, []);
   useEffect(() => { checkStatus(); }, [checkStatus]);
 
   if (setupDone === null) return <LoadingQuote message="Checking setup..." />;
+  if (statusError) return (
+    <div className="bg-red-dim border border-red rounded-[10px] px-4 py-3 text-sm text-red">
+      {statusError}
+      <button className="ml-3 underline cursor-pointer" onClick={checkStatus}>retry</button>
+    </div>
+  );
   if (!setupDone && status) return <SetupWizard status={status} onComplete={checkStatus} />;
 
   return (

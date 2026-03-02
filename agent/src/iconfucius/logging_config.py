@@ -120,13 +120,21 @@ def set_session_logger(logger: logging.Logger) -> None:
 
 
 def clear_session_logger() -> None:
-    """Remove the per-session logger from the current thread."""
-    logger = getattr(_thread_local, "logger", None)
-    if logger is not None:
-        for h in list(logger.handlers):
-            logger.removeHandler(h)
-            h.close()
+    """Remove the per-session logger from the current thread.
+
+    Does NOT close handlers — session loggers are reused across requests
+    in UI mode. Use close_session_logger() when disposing a session.
+    """
     _thread_local.logger = None
+
+
+def close_session_logger(logger) -> None:
+    """Close handlers when a session is being disposed."""
+    if logger is None:
+        return
+    for h in list(logger.handlers):
+        logger.removeHandler(h)
+        h.close()
 
 
 def create_session_logger(

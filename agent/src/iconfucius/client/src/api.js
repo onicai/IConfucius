@@ -103,6 +103,11 @@ export async function getBtcPrice() {
     "https://api.coinbase.com/v2/exchange-rates?currency=BTC",
   );
   if (!res.ok) return null;
-  const data = await res.json();
-  return parseFloat(data.data.rates.USD);
+  try {
+    const data = await res.json();
+    const usd = data?.data?.rates?.USD;
+    return usd ? parseFloat(usd) : null;
+  } catch {
+    return null;
+  }
 }

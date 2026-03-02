@@ -28,7 +28,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ## Architecture
 
-```
+```text
 Browser  →  Vite dev server (:3000)  →  /api/*  →  Python proxy (:3001)
                                                       ├── Odin.fun REST API (via curl_cffi)
                                                       ├── iconfucius SDK (wallet, bots, trades)
@@ -36,7 +36,7 @@ Browser  →  Vite dev server (:3000)  →  /api/*  →  Python proxy (:3001)
 ```
 
 - **Vite** serves the React frontend and proxies `/api/*` requests to the Python backend.
-- **proxy-server.py** handles Odin.fun API calls (with Cloudflare bypass via TLS fingerprint impersonation), wallet/bot operations through the iconfucius SDK, and AI chat sessions.
+- **server.py** handles Odin.fun API calls (with Cloudflare bypass via TLS fingerprint impersonation), wallet/bot operations through the iconfucius SDK, and AI chat sessions.
 
 ## Available Scripts
 
