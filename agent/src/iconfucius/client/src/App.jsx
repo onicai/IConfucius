@@ -203,6 +203,11 @@ export default function App() {
 
   useEffect(() => {
     let cancelled = false;
+    if (refreshKey > 0) {
+      setPortfolioSats(null);
+      setBotsSats(null);
+      setWalletSats(null);
+    }
     getWalletBalances({ refresh: refreshKey > 0 }).then((b) => {
       if (cancelled) return;
       const totals = b?.totals || {};

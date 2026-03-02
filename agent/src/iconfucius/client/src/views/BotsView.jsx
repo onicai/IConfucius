@@ -32,10 +32,10 @@ function BotCard({ bot, btcUsd }) {
             <span className="px-1.5 py-0.5 text-[0.65rem] font-medium rounded bg-surface-hover text-dim border border-border">Not registered</span>
           )}
         </div>
-        {bot.odin_sats > 0 && (
+        {bot.odin_sats != null && (
           <div className="text-right">
             <div className="text-sm font-bold tabular-nums">{fmtSats(bot.odin_sats, btcUsd)}</div>
-            <div className="text-[0.65rem] text-dim">Odin balance</div>
+            <div className="text-[0.65rem] text-dim">Odin BTC Holding</div>
           </div>
         )}
       </div>
