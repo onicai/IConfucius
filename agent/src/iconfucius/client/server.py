@@ -1,6 +1,6 @@
 """IConfucius UI server — API proxy + static file serving.
 
-Serves the pre-built React UI from ``client/static/`` and proxies
+Serves the pre-built React UI from ``client/dist/`` and proxies
 Odin.fun API requests via curl_cffi (Chrome TLS fingerprint).
 
 Usage:
@@ -41,7 +41,7 @@ class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
 # ---------------------------------------------------------------------------
 # Static file serving
 # ---------------------------------------------------------------------------
-_STATIC_DIR = Path(__file__).parent / "static"
+_STATIC_DIR = Path(__file__).parent / "dist"
 
 
 def _resolve_static(url_path: str) -> Path | None:
@@ -56,7 +56,10 @@ def _resolve_static(url_path: str) -> Path | None:
     relative = url_path.lstrip("/") or "index.html"
     candidate = (_STATIC_DIR / relative).resolve()
     # Prevent directory traversal
-    if not str(candidate).startswith(str(_STATIC_DIR.resolve())):
+    static_root = _STATIC_DIR.resolve()
+    try:
+        candidate.relative_to(static_root)
+    except ValueError:
         return None
     if candidate.is_file():
         return candidate
@@ -1014,12 +1017,12 @@ def run_server(port: int = 55129, open_browser: bool = True):
         if "Address already in use" in str(exc):
             project = os.environ.get("ICONFUCIUS_ROOT", os.getcwd())
             print(f"\nPort {port} is already in use.")
-            print(f"Another iconfucius ui is probably running.\n")
-            print(f"You can either:")
+            print("Another iconfucius ui is probably running.\n")
+            print("You can either:")
             print(f"  1. Use the one already running at http://localhost:{port}")
-            print(f"  2. Start a second instance on a different port:")
+            print("  2. Start a second instance on a different port:")
             print(f"     iconfucius ui --port {port + 1}\n")
-            print(f"Each project folder needs its own port.")
+            print("Each project folder needs its own port.")
             print(f"Current project: {project}")
             sys.exit(1)
         raise

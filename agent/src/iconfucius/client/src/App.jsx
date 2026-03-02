@@ -141,16 +141,19 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
 
-    getBtcPrice().then((rate) => {
-      setBtcUsd(rate);
-      // Fetch ICONFUCIUS token price (29m8), convert msat→USD
-      getToken("29m8").then((t) => {
-        if (t?.price && rate) {
-          const sats = t.price / 1000; // msat → sats
-          setIcfPriceUsd((sats / 1e8) * rate);
-        }
-      }).catch(() => {});
-    });
+    getBtcPrice()
+      .then((rate) => {
+        if (cancelled) return null;
+        setBtcUsd(rate);
+        return getToken("29m8").then((t) => {
+          if (cancelled) return;
+          if (t?.price && rate) {
+            const sats = t.price / 1000; // msat → sats
+            setIcfPriceUsd((sats / 1e8) * rate);
+          }
+        });
+      })
+      .catch(() => {});
     fetch("/api/odin/tokens?limit=1")
       .then((r) => setProxyOk(r.ok))
       .catch(() => setProxyOk(false));
