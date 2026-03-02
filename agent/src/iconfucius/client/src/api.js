@@ -81,6 +81,10 @@ export async function chatStart({ apiKey, persona, model } = {}) {
   return postJSON("/api/chat/start", { api_key: apiKey, persona, model });
 }
 
+export async function chatResume({ apiKey, persona, model } = {}) {
+  return postJSON("/api/chat/resume", { api_key: apiKey, persona, model });
+}
+
 export async function chatMessage({ sessionId, text }) {
   return postJSON("/api/chat/message", { session_id: sessionId, text });
 }

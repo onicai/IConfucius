@@ -217,7 +217,7 @@ export default function App() {
       const totals = b?.totals || {};
       const oSats = Number(totals.odin_sats || 0);
       const tSats = Number(totals.token_value_sats || 0);
-      const wSats = Number(totals.wallet_sats || 0);
+      const wSats = Number(b?.wallet?.ckbtc_sats || 0);
       setPortfolioSats(oSats + tSats + wSats);
       setBotsSats(oSats + tSats);
       setWalletSats(wSats);

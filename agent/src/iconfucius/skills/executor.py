@@ -397,6 +397,10 @@ def _handle_wallet_balance(args: dict) -> dict:
         "total_odin_sats": totals.get("odin_sats", 0),
         "total_token_value_sats": totals.get("token_value_sats", 0),
         "portfolio_sats": totals.get("portfolio_sats", 0),
+        "token_totals": {
+            k: {"balance": v["balance"], "value_sats": v["value_sats"]}
+            for k, v in totals.get("tokens", {}).items()
+        },
         "btc_usd_rate": btc_usd_rate,
         "constraints": {
             "min_deposit_sats": MIN_DEPOSIT_SATS,

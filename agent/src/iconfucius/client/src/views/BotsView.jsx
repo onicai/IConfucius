@@ -67,6 +67,22 @@ function BotCard({ bot, btcUsd }) {
   );
 }
 
+function TokenTotals({ tokens, btcUsd }) {
+  if (!tokens || Object.keys(tokens).length === 0) return null;
+  const sorted = Object.entries(tokens).sort((a, b) => b[1].value_sats - a[1].value_sats);
+  return (
+    <div className="bg-surface border border-border rounded-[10px] p-4 mb-6">
+      <div className="text-xs uppercase tracking-wide text-dim mb-2">Token Totals (All Bots)</div>
+      <div className="flex flex-wrap gap-1.5">
+        {sorted.map(([ticker, t]) => (
+          <TokenBadge key={t.id || ticker} ticker={ticker} tokenId={t.id}
+            balance={t.balance} valueSats={t.value_sats} btcUsd={btcUsd} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function PortfolioSummary({ totals, btcUsd }) {
   if (!totals) return null;
 
@@ -111,6 +127,7 @@ export default function BotsView({ btcUsd, refreshKey = 0 }) {
   return (
     <>
       <PortfolioSummary totals={totals} btcUsd={btcUsd} />
+      <TokenTotals tokens={totals?.tokens} btcUsd={btcUsd} />
 
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-base font-semibold">Bots ({bots.length})</h3>

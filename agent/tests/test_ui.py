@@ -1,5 +1,6 @@
 """Tests for iconfucius ui command and client.server module."""
 
+import json
 import os
 import re
 import threading
@@ -15,6 +16,8 @@ _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 from iconfucius.cli import app
 from iconfucius.client.server import (
     _resolve_static,
+    _save_resume_snapshot,
+    _read_resume_file,
     _STATIC_DIR,
     UIHandler,
     run_server,
@@ -251,3 +254,194 @@ class TestModuleStructure:
         assert hasattr(server, "UIHandler")
         assert not hasattr(server, "ProxyHandler")
         assert not hasattr(server, "DashboardHandler")
+
+
+# ---------------------------------------------------------------------------
+# _save_resume_snapshot
+# ---------------------------------------------------------------------------
+
+class TestSaveResumeSnapshot:
+    def _make_session(self, tmp_path):
+        """Create a minimal session dict with a ConversationLogger."""
+        from iconfucius.conversation_log import ConversationLogger
+        conv_logger = ConversationLogger(stamp="test-resume", base_dir=tmp_path)
+        return {
+            "messages": [],
+            "conv_logger": conv_logger,
+        }
+
+    def test_writes_incremental_messages(self, tmp_path):
+        """First snapshot writes all messages, second writes only new ones."""
+        session = self._make_session(tmp_path)
+        session["messages"] = [
+            {"role": "user", "content": "hello"},
+            {"role": "assistant", "content": "hi there"},
+        ]
+
+        _save_resume_snapshot(session)
+
+        session["messages"].append({"role": "user", "content": "how are you?"})
+        session["messages"].append({"role": "assistant", "content": "fine"})
+        _save_resume_snapshot(session)
+
+        path = session["conv_logger"].path_resume
+        lines = path.read_text().strip().split("\n")
+        assert len(lines) == 2
+
+        first = json.loads(lines[0])
+        assert len(first["new_messages"]) == 2
+        assert first["new_messages"][0]["content"] == "hello"
+
+        second = json.loads(lines[1])
+        assert len(second["new_messages"]) == 2
+        assert second["new_messages"][0]["content"] == "how are you?"
+
+        session["conv_logger"].close()
+
+    def test_no_op_when_no_new_messages(self, tmp_path):
+        """Snapshot with no new messages writes nothing."""
+        session = self._make_session(tmp_path)
+        session["messages"] = [{"role": "user", "content": "hello"}]
+        _save_resume_snapshot(session)
+
+        # Call again with no changes
+        _save_resume_snapshot(session)
+
+        path = session["conv_logger"].path_resume
+        lines = path.read_text().strip().split("\n")
+        assert len(lines) == 1
+        session["conv_logger"].close()
+
+    def test_no_op_without_conv_logger(self):
+        """Snapshot does nothing if session has no conv_logger."""
+        session = {"messages": [{"role": "user", "content": "hi"}]}
+        _save_resume_snapshot(session)  # should not raise
+
+    def test_tracks_resume_msg_count(self, tmp_path):
+        """Verify _resume_msg_count is updated after each snapshot."""
+        session = self._make_session(tmp_path)
+        session["messages"] = [
+            {"role": "user", "content": "a"},
+            {"role": "assistant", "content": "b"},
+        ]
+        _save_resume_snapshot(session)
+        assert session["_resume_msg_count"] == 2
+
+        session["messages"].append({"role": "user", "content": "c"})
+        _save_resume_snapshot(session)
+        assert session["_resume_msg_count"] == 3
+        session["conv_logger"].close()
+
+
+# ---------------------------------------------------------------------------
+# _read_resume_file
+# ---------------------------------------------------------------------------
+
+class TestReadResumeFile:
+    def test_reads_concatenated_messages(self, tmp_path):
+        """Read a resume file with multiple incremental lines."""
+        path = tmp_path / "test-ai-for-resume.jsonl"
+        line1 = json.dumps({"new_messages": [
+            {"role": "user", "content": "hello"},
+            {"role": "assistant", "content": [
+                {"type": "tool_use", "id": "t1", "name": "balance", "input": {}},
+            ]},
+        ]})
+        line2 = json.dumps({"new_messages": [
+            {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "t1", "content": "100"},
+            ]},
+            {"role": "assistant", "content": "You have 100 sats."},
+        ]})
+        path.write_text(line1 + "\n" + line2 + "\n")
+
+        api_messages, display = _read_resume_file(path)
+
+        assert len(api_messages) == 4
+        assert api_messages[0] == {"role": "user", "content": "hello"}
+        assert api_messages[3] == {"role": "assistant", "content": "You have 100 sats."}
+
+        # Display should only include user/assistant with string content
+        assert len(display) == 2
+        assert display[0] == {"role": "user", "text": "hello"}
+        assert display[1] == {"role": "assistant", "text": "You have 100 sats."}
+
+    def test_empty_file_returns_empty(self, tmp_path):
+        """Empty resume file returns empty lists."""
+        path = tmp_path / "empty-ai-for-resume.jsonl"
+        path.write_text("")
+        api_messages, display = _read_resume_file(path)
+        assert api_messages == []
+        assert display == []
+
+    def test_skips_blank_lines(self, tmp_path):
+        """Blank lines in the resume file are skipped."""
+        path = tmp_path / "test-ai-for-resume.jsonl"
+        line = json.dumps({"new_messages": [
+            {"role": "user", "content": "hi"},
+        ]})
+        path.write_text("\n" + line + "\n\n")
+        api_messages, display = _read_resume_file(path)
+        assert len(api_messages) == 1
+        assert len(display) == 1
+
+    def test_tool_use_messages_excluded_from_display(self, tmp_path):
+        """Messages with list content (tool_use/tool_result) not in display."""
+        path = tmp_path / "test-ai-for-resume.jsonl"
+        line = json.dumps({"new_messages": [
+            {"role": "user", "content": "check balance"},
+            {"role": "assistant", "content": [
+                {"type": "tool_use", "id": "t1", "name": "balance", "input": {}},
+            ]},
+            {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "t1", "content": "50000"},
+            ]},
+            {"role": "assistant", "content": "Your balance is 50000 sats."},
+        ]})
+        path.write_text(line + "\n")
+
+        api_messages, display = _read_resume_file(path)
+        assert len(api_messages) == 4
+        assert len(display) == 2
+        assert display[0]["text"] == "check balance"
+        assert display[1]["text"] == "Your balance is 50000 sats."
+
+    def test_roundtrip_snapshot_then_read(self, tmp_path):
+        """Snapshot + read roundtrip produces correct api_messages."""
+        from iconfucius.conversation_log import ConversationLogger
+        conv_logger = ConversationLogger(stamp="rt-test", base_dir=tmp_path)
+        session = {"messages": [], "conv_logger": conv_logger}
+
+        # Simulate a conversation with tool calls
+        session["messages"] = [
+            {"role": "user", "content": "what's my balance?"},
+            {"role": "assistant", "content": [
+                {"type": "text", "text": "Let me check."},
+                {"type": "tool_use", "id": "tu_1", "name": "wallet_balance", "input": {}},
+            ]},
+        ]
+        _save_resume_snapshot(session)
+
+        session["messages"].extend([
+            {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "tu_1", "content": '{"sats": 1000}'},
+            ]},
+            {"role": "assistant", "content": "You have 1000 sats."},
+        ])
+        _save_resume_snapshot(session)
+        conv_logger.close()
+
+        api_messages, display = _read_resume_file(conv_logger.path_resume)
+
+        # All 4 messages should be present
+        assert len(api_messages) == 4
+        assert api_messages[0]["role"] == "user"
+        assert api_messages[0]["content"] == "what's my balance?"
+        assert api_messages[1]["role"] == "assistant"
+        assert isinstance(api_messages[1]["content"], list)  # tool_use content
+        assert api_messages[3]["content"] == "You have 1000 sats."
+
+        # Display: only string-content user/assistant messages
+        assert len(display) == 2
+        assert display[0]["text"] == "what's my balance?"
+        assert display[1]["text"] == "You have 1000 sats."

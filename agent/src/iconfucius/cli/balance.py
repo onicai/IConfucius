@@ -782,6 +782,15 @@ def _format_holdings_table(all_data: list, btc_usd_rate: float | None,
     lines.append("")
     lines.extend(_format_padded_table(headers, rows))
 
+    # Bot holdings summary (matches dashboard cards)
+    if not all_unknown:
+        token_total_sats = round(sum(total_token_value_sats.values()))
+        bots_total_sats = total_odin_sats + token_total_sats
+        lines.append("")
+        lines.append(f"Bots total: {fmt_sats(bots_total_sats, btc_usd_rate)}")
+        lines.append(f"  ODIN BTC: {fmt_sats(total_odin_sats, btc_usd_rate)}")
+        lines.append(f"  ODIN TOKENS: {fmt_sats(token_total_sats, btc_usd_rate)}")
+
     if btc_usd_rate:
         wallet_total_sats = wallet_balance_sats + wallet_pending_sats + wallet_withdrawal_sats
         if all_unknown and wallet_total_sats == 0:

@@ -225,6 +225,37 @@ class TestConversationLogger:
         assert list(conv_dir.glob("*-ai-full.jsonl")) == []
         assert len(list(conv_dir.glob("*-ai-cached.jsonl"))) == 1
 
+    def test_path_resume_property(self, tmp_path):
+        """Verify path_resume returns the resume file path."""
+        logger = ConversationLogger(stamp="test", base_dir=tmp_path)
+        assert logger.path_resume.name == "test-ai-for-resume.jsonl"
+        assert logger.path_resume.parent == logger.path_cached.parent
+        logger.close()
+
+    def test_cleanup_deletes_old_resume_files(self, tmp_path):
+        """Verify cleanup rotates old resume files beyond _MAX_LOG_FILES."""
+        conv_dir = tmp_path / ".logs" / "conversations"
+        conv_dir.mkdir(parents=True)
+        extra = 3
+        for i in range(_MAX_LOG_FILES + extra):
+            (conv_dir / f"20260101-{i:06d}-ai-cached.jsonl").write_text("")
+            (conv_dir / f"20260101-{i:06d}-ai-for-resume.jsonl").write_text("")
+
+        assert len(list(conv_dir.glob("*-ai-for-resume.jsonl"))) == _MAX_LOG_FILES + extra
+
+        logger = ConversationLogger(stamp="test", base_dir=tmp_path)
+        logger.close()
+
+        remaining_cached = sorted(conv_dir.glob("*-ai-cached.jsonl"))
+        remaining_resume = sorted(conv_dir.glob("*-ai-for-resume.jsonl"))
+        assert len(remaining_cached) == _MAX_LOG_FILES
+        assert len(remaining_resume) == _MAX_LOG_FILES
+        # Oldest files should be deleted
+        for i in range(extra):
+            assert f"20260101-{i:06d}-ai-for-resume.jsonl" not in {
+                f.name for f in remaining_resume
+            }
+
 
 # --- Fake backend for LoggingBackend tests ---
 

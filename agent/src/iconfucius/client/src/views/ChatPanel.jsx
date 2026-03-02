@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { chatStart, chatMessage, chatConfirm, chatSettings } from "../api";
+import { chatStart, chatMessage, chatConfirm, chatSettings, chatResume } from "../api";
 
 const STORAGE_KEY = "iconfucius_chat_messages";
 const SESSION_KEY = "iconfucius_chat_session";
@@ -85,7 +85,7 @@ function MessageBubble({ role, text }) {
       <div className={`max-w-[85%] px-3 py-2 rounded-xl text-xs leading-relaxed whitespace-pre-wrap ${
         isUser
           ? "bg-surface-hover text-text rounded-br-sm"
-          : "bg-accent-dim text-text border border-accent/15 rounded-bl-sm"
+          : "bg-accent-dim text-text border border-accent/15 rounded-bl-sm font-mono"
       }`}>
         {text}
       </div>
@@ -150,12 +150,41 @@ export default function ChatPanel({ onAction, focusSignal = 0, onChatStatus }) {
     } finally { setStarting(false); }
   }
 
+  async function resumeOrStart(apiKey) {
+    setStarting(true); setError(null); setNeedsKey(false);
+    try {
+      const res = await chatResume({ apiKey });
+      if (res.resumed) {
+        setSessionId(res.session_id);
+        if (res.messages?.length) {
+          setMessages(res.messages);
+          saveMessages(res.messages);
+        }
+        onChatStatus?.(true);
+        try { sessionStorage.setItem(SESSION_KEY, res.session_id); } catch {}
+      } else {
+        setMessages([]);
+        saveMessages([]);
+        await startSession(apiKey);
+        return;
+      }
+    } catch (err) {
+      if (err.message?.includes("API key") || err.message?.includes("ANTHROPIC_API_KEY")) {
+        setNeedsKey(true);
+      } else {
+        setMessages([]);
+        saveMessages([]);
+        try { await startSession(apiKey); return; } catch { /* handled by startSession */ }
+      }
+    } finally { setStarting(false); }
+  }
+
   useEffect(() => {
     const saved = sessionStorage.getItem(SESSION_KEY);
     if (saved) {
       setSessionId(saved);
     } else {
-      startSession();
+      resumeOrStart();
     }
   }, []);
 
@@ -251,17 +280,6 @@ export default function ChatPanel({ onAction, focusSignal = 0, onChatStatus }) {
 
   return (
     <div className="flex-1 flex flex-col min-h-0 w-full">
-      {/* Toolbar */}
-      <div className="shrink-0 flex items-center justify-between px-3 py-2 border-b border-border">
-        <span className="text-xs font-semibold text-dim">Chat</span>
-        {messages.length > 0 && (
-          <button onClick={handleClear}
-            className="text-[0.65rem] text-dim hover:text-text transition-colors cursor-pointer">
-            Clear
-          </button>
-        )}
-      </div>
-
       {/* Messages */}
       <div className="flex-1 overflow-y-auto scrollbar-thin px-3 py-3">
         {messages.length === 0 && !loading && (
@@ -323,6 +341,14 @@ export default function ChatPanel({ onAction, focusSignal = 0, onChatStatus }) {
           </svg>
         </button>
       </form>
+
+      {/* New Chat */}
+      <div className="shrink-0 text-center pb-2">
+        <button onClick={handleClear}
+          className="text-[0.65rem] text-dim hover:text-text transition-colors cursor-pointer">
+          ↻ New Chat
+        </button>
+      </div>
     </div>
   );
 }

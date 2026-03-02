@@ -451,6 +451,42 @@ def _handle_chat_start(body):
     }
 
 
+def _save_resume_snapshot(session):
+    """Append new messages to the resume file (incremental)."""
+    conv_logger = session.get("conv_logger")
+    if not conv_logger:
+        return
+    messages = session["messages"]
+    prev = session.get("_resume_msg_count", 0)
+    new_msgs = messages[prev:]
+    if not new_msgs:
+        return
+    session["_resume_msg_count"] = len(messages)
+    with open(conv_logger.path_resume, "a", encoding="utf-8") as f:
+        f.write(json.dumps({"new_messages": new_msgs}, default=str) + "\n")
+
+
+def _read_resume_file(path):
+    """Read a resume file and return (api_messages, display_messages)."""
+    api_messages = []
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            entry = json.loads(line)
+            api_messages.extend(entry.get("new_messages", []))
+    display = []
+    for m in api_messages:
+        if not isinstance(m, dict):
+            continue
+        if m.get("role") == "user" and isinstance(m.get("content"), str):
+            display.append({"role": "user", "text": m["content"]})
+        elif m.get("role") == "assistant" and isinstance(m.get("content"), str):
+            display.append({"role": "assistant", "text": m["content"]})
+    return api_messages, display
+
+
 def _handle_chat_message(body):
     """Send a user message and run the tool loop."""
     from iconfucius.logging_config import set_session_logger, clear_session_logger
@@ -470,6 +506,7 @@ def _handle_chat_message(body):
         set_session_logger(session["session_logger"])
         try:
             result = _run_web_tool_loop(session)
+            _save_resume_snapshot(session)
             return 200, result
         except Exception as e:
             traceback.print_exc()
@@ -521,6 +558,7 @@ def _handle_chat_confirm(body):
             session["messages"].append({"role": "user", "content": tool_results})
 
             result = _run_web_tool_loop(session)
+            _save_resume_snapshot(session)
             return 200, result
         except Exception as e:
             traceback.print_exc()
@@ -531,6 +569,93 @@ def _handle_chat_confirm(body):
             return 500, err
         finally:
             clear_session_logger()
+
+
+def _handle_chat_resume(body):
+    """Resume the latest conversation, seeding the session with log history."""
+    if not _HAS_ICONFUCIUS:
+        return 503, {"error": "iconfucius SDK not installed"}
+
+    try:
+        from iconfucius.persona import load_persona
+        from iconfucius.ai import ClaudeBackend, LoggingBackend, APIKeyMissingError
+        from iconfucius.conversation_log import ConversationLogger
+        from iconfucius.logging_config import create_session_logger
+        from iconfucius.skills.definitions import get_tools_for_anthropic
+    except ImportError as e:
+        return 503, {"error": f"Missing dependency: {e}"}
+
+    # Find latest resume file
+    root = os.environ.get("ICONFUCIUS_ROOT", os.getcwd())
+    log_dir = Path(root) / ".logs" / "conversations"
+    if not log_dir.is_dir():
+        return 200, {"resumed": False}
+
+    resume_files = sorted(log_dir.glob("*-ai-for-resume.jsonl"))
+    if not resume_files:
+        return 200, {"resumed": False}
+
+    latest = resume_files[-1]
+    try:
+        api_messages, display_messages = _read_resume_file(latest)
+    except Exception:
+        return 200, {"resumed": False}
+
+    if not api_messages:
+        return 200, {"resumed": False}
+
+    # Build a fresh session (same as chatStart but with pre-seeded messages)
+    api_key = body.get("api_key") or os.environ.get("ANTHROPIC_API_KEY", "")
+    persona_name = body.get("persona", "iconfucius")
+
+    try:
+        persona = load_persona(persona_name)
+    except Exception as e:
+        return 400, {"error": f"Persona not found: {e}"}
+
+    model = body.get("model") or persona.ai_model
+    try:
+        backend = ClaudeBackend(model=model, api_key=api_key)
+    except APIKeyMissingError as e:
+        return 400, {"error": str(e), "needs_api_key": True}
+    except Exception as e:
+        return 500, {"error": f"Backend error: {e}"}
+
+    system = _build_system_prompt(persona)
+    tools = get_tools_for_anthropic()
+    session_id = str(uuid.uuid4())
+    persona_key = persona_name.lower().replace(" ", "")
+
+    stamp = (
+        datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        + f"-web-{session_id[:8]}"
+    )
+    conv_logger = ConversationLogger(stamp=stamp)
+    session_logger = create_session_logger(stamp)
+    backend = LoggingBackend(backend, conv_logger)
+
+    _chat_sessions[session_id] = {
+        "lock": threading.Lock(),
+        "backend": backend,
+        "messages": api_messages,
+        "system": system,
+        "tools": tools,
+        "persona_name": persona.name,
+        "persona_key": persona_key,
+        "ai_provider": persona.ai_provider,
+        "pending_confirm": None,
+        "conv_logger": conv_logger,
+        "session_logger": session_logger,
+        "_resume_msg_count": len(api_messages),
+    }
+
+    return 200, {
+        "session_id": session_id,
+        "persona": persona.name,
+        "model": model,
+        "messages": display_messages,
+        "resumed": True,
+    }
 
 
 def _handle_chat_settings(body):
@@ -789,6 +914,7 @@ def _handle_wallet_balances(*, bypass_cache=False):
             "wallet_sats": totals.get("wallet_sats") or 0,
             "portfolio_sats": totals.get("portfolio_sats") or 0,
             "portfolio_usd": ((totals.get("portfolio_sats") or 0) / 1e8) * btc_usd if btc_usd else None,
+            "tokens": totals.get("tokens") or {},
         },
         "btc_usd_rate": btc_usd,
     }
@@ -934,6 +1060,7 @@ class UIHandler(BaseHTTPRequestHandler):
             "/api/setup/wallet-create": _handle_action_wallet_create,
             "/api/setup/set-bots": _handle_action_set_bots,
             "/api/chat/start": _handle_chat_start,
+            "/api/chat/resume": _handle_chat_resume,
             "/api/chat/message": _handle_chat_message,
             "/api/chat/confirm": _handle_chat_confirm,
             "/api/chat/settings": _handle_chat_settings,
