@@ -63,9 +63,9 @@ class TestExecuteToolDispatch:
 
 
 class TestSetupStatusExecutor:
-    def test_setup_status_returns_all_fields(self):
+    def test_setup_and_operational_status_returns_all_fields(self):
         """Verify setup status returns all fields."""
-        result = execute_tool("setup_status", {})
+        result = execute_tool("setup_and_operational_status", {})
         assert result["status"] == "ok"
         assert "config_exists" in result
         assert "wallet_exists" in result
@@ -73,13 +73,43 @@ class TestSetupStatusExecutor:
         assert "has_api_key" in result
         assert "ready" in result
 
-    def test_setup_status_ready_requires_all(self):
+    def test_setup_and_operational_status_ready_requires_all(self):
         """ready should be False when any component is missing."""
         # In the test environment, wallet likely doesn't exist
-        result = execute_tool("setup_status", {})
+        result = execute_tool("setup_and_operational_status", {})
         assert result["status"] == "ok"
         # ready should be a bool
         assert isinstance(result["ready"], bool)
+
+    def test_not_ready_skips_operational_fields(self):
+        """When setup is not ready, operational fields should be absent."""
+        result = execute_tool("setup_and_operational_status", {})
+        if not result["ready"]:
+            assert "ai_provider" not in result
+            assert "ai_operational" not in result
+
+    @patch("iconfucius.health.urlopen")
+    def test_ready_includes_operational_fields(self, mock_urlopen, odin_project, monkeypatch):
+        """When ready=True, result includes ai_provider and ai_operational."""
+        import json
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-key")
+
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = json.dumps({
+            "components": [
+                {"name": "Claude API (api.anthropic.com)", "status": "operational"},
+            ]
+        }).encode()
+        mock_resp.__enter__ = lambda s: s
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        mock_urlopen.return_value = mock_resp
+
+        result = execute_tool("setup_and_operational_status", {})
+        assert result["status"] == "ok"
+        assert result["ready"] is True
+        assert result["ai_provider"] == "Anthropic"
+        assert result["ai_operational"] is True
+        assert result["ai_status_detail"] == "operational"
 
 
 class TestInitExecutor:

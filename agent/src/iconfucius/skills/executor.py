@@ -83,8 +83,8 @@ def execute_tool(name: str, args: dict, *, persona_name: str = "") -> dict:
 # Setup handlers
 # ---------------------------------------------------------------------------
 
-def _handle_setup_status(args: dict) -> dict:
-    """Handle the setup_status tool call."""
+def _handle_setup_and_operational_status(args: dict) -> dict:
+    """Handle the setup_and_operational_status tool call."""
     from iconfucius.config import find_config, get_pem_file
 
     config_path = find_config()
@@ -92,15 +92,33 @@ def _handle_setup_status(args: dict) -> dict:
     env_exists = Path(".env").exists()
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
     has_api_key = bool(api_key) and api_key != "your-api-key-here"
+    ready = all([config_path is not None, pem_exists, has_api_key])
 
-    return {
+    result = {
         "status": "ok",
         "config_exists": config_path is not None,
         "wallet_exists": pem_exists,
         "env_exists": env_exists,
         "has_api_key": has_api_key,
-        "ready": all([config_path is not None, pem_exists, has_api_key]),
+        "ready": ready,
     }
+
+    if ready:
+        from iconfucius.config import get_ai_provider, get_provider_status_url
+        from iconfucius.health import fetch_provider_health
+
+        provider = get_ai_provider()
+        status_url = get_provider_status_url(provider)
+        result["ai_provider"] = provider
+        result["ai_status_url"] = status_url
+        result["ai_operational"] = None
+
+        if status_url:
+            health = fetch_provider_health(provider, status_url)
+            result["ai_operational"] = health["ok"]
+            result["ai_status_detail"] = health["status_detail"]
+
+    return result
 
 
 def _handle_check_update(args: dict) -> dict:
@@ -1917,7 +1935,7 @@ def _handle_memory_update(args: dict, *, persona_name: str = "") -> dict:
 # ---------------------------------------------------------------------------
 
 _HANDLERS: dict[str, callable] = {
-    "setup_status": _handle_setup_status,
+    "setup_and_operational_status": _handle_setup_and_operational_status,
     "check_update": _handle_check_update,
     "enable_experimental": _handle_enable_experimental,
     "init": _handle_init,

@@ -80,6 +80,25 @@ def is_bech32_btc_address(address: str) -> bool:
 
 AI_TIMEOUT_DEFAULT = 600  # seconds
 
+# Provider → status page URL mapping
+_PROVIDER_STATUS = {
+    "Anthropic": "https://status.claude.com/",
+}
+
+
+def get_ai_provider() -> str:
+    """Return the resolved AI provider name for the current project."""
+    from iconfucius.persona import resolve_ai_config
+    config = load_config()
+    ai_section = config.get("ai", {})
+    _api_type, _model, _base_url, provider = resolve_ai_config(ai_section)
+    return provider
+
+
+def get_provider_status_url(provider: str) -> str | None:
+    """Return the status page URL for a provider, or None if unknown."""
+    return _PROVIDER_STATUS.get(provider)
+
 # ---------------------------------------------------------------------------
 # BTC/USD rate & sats formatting
 # ---------------------------------------------------------------------------
@@ -414,6 +433,7 @@ default_persona = "iconfucius"
 # Claude with a different model:
 # [ai]
 # model = "claude-sonnet-4-6"
+# provider = "Anthropic"    # auto-detected from api_type; override if needed
 #
 # Any OpenAI-compatible endpoint (llama.cpp, Ollama, vLLM, LM Studio, etc.):
 # [ai]

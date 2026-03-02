@@ -1072,7 +1072,7 @@ class TestStartChatWizard:
         def track_exec(name, args):
             """Track execute_tool calls for assertion."""
             calls.append((name, args))
-            if name == "setup_status" and not _calls_with(calls, "init"):
+            if name == "setup_and_operational_status" and not _calls_with(calls, "init"):
                 return self._no_config_status()
             if name == "init":
                 return {"status": "ok", "display": "Created iconfucius.toml"}
@@ -1094,7 +1094,7 @@ class TestStartChatWizard:
         def track_exec(name, args):
             """Track execute_tool calls for assertion."""
             calls.append((name, args))
-            if name == "setup_status" and not _calls_with(calls, "init"):
+            if name == "setup_and_operational_status" and not _calls_with(calls, "init"):
                 return self._no_config_status()
             if name == "init":
                 return {"status": "ok", "display": "Created iconfucius.toml"}
@@ -1115,7 +1115,7 @@ class TestStartChatWizard:
         def track_exec(name, args):
             """Track execute_tool calls for assertion."""
             calls.append((name, args))
-            if name == "setup_status" and not _calls_with(calls, "init"):
+            if name == "setup_and_operational_status" and not _calls_with(calls, "init"):
                 return self._no_config_status()
             if name == "init":
                 return {"status": "ok", "display": "Created iconfucius.toml"}
@@ -1148,7 +1148,7 @@ class TestStartChatWizard:
         def track_exec(name, args):
             """Track execute_tool calls for assertion."""
             calls.append((name, args))
-            if name == "setup_status" and not _calls_with(calls, "init"):
+            if name == "setup_and_operational_status" and not _calls_with(calls, "init"):
                 return self._no_config_status()
             if name == "init":
                 return {"status": "ok", "display": "lots of CLI output"}
@@ -1294,7 +1294,7 @@ class TestStartChatWizard:
         def track_exec(name, args):
             """Track execute_tool calls for assertion."""
             calls.append((name, args))
-            if name == "setup_status" and not _calls_with(calls, "wallet_create"):
+            if name == "setup_and_operational_status" and not _calls_with(calls, "wallet_create"):
                 return self._no_wallet_status()
             if name == "wallet_create":
                 return {"status": "ok", "display": "Wallet created"}
@@ -1320,7 +1320,7 @@ class TestStartChatWizard:
 
         def track_exec(name, args):
             """Track execute_tool calls for assertion."""
-            if name == "setup_status":
+            if name == "setup_and_operational_status":
                 if step["n"] == 0:
                     return self._no_config_status()
                 if step["n"] == 1:
@@ -1357,7 +1357,7 @@ class TestStartChatWizard:
         def track_exec(name, args):
             """Track execute_tool calls for assertion."""
             calls.append(name)
-            if name == "setup_status" and "wallet_create" not in calls:
+            if name == "setup_and_operational_status" and "wallet_create" not in calls:
                 # Config exists, but no API key and no wallet
                 return {
                     "status": "ok", "config_exists": True, "wallet_exists": False,

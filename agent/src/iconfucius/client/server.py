@@ -149,6 +149,7 @@ _load_env_file()
 
 _HAS_ICONFUCIUS = False
 try:
+    from iconfucius.ai import format_api_error as _format_api_error
     from iconfucius.config import get_bot_names, get_btc_to_usd_rate, fmt_sats
     from iconfucius.cli.balance import run_wallet_balance, run_all_balances
     from iconfucius.skills.executor import execute_tool
@@ -179,7 +180,7 @@ def _build_system_prompt(persona):
 
     system = persona.system_prompt
 
-    setup = execute_tool("setup_status", {})
+    setup = execute_tool("setup_and_operational_status", {})
     if not setup.get("ready"):
         system += "\n\n## Setup Status\n"
         system += (
@@ -436,6 +437,7 @@ def _handle_chat_start(body):
         "tools": tools,
         "persona_name": persona.name,
         "persona_key": persona_key,
+        "ai_provider": persona.ai_provider,
         "pending_confirm": None,
         "conv_logger": conv_logger,
         "session_logger": session_logger,
@@ -469,7 +471,11 @@ def _handle_chat_message(body):
         return 200, result
     except Exception as e:
         traceback.print_exc()
-        return 500, {"error": str(e)}
+        url = _get_session_status_url(session)
+        err = {"error": _format_api_error(e)}
+        if url:
+            err["status_url"] = url
+        return 500, err
     finally:
         clear_session_logger()
 
@@ -515,7 +521,11 @@ def _handle_chat_confirm(body):
         return 200, result
     except Exception as e:
         traceback.print_exc()
-        return 500, {"error": str(e)}
+        url = _get_session_status_url(session)
+        err = {"error": _format_api_error(e)}
+        if url:
+            err["status_url"] = url
+        return 500, err
     finally:
         clear_session_logger()
 
@@ -548,6 +558,57 @@ def _handle_chat_settings(body):
 
     os.environ["ANTHROPIC_API_KEY"] = api_key
     return 200, {"status": "ok", "message": "API key saved"}
+
+
+def _get_status_url_for_provider(provider: str) -> str | None:
+    """Return the status page URL for a provider, or None."""
+    if not _HAS_ICONFUCIUS:
+        return None
+    from iconfucius.config import get_provider_status_url
+    return get_provider_status_url(provider)
+
+
+def _get_session_status_url(session: dict) -> str | None:
+    """Return the status page URL for a chat session's provider."""
+    provider = session.get("ai_provider", "")
+    return _get_status_url_for_provider(provider) if provider else None
+
+
+def _handle_chat_health():
+    """Return AI provider health information."""
+    if not _HAS_ICONFUCIUS:
+        return 503, {"error": "iconfucius SDK not installed"}
+
+    cached = _cache_get("chat_health")
+    if cached:
+        return cached
+
+    from iconfucius.config import get_ai_provider, get_provider_status_url
+    from iconfucius.health import fetch_provider_health
+
+    provider = get_ai_provider()
+    status_url = get_provider_status_url(provider)
+
+    if not status_url:
+        resp = 200, {
+            "ok": None,
+            "provider": provider,
+            "status_url": None,
+            "status_detail": "unknown",
+        }
+        _cache_set("chat_health", resp)
+        return resp
+
+    health = fetch_provider_health(provider, status_url)
+    resp = 200, {
+        "ok": health["ok"],
+        "provider": provider,
+        "status_url": status_url,
+        "status_detail": health["status_detail"],
+    }
+
+    _cache_set("chat_health", resp)
+    return resp
 
 
 # ---------------------------------------------------------------------------
@@ -753,7 +814,7 @@ def _handle_setup_status():
         return err
     _sync_project_root()
     _chdir_to_root()
-    return 200, execute_tool("setup_status", {})
+    return 200, execute_tool("setup_and_operational_status", {})
 
 
 def _handle_action_init(body):
@@ -920,6 +981,15 @@ class UIHandler(BaseHTTPRequestHandler):
         if path == "/api/wallet/trades":
             try:
                 status, data = _handle_wallet_trades()
+            except Exception as e:
+                traceback.print_exc()
+                status, data = 500, {"error": str(e)}
+            _json_response(self, status, data)
+            return
+
+        if path == "/api/chat/health":
+            try:
+                status, data = _handle_chat_health()
             except Exception as e:
                 traceback.print_exc()
                 status, data = 500, {"error": str(e)}

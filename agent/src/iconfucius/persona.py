@@ -38,21 +38,28 @@ class Persona:
     ai_api_type: str   # "claude" | "openai"
     ai_model: str
     ai_base_url: str   # "" for Claude (uses SDK default), URL for openai
+    ai_provider: str   # "Anthropic", "Unknown", etc.
     system_prompt: str    # contents of system-prompt.md
     greeting_prompt: str  # contents of greeting-prompt.md
     goodbye_prompt: str   # contents of goodbye-prompt.md
 
 
-def resolve_ai_config(ai_section: dict) -> tuple[str, str, str]:
+_API_TYPE_TO_PROVIDER = {
+    "claude": "Anthropic",
+}
+
+
+def resolve_ai_config(ai_section: dict) -> tuple[str, str, str, str]:
     """Resolve AI configuration from an [ai] section dict.
 
     Auto-detection rules:
     - If base_url is set but api_type is not → assume "openai"
     - If model starts with "claude-" and no api_type → assume "claude"
     - Default: api_type="claude", model=DEFAULT_MODEL, base_url=""
+    - Provider auto-detected from api_type; explicit ``provider`` wins.
 
     Returns:
-        (api_type, model, base_url)
+        (api_type, model, base_url, provider)
     """
     api_type = ai_section.get("api_type", "")
     model = ai_section.get("model", "")
@@ -82,7 +89,12 @@ def resolve_ai_config(ai_section: dict) -> tuple[str, str, str]:
     elif model == DEFAULT_MODEL and api_type != "claude":
         model = "default"
 
-    return api_type, model, base_url
+    # Provider: explicit override wins, otherwise auto-detect from api_type
+    provider = ai_section.get("provider", "")
+    if not provider:
+        provider = _API_TYPE_TO_PROVIDER.get(api_type, "Unknown")
+
+    return api_type, model, base_url, provider
 
 
 def get_builtin_personas_dir() -> Path:
@@ -192,13 +204,14 @@ def load_persona(name: str) -> Persona:
     persona_section = merged_config.get("persona", {})
     ai_section = merged_config.get("ai", {})
 
-    api_type, model, base_url = resolve_ai_config(ai_section)
+    api_type, model, base_url, provider = resolve_ai_config(ai_section)
 
     return Persona(
         name=persona_section.get("name", name),
         ai_api_type=api_type,
         ai_model=model,
         ai_base_url=base_url,
+        ai_provider=provider,
         system_prompt=system_prompt,
         greeting_prompt=greeting_prompt,
         goodbye_prompt=goodbye_prompt,

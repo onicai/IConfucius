@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo, Component } from "react";
-import { getBtcPrice, getToken, getWalletStatus, getWalletInfo, getWalletBalances } from "./api";
+import { getBtcPrice, getChatHealth, getToken, getWalletStatus, getWalletInfo, getWalletBalances } from "./api";
 import { clearClientCache, preloadCache } from "./hooks";
 import { fmtSats } from "./utils";
 import TokensView from "./views/TokensView";
@@ -123,6 +123,7 @@ export default function App() {
   const [portfolioSats, setPortfolioSats] = useState(null);
   const [botsSats, setBotsSats] = useState(null);
   const [walletSats, setWalletSats] = useState(null);
+  const [chatOk, setChatOk] = useState(null);
   const [chatFocusTick, setChatFocusTick] = useState(0);
   const [chatWidth, setChatWidth] = useState(() => {
     if (typeof window === "undefined") return DEFAULT_CHAT_WIDTH;
@@ -169,6 +170,9 @@ export default function App() {
         if (cancelled) return;
         setSdkOk(s.sdk_available);
         if (s.project_root) setProjectRoot(s.project_root);
+        // Set initial chat health from operational status
+        if (s.ai_operational === true) setChatOk(true);
+        else if (s.ai_operational === false) setChatOk(false);
 
         // If wallet/setup isn't ready, default to Wallet tab.
         if (!s.sdk_available || !s.ready) {
@@ -233,6 +237,20 @@ export default function App() {
     window.addEventListener("resize", onWindowResize);
     return () => window.removeEventListener("resize", onWindowResize);
   }, [clampChatWidth]);
+
+  // Poll /api/chat/health when chatOk is false to detect recovery
+  useEffect(() => {
+    if (chatOk !== false) return;
+    let cancelled = false;
+    const poll = () => {
+      getChatHealth()
+        .then((h) => { if (!cancelled && h.ok === true) setChatOk(true); })
+        .catch(() => {});
+    };
+    poll();
+    const id = setInterval(poll, 30_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [chatOk]);
 
   function toggleService(id) {
     userSelectedTabRef.current = true;
@@ -309,7 +327,7 @@ export default function App() {
           {btcUsd && <span className="hidden sm:inline">BTC ${Math.round(btcUsd).toLocaleString()}</span>}
           {icfPriceUsd != null && <span className="hidden sm:inline">ICONFUCIUS ${icfPriceUsd < 0.01 ? icfPriceUsd.toFixed(4) : icfPriceUsd.toFixed(2)}</span>}
           <span className="flex items-center gap-1"><StatusDot ok={proxyOk} />{proxyOk ? "Odin" : "Offline"}</span>
-          <span className="flex items-center gap-1"><StatusDot ok={sdkOk} />{sdkOk ? "Chat" : "No Chat"}</span>
+          <span className="flex items-center gap-1"><StatusDot ok={sdkOk === false ? false : chatOk === false ? false : sdkOk === true && chatOk !== false ? true : null} />{sdkOk === false ? "No Chat" : chatOk === false ? "Chat Error" : sdkOk ? "Chat" : "Chat"}</span>
           {/* Mobile chat toggle */}
           <button
             onClick={() => setChatOpen((o) => !o)}
@@ -374,7 +392,7 @@ export default function App() {
           <div className="w-px h-full bg-border" />
         </div>
         <aside className="hidden lg:flex shrink-0 border-l border-border" style={{ width: `${chatWidth}px` }}>
-          <ChatPanel onAction={handleAction} focusSignal={chatFocusTick} />
+          <ChatPanel onAction={handleAction} focusSignal={chatFocusTick} onChatStatus={setChatOk} />
         </aside>
       </div>
 
@@ -392,7 +410,7 @@ export default function App() {
                 </svg>
               </button>
             </div>
-            <ChatPanel onAction={handleAction} focusSignal={chatFocusTick} />
+            <ChatPanel onAction={handleAction} focusSignal={chatFocusTick} onChatStatus={setChatOk} />
           </div>
         </div>
       )}

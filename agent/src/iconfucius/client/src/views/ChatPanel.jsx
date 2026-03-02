@@ -93,7 +93,7 @@ function MessageBubble({ role, text }) {
   );
 }
 
-export default function ChatPanel({ onAction, focusSignal = 0 }) {
+export default function ChatPanel({ onAction, focusSignal = 0, onChatStatus }) {
   const [sessionId, setSessionId] = useState(null);
   const [messages, setMessages] = useState(loadSavedMessages);
   const [input, setInput] = useState("");
@@ -102,6 +102,7 @@ export default function ChatPanel({ onAction, focusSignal = 0 }) {
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [needsKey, setNeedsKey] = useState(null);
   const [error, setError] = useState(null);
+  const [statusUrl, setStatusUrl] = useState(null);
   const [starting, setStarting] = useState(false);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
@@ -123,12 +124,15 @@ export default function ChatPanel({ onAction, focusSignal = 0 }) {
     try {
       const res = await chatStart({ apiKey });
       setSessionId(res.session_id);
+      onChatStatus?.(true);
       try { sessionStorage.setItem(SESSION_KEY, res.session_id); } catch {}
     } catch (err) {
       if (err.message?.includes("API key") || err.message?.includes("ANTHROPIC_API_KEY")) {
         setNeedsKey(true);
       } else {
         setError(err.message);
+        if (err.statusUrl) setStatusUrl(err.statusUrl);
+        onChatStatus?.(false);
       }
     } finally { setStarting(false); }
   }
@@ -157,6 +161,8 @@ export default function ChatPanel({ onAction, focusSignal = 0 }) {
       addMessages([{ role: "assistant", text: res.text }]);
       setConfirmData(null);
     }
+    onChatStatus?.(true);
+    setStatusUrl(null);
   }
 
   async function handleSend(e) {
@@ -177,6 +183,8 @@ export default function ChatPanel({ onAction, focusSignal = 0 }) {
         setError("Session expired — reconnecting. Please resend your message.");
       } else {
         setError(err.message);
+        if (err.statusUrl) setStatusUrl(err.statusUrl);
+        onChatStatus?.(false);
       }
     }
     finally { setLoading(false); inputRef.current?.focus(); }
@@ -188,7 +196,11 @@ export default function ChatPanel({ onAction, focusSignal = 0 }) {
       const res = await chatConfirm({ sessionId, approved });
       handleResponse(res);
       if (approved && onAction) onAction();
-    } catch (err) { setError(err.message); }
+    } catch (err) {
+      setError(err.message);
+      if (err.statusUrl) setStatusUrl(err.statusUrl);
+      onChatStatus?.(false);
+    }
     finally { setConfirmLoading(false); inputRef.current?.focus(); }
   }
 
@@ -267,7 +279,18 @@ export default function ChatPanel({ onAction, focusSignal = 0 }) {
 
       {/* Error */}
       {error && sessionId && (
-        <div className="px-3 pb-1 text-xs text-red">{error}</div>
+        <div className="px-3 pb-1 text-xs text-red">
+          {error}
+          {statusUrl && (
+            <>
+              {" "}
+              <a href={statusUrl} target="_blank" rel="noopener noreferrer"
+                className="underline text-accent hover:text-accent/80">
+                Check status
+              </a>
+            </>
+          )}
+        </div>
       )}
 
       {/* Input */}

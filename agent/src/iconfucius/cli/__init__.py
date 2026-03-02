@@ -382,7 +382,7 @@ def _start_chat():
     """
     from iconfucius.skills.executor import execute_tool
 
-    setup = execute_tool("setup_status", {})
+    setup = execute_tool("setup_and_operational_status", {})
 
     # --- Step 1: Project init ---
     if not setup.get("config_exists"):
@@ -417,7 +417,7 @@ def _start_chat():
         print(f"Created project with {num_bots} bot(s): {bot_list}")
         print()
         # Re-check after init
-        setup = execute_tool("setup_status", {})
+        setup = execute_tool("setup_and_operational_status", {})
 
     # --- Step 2: API key ---
     if not setup.get("has_api_key"):
@@ -452,7 +452,7 @@ def _start_chat():
             return
         print("Wallet created.")
         print()
-        setup = execute_tool("setup_status", {})
+        setup = execute_tool("setup_and_operational_status", {})
 
     from iconfucius.cli.chat import run_chat
 

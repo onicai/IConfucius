@@ -17,7 +17,11 @@ async function postJSON(url, body = {}) {
     body: JSON.stringify(body),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `API ${res.status}`);
+  if (!res.ok) {
+    const err = new Error(data.error || `API ${res.status}`);
+    if (data.status_url) err.statusUrl = data.status_url;
+    throw err;
+  }
   return data;
 }
 
@@ -87,6 +91,10 @@ export async function chatConfirm({ sessionId, approved }) {
 
 export async function chatSettings({ apiKey }) {
   return postJSON("/api/chat/settings", { api_key: apiKey });
+}
+
+export async function getChatHealth() {
+  return fetchJSON("/api/chat/health");
 }
 
 // External
