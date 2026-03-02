@@ -83,7 +83,7 @@ def execute_tool(name: str, args: dict, *, persona_name: str = "") -> dict:
 # Setup handlers
 # ---------------------------------------------------------------------------
 
-def _handle_setup_and_operational_status(args: dict) -> dict:
+def _handle_setup_and_operational_status(_args: dict) -> dict:
     """Handle the setup_and_operational_status tool call."""
     from iconfucius.config import (
         find_config, get_ai_provider, get_pem_file, get_provider_status_url,

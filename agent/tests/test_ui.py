@@ -96,43 +96,43 @@ class TestResolveStatic:
         )
         return static
 
-    def test_root_resolves_to_index(self, static_dir):
+    def test_root_resolves_to_index(self, static_dir):  # noqa: ARG002
         """GET / should resolve to index.html."""
         result = _resolve_static("/")
         assert result is not None
         assert result.name == "index.html"
 
-    def test_empty_path_resolves_to_index(self, static_dir):
+    def test_empty_path_resolves_to_index(self, static_dir):  # noqa: ARG002
         """Empty path should resolve to index.html."""
         result = _resolve_static("")
         assert result is not None
         assert result.name == "index.html"
 
-    def test_existing_file(self, static_dir):
+    def test_existing_file(self, static_dir):  # noqa: ARG002
         """Known file path should resolve to that file."""
         result = _resolve_static("/app.js")
         assert result is not None
         assert result.name == "app.js"
 
-    def test_nested_file(self, static_dir):
+    def test_nested_file(self, static_dir):  # noqa: ARG002
         """Nested file path should resolve correctly."""
         result = _resolve_static("/assets/style.css")
         assert result is not None
         assert result.name == "style.css"
 
-    def test_spa_fallback(self, static_dir):
+    def test_spa_fallback(self, static_dir):  # noqa: ARG002
         """Unknown path should fall back to index.html (SPA routing)."""
         result = _resolve_static("/wallet")
         assert result is not None
         assert result.name == "index.html"
 
-    def test_spa_fallback_nested(self, static_dir):
+    def test_spa_fallback_nested(self, static_dir):  # noqa: ARG002
         """Deeply nested unknown path should fall back to index.html."""
         result = _resolve_static("/some/deep/route")
         assert result is not None
         assert result.name == "index.html"
 
-    def test_directory_traversal_blocked(self, static_dir):
+    def test_directory_traversal_blocked(self, static_dir):  # noqa: ARG002
         """Directory traversal attempts must return None."""
         result = _resolve_static("/../../../etc/passwd")
         assert result is None
@@ -164,9 +164,12 @@ class TestResolveStatic:
 
 class TestRunServer:
     @patch("iconfucius.client.server.ThreadingHTTPServer")
+    @patch("iconfucius.client.server.threading.Timer")
     @patch("iconfucius.client.server.webbrowser")
     @patch("iconfucius.client.server._warm_cache")
-    def test_run_server_opens_browser(self, mock_cache, mock_wb, mock_srv):
+    def test_run_server_opens_browser(
+        self, _mock_cache, mock_wb, mock_timer, mock_srv
+    ):
         """Verify run_server opens browser when open_browser=True."""
         mock_instance = MagicMock()
         mock_srv.return_value = mock_instance
@@ -177,11 +180,17 @@ class TestRunServer:
         mock_srv.assert_called_once_with(("127.0.0.1", 55199), UIHandler)
         mock_instance.serve_forever.assert_called_once()
         mock_instance.server_close.assert_called_once()
+        mock_timer.assert_called_once_with(
+            0.5, mock_wb.open, args=("http://localhost:55199",)
+        )
 
     @patch("iconfucius.client.server.ThreadingHTTPServer")
+    @patch("iconfucius.client.server.threading.Timer")
     @patch("iconfucius.client.server.webbrowser")
     @patch("iconfucius.client.server._warm_cache")
-    def test_run_server_no_browser(self, mock_cache, mock_wb, mock_srv):
+    def test_run_server_no_browser(
+        self, _mock_cache, _mock_wb, mock_timer, mock_srv
+    ):
         """Verify run_server skips browser when open_browser=False."""
         mock_instance = MagicMock()
         mock_srv.return_value = mock_instance
@@ -189,13 +198,13 @@ class TestRunServer:
 
         run_server(port=55199, open_browser=False)
 
-        # webbrowser.open should not be scheduled
-        mock_wb.open.assert_not_called()
+        # Timer should not be created when browser is disabled
+        mock_timer.assert_not_called()
 
     @patch("iconfucius.client.server.ThreadingHTTPServer")
     @patch("iconfucius.client.server.webbrowser")
     @patch("iconfucius.client.server._warm_cache")
-    def test_run_server_port_in_use(self, mock_cache, mock_wb, mock_srv, capsys):
+    def test_run_server_port_in_use(self, _mock_cache, _mock_wb, mock_srv, capsys):
         """Verify port-in-use gives a helpful error and exits."""
         mock_srv.side_effect = OSError("Address already in use")
 
@@ -212,7 +221,7 @@ class TestRunServer:
     @patch("iconfucius.client.server.ThreadingHTTPServer")
     @patch("iconfucius.client.server.webbrowser")
     @patch("iconfucius.client.server._warm_cache")
-    def test_run_server_other_oserror_propagates(self, mock_cache, mock_wb, mock_srv):
+    def test_run_server_other_oserror_propagates(self, _mock_cache, _mock_wb, mock_srv):
         """Verify non-port OSErrors are re-raised, not swallowed."""
         mock_srv.side_effect = OSError("Permission denied")
 
