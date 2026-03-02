@@ -89,7 +89,7 @@ class TestSetupStatusExecutor:
             assert "ai_operational" not in result
 
     @patch("iconfucius.health.urlopen")
-    def test_ready_includes_operational_fields(self, mock_urlopen, odin_project, monkeypatch):
+    def test_ready_includes_operational_fields(self, mock_urlopen, odin_project, monkeypatch):  # noqa: ARG002
         """When ready=True, result includes ai_provider and ai_operational."""
         import json
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-key")

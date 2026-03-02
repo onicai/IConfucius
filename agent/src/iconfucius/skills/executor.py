@@ -85,13 +85,22 @@ def execute_tool(name: str, args: dict, *, persona_name: str = "") -> dict:
 
 def _handle_setup_and_operational_status(args: dict) -> dict:
     """Handle the setup_and_operational_status tool call."""
-    from iconfucius.config import find_config, get_pem_file
+    from iconfucius.config import (
+        find_config, get_ai_provider, get_pem_file, get_provider_status_url,
+    )
 
     config_path = find_config()
     pem_exists = Path(get_pem_file()).exists()
     env_exists = Path(".env").exists()
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-    has_api_key = bool(api_key) and api_key != "your-api-key-here"
+
+    # Check API key based on provider — non-Anthropic backends may not need one
+    provider = get_ai_provider()
+    if provider == "Anthropic":
+        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        has_api_key = bool(api_key) and api_key != "your-api-key-here"
+    else:
+        has_api_key = True
+
     ready = all([config_path is not None, pem_exists, has_api_key])
 
     result = {
@@ -104,14 +113,13 @@ def _handle_setup_and_operational_status(args: dict) -> dict:
     }
 
     if ready:
-        from iconfucius.config import get_ai_provider, get_provider_status_url
         from iconfucius.health import fetch_provider_health
 
-        provider = get_ai_provider()
         status_url = get_provider_status_url(provider)
         result["ai_provider"] = provider
         result["ai_status_url"] = status_url
         result["ai_operational"] = None
+        result["ai_status_detail"] = "unknown"
 
         if status_url:
             health = fetch_provider_health(provider, status_url)
