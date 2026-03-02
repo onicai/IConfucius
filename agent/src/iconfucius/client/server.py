@@ -906,7 +906,10 @@ class UIHandler(BaseHTTPRequestHandler):
         if length == 0:
             return {}
         raw = self.rfile.read(length)
-        return json.loads(raw)
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON body: {e}") from e
 
     def do_POST(self):
         try:
@@ -944,6 +947,8 @@ class UIHandler(BaseHTTPRequestHandler):
         try:
             body = self._read_json_body()
             status, data = handler(body)
+        except ValueError as e:
+            status, data = 400, {"error": str(e)}
         except Exception as e:
             traceback.print_exc()
             status, data = 500, {"error": str(e)}

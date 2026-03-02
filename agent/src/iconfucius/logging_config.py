@@ -28,6 +28,7 @@ _JWT_PATTERN = re.compile(
 )
 
 _MAX_SESSION_LOGS = 100
+_global_logger_lock = threading.Lock()
 
 _session_stamp: str | None = None
 
@@ -101,13 +102,17 @@ def _get_global_logger() -> logging.Logger:
     if logger.handlers:
         return logger
 
-    logger.setLevel(logging.DEBUG)
+    with _global_logger_lock:
+        if logger.handlers:  # double-check under lock
+            return logger
 
-    conv_dir = _get_log_dir()
-    log_path = conv_dir / f"{get_session_stamp()}-iconfucius.log"
-    logger.addHandler(_make_file_handler(log_path))
+        logger.setLevel(logging.DEBUG)
 
-    _cleanup_session_logs(conv_dir)
+        conv_dir = _get_log_dir()
+        log_path = conv_dir / f"{get_session_stamp()}-iconfucius.log"
+        logger.addHandler(_make_file_handler(log_path))
+
+        _cleanup_session_logs(conv_dir)
 
     return logger
 
