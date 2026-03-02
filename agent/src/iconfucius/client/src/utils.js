@@ -10,7 +10,9 @@ export function fmtUsd(sats, btcUsd) {
   const usd = (sats / 1e8) * btcUsd;
   if (usd >= 1e6) return `$${(usd / 1e6).toFixed(2)}M`;
   if (usd >= 1e3) return `$${(usd / 1e3).toFixed(1)}K`;
-  return `$${usd.toFixed(2)}`;
+  if (usd >= 0.01) return `$${usd.toFixed(2)}`;
+  if (usd >= 0.0001) return `$${usd.toFixed(4)}`;
+  return "<$0.0001";
 }
 
 export function fmtNumber(n) {

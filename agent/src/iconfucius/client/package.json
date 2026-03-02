@@ -1,5 +1,5 @@
 {
-  "name": "iconfucius-dashboard",
+  "name": "iconfucius-ui",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "proxy": "python proxy-server.py"
+    "proxy": "python -m iconfucius.client.server"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.2.1",

@@ -934,10 +934,11 @@ def _handle_public_balance(args: dict) -> dict:
         for t in tokens:
             ticker = t.get("ticker", t.get("id", "?"))
             token_id = t.get("id", "?")
-            raw_balance = t.get("balance", 0)
-            divisibility = t.get("divisibility", 8)
-            decimals = t.get("decimals", 0)
-            price = t.get("price", 0)
+            raw_balance = t.get("balance") or 0
+            divisibility = t.get("divisibility") or 8
+            decimals = t.get("decimals")
+            decimals = decimals if decimals is not None else 3
+            price = t.get("price") or 0
             balance = adjust_api_decimals(raw_balance, decimals)
             value_sats = millisubunit_value_sats(raw_balance, price, divisibility)
             human_balance = balance / (10 ** divisibility) if divisibility > 0 else balance

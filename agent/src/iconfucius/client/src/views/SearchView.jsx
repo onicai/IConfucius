@@ -16,7 +16,18 @@ export default function SearchView({ btcUsd }) {
     try {
       const data = await searchTokens(query.trim());
       const raw = data?.data || data || [];
-      setResults(raw.map((r) => r.entity ? { ...r.entity, _type: r.type } : r));
+      const tokens = raw.map((r) => r.entity ? { ...r.entity, _type: r.type } : r);
+      tokens.sort((a, b) => {
+        const ab = a.bonded ? 1 : 0;
+        const bb = b.bonded ? 1 : 0;
+        if (bb !== ab) return bb - ab;
+        if ((b.marketcap || 0) !== (a.marketcap || 0)) return (b.marketcap || 0) - (a.marketcap || 0);
+        if ((b.holder_count || 0) !== (a.holder_count || 0)) return (b.holder_count || 0) - (a.holder_count || 0);
+        const av = a.twitter_verified ? 1 : 0;
+        const bv = b.twitter_verified ? 1 : 0;
+        return bv - av;
+      });
+      setResults(tokens);
     } catch (err) { setError(err.message); }
     finally { setLoading(false); }
   }
@@ -72,7 +83,7 @@ export default function SearchView({ btcUsd }) {
                     {t.ticker && t.name !== t.ticker && <div className="text-dim text-xs">{t.name}</div>}
                   </td>
                   <td className="px-4 py-3 text-dim whitespace-nowrap">{t.id}</td>
-                  <td className="px-4 py-3 text-right tabular-nums whitespace-nowrap">{t.marketcap ? fmtUsd(t.marketcap, btcUsd) : "—"}</td>
+                  <td className="px-4 py-3 text-right tabular-nums whitespace-nowrap">{t.marketcap ? fmtUsd(t.marketcap / 1e3, btcUsd) : "—"}</td>
                   <td className="px-4 py-3 text-right tabular-nums whitespace-nowrap">{t.holder_count ? fmtNumber(t.holder_count) : "—"}</td>
                   <td className="px-4 py-3 whitespace-nowrap">
                     {t.bonded && <span className="inline-block px-2 py-0.5 rounded-full text-[0.7rem] font-semibold bg-green-dim text-green">Bonded</span>}{" "}

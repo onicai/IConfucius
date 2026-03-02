@@ -66,9 +66,9 @@ export default function TokensView({ btcUsd }) {
                     </a>
                     {t.ticker && t.name !== t.ticker && <div className="text-dim text-xs">{t.name}</div>}
                   </td>
-                  <td className="px-4 py-3 text-right tabular-nums whitespace-nowrap">{t.price != null ? fmtUsd(t.price / 1e6, btcUsd) : "—"}</td>
-                  <td className="px-4 py-3 text-right tabular-nums whitespace-nowrap">{t.marketcap ? fmtUsd(t.marketcap, btcUsd) : "—"}</td>
-                  <td className="px-4 py-3 text-right tabular-nums whitespace-nowrap">{t.volume_24h ? fmtUsd(t.volume_24h / 1e6, btcUsd) : "—"}</td>
+                  <td className="px-4 py-3 text-right tabular-nums whitespace-nowrap">{t.price != null ? fmtUsd(t.price / 1e3, btcUsd) : "—"}</td>
+                  <td className="px-4 py-3 text-right tabular-nums whitespace-nowrap">{t.marketcap ? fmtUsd(t.marketcap / 1e3, btcUsd) : "—"}</td>
+                  <td className="px-4 py-3 text-right tabular-nums whitespace-nowrap">{t.volume_24 ? fmtUsd(t.volume_24 / 1e3, btcUsd) : "—"}</td>
                   <td className="px-4 py-3 text-right tabular-nums whitespace-nowrap">{t.holder_count ? fmtNumber(t.holder_count) : "—"}</td>
                   <td className="px-4 py-3 whitespace-nowrap">
                     {t.bonded && <span className="inline-block px-2 py-0.5 rounded-full text-[0.7rem] font-semibold bg-green-dim text-green">Bonded</span>}{" "}
