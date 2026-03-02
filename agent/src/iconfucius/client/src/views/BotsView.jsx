@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { getWalletBalances } from "../api";
 import LoadingQuote from "../components/LoadingQuote";
 import { useFetch } from "../hooks";
@@ -88,7 +89,7 @@ function PortfolioSummary({ totals, btcUsd }) {
 }
 
 export default function BotsView({ btcUsd, refreshKey = 0 }) {
-  const refreshRef = { current: false };
+  const refreshRef = useRef(false);
   const { data, loading, error, refetch } = useFetch(
     () => { const r = refreshRef.current || refreshKey > 0; refreshRef.current = false; return getWalletBalances({ refresh: r }); },
     [refreshKey], { cacheKey: "wallet_balances" },

@@ -935,7 +935,8 @@ def _handle_public_balance(args: dict) -> dict:
             ticker = t.get("ticker", t.get("id", "?"))
             token_id = t.get("id", "?")
             raw_balance = t.get("balance") or 0
-            divisibility = t.get("divisibility") or 8
+            divisibility = t.get("divisibility")
+            divisibility = 8 if divisibility is None else divisibility
             decimals = t.get("decimals")
             decimals = decimals if decimals is not None else 3
             price = t.get("price") or 0

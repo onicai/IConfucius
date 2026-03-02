@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { getWalletInfo, getWalletStatus, setupInit, setupWalletCreate, importWallet } from "../api";
 import LoadingQuote from "../components/LoadingQuote";
 import { useFetch, clearClientCache } from "../hooks";
@@ -264,7 +264,7 @@ function SetupWizard({ status, onComplete }) {
 }
 
 function WalletInfoCards({ btcUsd, refreshKey = 0 }) {
-  const refreshRef = { current: false };
+  const refreshRef = useRef(false);
   const { data, loading, error, refetch } = useFetch(
     () => { const r = refreshRef.current || refreshKey > 0; refreshRef.current = false; return getWalletInfo({ refresh: r }); },
     [refreshKey], { cacheKey: "wallet_info" },

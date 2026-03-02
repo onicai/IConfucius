@@ -323,7 +323,7 @@ def _run_web_tool_loop(session):
                     b.input["amount"] = sats
                     del b.input["amount_usd"]
                 except Exception:
-                    pass
+                    print(f"  [warn] USD->sats conversion failed for {b.name}")
 
         confirm_blocks = []
         for b in tool_blocks:

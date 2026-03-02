@@ -121,6 +121,11 @@ def set_session_logger(logger: logging.Logger) -> None:
 
 def clear_session_logger() -> None:
     """Remove the per-session logger from the current thread."""
+    logger = getattr(_thread_local, "logger", None)
+    if logger is not None:
+        for h in list(logger.handlers):
+            logger.removeHandler(h)
+            h.close()
     _thread_local.logger = None
 
 
@@ -140,6 +145,9 @@ def create_session_logger(
     logger = logging.getLogger(f"iconfucius.session.{stamp}")
     logger.setLevel(logging.DEBUG)
     logger.propagate = False
+    for h in list(logger.handlers):
+        logger.removeHandler(h)
+        h.close()
     logger.addHandler(_make_file_handler(log_path))
 
     _cleanup_session_logs(conv_dir)
