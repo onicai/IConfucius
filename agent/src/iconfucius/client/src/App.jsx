@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback, useRef, Component } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo, Component } from "react";
 import { getBtcPrice, getToken, getWalletStatus, getWalletInfo, getWalletBalances } from "./api";
 import { clearClientCache, preloadCache } from "./hooks";
+import { fmtSats } from "./utils";
 import TokensView from "./views/TokensView";
 import TradesView from "./views/TradesView";
 import SearchView from "./views/SearchView";
@@ -83,9 +84,9 @@ function renderTileGroup(items, active, onToggle) {
             onClick={() => onToggle(s.id)}
             className={`group relative flex items-center gap-2.5 rounded-xl border transition-all duration-200 cursor-pointer text-left
               ${hasActive && !isActive
-                ? "px-3 py-2 bg-surface/50 border-border/50 hover:bg-surface hover:border-border"
+                ? "px-3 py-3 bg-surface/50 border-border/50 hover:bg-surface hover:border-border"
                 : isActive
-                  ? "px-3 py-2 bg-accent-dim border-accent text-accent shadow-[0_0_12px_rgba(247,147,26,0.08)]"
+                  ? "px-3 py-3 bg-accent-dim border-accent text-accent shadow-[0_0_12px_rgba(247,147,26,0.08)]"
                   : "flex-col px-4 py-4 bg-surface border-border hover:border-accent/40 hover:bg-surface-hover"
               }`}
           >
@@ -95,6 +96,7 @@ function renderTileGroup(items, active, onToggle) {
             <div className="min-w-0">
               <div className={`font-semibold truncate ${hasActive ? "text-xs" : "text-sm"}`}>{s.label}</div>
               {!hasActive && <div className="text-[0.65rem] text-dim mt-0.5 leading-tight">{s.desc}</div>}
+              {hasActive && s.liveDesc && <div className="text-[0.65rem] font-medium truncate" style={{ color: "#3b82f6" }}>{s.liveDesc}</div>}
             </div>
           </button>
         );
@@ -118,6 +120,9 @@ export default function App() {
   const [projectRoot, setProjectRoot] = useState(null);
   const [icfPriceUsd, setIcfPriceUsd] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [portfolioSats, setPortfolioSats] = useState(null);
+  const [botsSats, setBotsSats] = useState(null);
+  const [walletSats, setWalletSats] = useState(null);
   const [chatFocusTick, setChatFocusTick] = useState(0);
   const [chatWidth, setChatWidth] = useState(() => {
     if (typeof window === "undefined") return DEFAULT_CHAT_WIDTH;
@@ -197,6 +202,21 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    getWalletBalances({ refresh: refreshKey > 0 }).then((b) => {
+      if (cancelled) return;
+      const totals = b?.totals || {};
+      const oSats = Number(totals.odin_sats || 0);
+      const tSats = Number(totals.token_value_sats || 0);
+      const wSats = Number(totals.wallet_sats || 0);
+      setPortfolioSats(oSats + tSats + wSats);
+      setBotsSats(oSats + tSats);
+      setWalletSats(wSats);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [refreshKey]);
+
+  useEffect(() => {
     setChatWidth((w) => clampChatWidth(w));
     window.localStorage.setItem(CHAT_WIDTH_KEY, String(clampChatWidth(chatWidth)));
   }, [chatWidth, clampChatWidth]);
@@ -234,6 +254,18 @@ export default function App() {
     window.addEventListener("mouseup", onUp);
   }, [clampChatWidth]);
 
+  const primaryTiles = useMemo(() => PRIMARY.map((t) => {
+    if (t.id === "bots" && botsSats != null && btcUsd) {
+      const val = fmtSats(botsSats, btcUsd);
+      return { ...t, desc: val, liveDesc: val };
+    }
+    if (t.id === "wallet" && walletSats != null && btcUsd) {
+      const val = fmtSats(walletSats, btcUsd);
+      return { ...t, desc: val, liveDesc: val };
+    }
+    return t;
+  }), [botsSats, walletSats, btcUsd]);
+
   const renderView = () => {
     switch (active) {
       case "wallet": return <WalletView btcUsd={btcUsd} refreshKey={refreshKey} />;
@@ -253,17 +285,20 @@ export default function App() {
           <img src="/icon.webp" alt="IConfucius" className="w-8 h-8 rounded-full object-cover ring-1 ring-accent/30" />
           <div className="flex flex-col leading-tight">
             <span className="text-accent">IConfucius</span>
-            <span className="text-[0.6rem] text-dim font-normal -mt-0.5 flex items-center gap-1">
-              {projectRoot ? (
-                <>
-                  {projectRoot.split("/").pop() || projectRoot}
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" className="opacity-40 hover:opacity-80 cursor-help shrink-0" title={projectRoot}>
-                    <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2"/><text x="12" y="17" textAnchor="middle" fontSize="14" fontWeight="bold" fill="currentColor">i</text>
-                  </svg>
-                </>
-              ) : "The Runes trading Agent"}
+            <span className="text-[0.6rem] text-dim font-normal -mt-0.5">
+              {projectRoot ? (projectRoot.split("/").pop() || projectRoot) : "The Runes trading Agent"}
             </span>
           </div>
+          {portfolioSats != null ? (
+            <span className="text-sm font-semibold ml-1" style={{ color: "#3b82f6" }}>
+              {fmtSats(portfolioSats, btcUsd)}
+            </span>
+          ) : (
+            <span className="text-[0.65rem] text-dim ml-1 flex items-center gap-1.5">
+              <span className="inline-block w-3 h-3 border-2 border-dim/40 border-t-dim rounded-full animate-spin" />
+              loading balances...
+            </span>
+          )}
         </h1>
         <div className="flex items-center gap-3 text-[0.7rem] text-dim">
           {btcUsd && <span className="hidden sm:inline">BTC ${Math.round(btcUsd).toLocaleString()}</span>}
@@ -294,7 +329,7 @@ export default function App() {
         {/* Left content area */}
         <main className="flex-1 min-w-0 flex flex-col overflow-y-auto scrollbar-thin p-4 lg:p-6">
           {/* Service tiles */}
-          {renderTileGroup(PRIMARY, active, toggleService)}
+          {renderTileGroup(primaryTiles, active, toggleService)}
           <div className="flex items-center gap-2 mb-3 mt-1">
             <div className="h-px flex-1 bg-border/50" />
             <span className="text-[0.6rem] uppercase tracking-widest text-dim/50 font-medium">Explore</span>

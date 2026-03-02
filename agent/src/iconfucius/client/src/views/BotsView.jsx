@@ -72,17 +72,16 @@ function PortfolioSummary({ totals, btcUsd }) {
   return (
     <div className="grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-3 mb-6">
       <div className="bg-surface border border-border rounded-[10px] p-4">
-        <div className="text-xs uppercase tracking-wide text-dim mb-1">Portfolio Total</div>
-        <div className="text-xl font-bold tabular-nums">{fmtSats(totals.portfolio_sats, btcUsd)}</div>
-        {totals.portfolio_usd != null && <div className="text-xs text-dim mt-0.5">{fmtUsd(totals.portfolio_sats, btcUsd)}</div>}
-      </div>
-      <div className="bg-surface border border-border rounded-[10px] p-4">
-        <div className="text-xs uppercase tracking-wide text-dim mb-1">Bots Total (Odin + Tokens)</div>
+        <div className="text-xs uppercase tracking-wide text-dim mb-1">Bots Total</div>
         <div className="text-xl font-bold tabular-nums">{fmtSats(totals.odin_sats + totals.token_value_sats, btcUsd)}</div>
       </div>
       <div className="bg-surface border border-border rounded-[10px] p-4">
-        <div className="text-xs uppercase tracking-wide text-dim mb-1">Wallet (ckBTC)</div>
-        <div className="text-xl font-bold tabular-nums">{fmtSats(totals.wallet_sats, btcUsd)}</div>
+        <div className="text-xs uppercase tracking-wide text-dim mb-1">Odin Tokens</div>
+        <div className="text-xl font-bold tabular-nums">{fmtSats(totals.token_value_sats, btcUsd)}</div>
+      </div>
+      <div className="bg-surface border border-border rounded-[10px] p-4">
+        <div className="text-xs uppercase tracking-wide text-dim mb-1">Odin BTC</div>
+        <div className="text-xl font-bold tabular-nums">{fmtSats(totals.odin_sats, btcUsd)}</div>
       </div>
     </div>
   );
