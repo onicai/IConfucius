@@ -1,6 +1,7 @@
 """Tests for iconfucius ui command and client.server module."""
 
 import os
+import re
 import threading
 import time
 from pathlib import Path
@@ -8,6 +9,8 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 from typer.testing import CliRunner
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
 from iconfucius.cli import app
 from iconfucius.client.server import (
@@ -29,9 +32,10 @@ class TestUiCommand:
         """Verify 'iconfucius ui --help' shows expected options."""
         result = runner.invoke(app, ["ui", "--help"])
         assert result.exit_code == 0
-        assert "Launch the web UI" in result.output
-        assert "--port" in result.output
-        assert "--no-browser" in result.output
+        output = _ANSI_RE.sub("", result.output)
+        assert "Launch the web UI" in output
+        assert "--port" in output
+        assert "--no-browser" in output
 
     def test_ui_listed_in_main_help(self):
         """Verify 'ui' appears in the top-level help output."""
