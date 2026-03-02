@@ -106,12 +106,25 @@ export default function ChatPanel({ onAction, focusSignal = 0, onChatStatus }) {
   const [starting, setStarting] = useState(false);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
+  const isInitialMount = useRef(true);
 
   const scrollToBottom = useCallback(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (isInitialMount.current) {
+      // Double rAF: wait for flex layout to resolve before scrolling
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (bottomRef.current) {
+            bottomRef.current.scrollIntoView({ behavior: "instant" });
+            isInitialMount.current = false;
+          }
+        });
+      });
+    } else {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, []);
 
-  useEffect(scrollToBottom, [messages, confirmData, scrollToBottom]);
+  useEffect(scrollToBottom, [messages, confirmData, starting, scrollToBottom]);
   useEffect(() => { saveMessages(messages); }, [messages]);
   useEffect(() => { if (!loading && !confirmLoading && sessionId) inputRef.current?.focus(); }, [loading, confirmLoading, sessionId]);
   useEffect(() => {
