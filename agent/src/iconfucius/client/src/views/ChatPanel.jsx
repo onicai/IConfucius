@@ -247,7 +247,12 @@ export default function ChatPanel({ onAction, focusSignal = 0, onChatStatus }) {
   }
 
   function handleClear() {
+    if (loading || confirmLoading || starting) return;
     setMessages([]);
+    setConfirmData(null);
+    setError(null);
+    setStatusUrl(null);
+    setInput("");
     localStorage.removeItem(STORAGE_KEY);
     sessionStorage.removeItem(SESSION_KEY);
     setSessionId(null);
@@ -334,7 +339,7 @@ export default function ChatPanel({ onAction, focusSignal = 0, onChatStatus }) {
           disabled={loading || confirmLoading || !sessionId}
           className="flex-1 min-w-0 px-3 py-2 bg-surface border border-border rounded-lg text-text text-xs outline-none focus:border-accent disabled:opacity-50"
         />
-        <button type="submit" disabled={loading || confirmLoading || !sessionId || !input.trim()}
+        <button type="submit" aria-label="Send message" disabled={loading || confirmLoading || !sessionId || !input.trim()}
           className="px-3 py-2 rounded-lg text-xs bg-accent text-bg font-semibold hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50 shrink-0">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>

@@ -1737,6 +1737,7 @@ def _record_trade(tool_name: str, args: dict, result: dict,
     price = 0
     ticker = token_id
     btc_usd = None
+    data = None
     try:
         from iconfucius.tokens import fetch_token_data
 

@@ -31,7 +31,7 @@ from datetime import datetime, timezone
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from socketserver import ThreadingMixIn
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 
 class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
@@ -947,7 +947,8 @@ def _handle_wallet_info(*, bypass_cache=False, ckbtc_minter=False):
             "btc_usd_rate": btc_usd,
         }
 
-    return _cache_fetch("wallet_info", _compute, bypass_cache=bypass_cache)
+    cache_key = f"wallet_info:ckbtc_minter={int(ckbtc_minter)}"
+    return _cache_fetch(cache_key, _compute, bypass_cache=bypass_cache)
 
 
 def _handle_wallet_balances(*, bypass_cache=False, ckbtc_minter=False):
@@ -1003,7 +1004,8 @@ def _handle_wallet_balances(*, bypass_cache=False, ckbtc_minter=False):
             "btc_usd_rate": btc_usd,
         }
 
-    return _cache_fetch("wallet_balances", _compute, bypass_cache=bypass_cache)
+    cache_key = f"wallet_balances:ckbtc_minter={int(ckbtc_minter)}"
+    return _cache_fetch(cache_key, _compute, bypass_cache=bypass_cache)
 
 
 def _handle_wallet_trades():
@@ -1092,6 +1094,8 @@ def _handle_action_set_bots(body):
     err = _require_sdk()
     if err:
         return err
+    _sync_project_root()
+    _chdir_to_root()
     num_bots = body.get("num_bots")
     if num_bots is None:
         return 400, {"status": "error", "error": "'num_bots' is required."}
@@ -1174,8 +1178,9 @@ class UIHandler(BaseHTTPRequestHandler):
     def _do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
-        refresh = "refresh" in parsed.query
-        ckbtc_minter = "ckbtc_minter" in parsed.query
+        query_params = parse_qs(parsed.query, keep_blank_values=True)
+        refresh = "refresh" in query_params
+        ckbtc_minter = "ckbtc_minter" in query_params
 
         if path == "/api/wallet/backup":
             try:
@@ -1283,9 +1288,16 @@ class UIHandler(BaseHTTPRequestHandler):
     def _cors_headers(self):
         origin = self.headers.get("Origin", "")
         host = self.headers.get("Host", "localhost")
-        host_origin = f"http://{host}"
-        if not origin or origin == host_origin:
-            self.send_header("Access-Control-Allow-Origin", origin or host_origin)
+        host_port = host.split(":")[-1] if ":" in host else "80"
+        allowed = {
+            f"http://localhost:{host_port}",
+            f"http://127.0.0.1:{host_port}",
+            f"http://[::1]:{host_port}",
+        }
+        if not origin:
+            self.send_header("Access-Control-Allow-Origin", f"http://localhost:{host_port}")
+        elif origin in allowed:
+            self.send_header("Access-Control-Allow-Origin", origin)
         else:
             self.send_header("Access-Control-Allow-Origin", "null")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
