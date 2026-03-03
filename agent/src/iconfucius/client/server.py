@@ -97,6 +97,50 @@ def _cache_clear(key=None):
             _cache.clear()
 
 
+_cache_inflight: dict[str, threading.Event] = {}
+_cache_inflight_lock = threading.Lock()
+
+
+def _cache_fetch(key, compute_fn, *, bypass_cache=False):
+    """Fetch from cache, deduplicating concurrent in-flight requests."""
+    if not bypass_cache:
+        cached = _cache_get(key)
+        if cached:
+            return cached
+        # Check if another thread is already computing this key
+        with _cache_inflight_lock:
+            existing = _cache_inflight.get(key)
+            if existing is not None:
+                wait_event = existing
+            else:
+                wait_event = None
+                _cache_inflight[key] = threading.Event()
+
+        if wait_event is not None:
+            # Wait OUTSIDE the lock so the computing thread can signal
+            wait_event.wait(timeout=60)
+            cached = _cache_get(key)
+            if cached:
+                return cached
+            # Owner failed; register as new owner
+            with _cache_inflight_lock:
+                _cache_inflight[key] = threading.Event()
+    else:
+        # bypass_cache: still register inflight to block others
+        with _cache_inflight_lock:
+            _cache_inflight[key] = threading.Event()
+
+    try:
+        result = compute_fn()
+        _cache_set(key, result)
+        return result
+    finally:
+        with _cache_inflight_lock:
+            ev = _cache_inflight.pop(key, None)
+        if ev:
+            ev.set()
+
+
 def _warm_cache():
     """Preload expensive data in background threads at startup."""
     if not _HAS_ICONFUCIUS:
@@ -107,7 +151,7 @@ def _warm_cache():
             print(f"  [cache] {name} ready")
         except Exception as e:
             print(f"  [cache] {name} failed: {e}")
-    threading.Thread(target=_preload, args=("wallet_info", _handle_wallet_info), daemon=True).start()
+    # Only warm bot balances — wallet info fetched on demand
     threading.Thread(target=_preload, args=("wallet_balances", _handle_wallet_balances), daemon=True).start()
 
 try:
@@ -386,6 +430,20 @@ def _execute_tool_blocks(tool_blocks, confirm_ids, approved, persona_key):
     return tool_results
 
 
+def _make_stamp(session_id: str) -> str:
+    """Build a log-file stamp, appending network for non-prd."""
+    from iconfucius.config import get_network
+
+    stamp = (
+        datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        + f"-web-{session_id[:8]}"
+    )
+    network = get_network()
+    if network != "prd":
+        stamp += f"-{network}"
+    return stamp
+
+
 def _handle_chat_start(body):
     """Create a new chat session."""
     if not _HAS_ICONFUCIUS:
@@ -422,10 +480,7 @@ def _handle_chat_start(body):
     persona_key = persona_name.lower().replace(" ", "")
 
     # Per-session logging: unique stamp → separate log files per chat
-    stamp = (
-        datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-        + f"-web-{session_id[:8]}"
-    )
+    stamp = _make_stamp(session_id)
     conv_logger = ConversationLogger(stamp=stamp)
     session_logger = create_session_logger(stamp)
     backend = LoggingBackend(backend, conv_logger)
@@ -485,6 +540,19 @@ def _read_resume_file(path):
         elif m.get("role") == "assistant" and isinstance(m.get("content"), str):
             display.append({"role": "assistant", "text": m["content"]})
     return api_messages, display
+
+
+def _find_resume_files(log_dir):
+    """Return resume files filtered by the active network."""
+    from iconfucius.config import get_network
+
+    network = get_network()
+    all_files = sorted(log_dir.glob("*-ai-for-resume.jsonl"))
+    if network == "prd":
+        return [f for f in all_files
+                if "-testing-ai-for-resume" not in f.name
+                and "-development-ai-for-resume" not in f.name]
+    return [f for f in all_files if f"-{network}-ai-for-resume" in f.name]
 
 
 def _handle_chat_message(body):
@@ -591,7 +659,7 @@ def _handle_chat_resume(body):
     if not log_dir.is_dir():
         return 200, {"resumed": False}
 
-    resume_files = sorted(log_dir.glob("*-ai-for-resume.jsonl"))
+    resume_files = _find_resume_files(log_dir)
     if not resume_files:
         return 200, {"resumed": False}
 
@@ -626,10 +694,7 @@ def _handle_chat_resume(body):
     session_id = str(uuid.uuid4())
     persona_key = persona_name.lower().replace(" ", "")
 
-    stamp = (
-        datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-        + f"-web-{session_id[:8]}"
-    )
+    stamp = _make_stamp(session_id)
     conv_logger = ConversationLogger(stamp=stamp)
     session_logger = create_session_logger(stamp)
     backend = LoggingBackend(backend, conv_logger)
@@ -744,6 +809,28 @@ def _handle_chat_health():
     return resp
 
 
+def _handle_odin_health():
+    """Return Odin.fun API health status."""
+    cached = _cache_get("odin_health")
+    if cached:
+        return cached
+
+    try:
+        import urllib.request
+        req = urllib.request.Request(
+            f"{ODIN_API}/tokens?limit=1",
+            headers={"User-Agent": "iconfucius-health/1"},
+        )
+        with urllib.request.urlopen(req, timeout=10) as r:
+            ok = 200 <= r.status < 400
+        resp = 200, {"ok": ok, "status_detail": "operational"}
+    except Exception:
+        resp = 200, {"ok": False, "status_detail": "unreachable"}
+
+    _cache_set("odin_health", resp)
+    return resp
+
+
 # ---------------------------------------------------------------------------
 # JSON helpers
 # ---------------------------------------------------------------------------
@@ -828,98 +915,95 @@ def _chdir_to_root():
         os.chdir(root)
 
 
-def _handle_wallet_info(*, bypass_cache=False):
+def _handle_wallet_info(*, bypass_cache=False, ckbtc_minter=False):
     if not _HAS_ICONFUCIUS:
         return 503, {"error": "iconfucius SDK not installed. Run: pip install iconfucius"}
-    if not bypass_cache:
-        cached = _cache_get("wallet_info")
-        if cached:
-            return cached
-    _sync_project_root()
-    _chdir_to_root()
-    result = run_wallet_balance(ckbtc_minter=True)
-    if result is None:
-        try:
-            from iconfucius.config import get_pem_file
-            expected = get_pem_file()
-        except Exception:
-            expected = os.path.join(os.environ.get("ICONFUCIUS_ROOT", ""), ".wallet", "identity-private.pem")
-        return 404, {
-            "error": "Wallet not found. Run: iconfucius wallet create",
-            "expected_wallet_path": expected,
-            "project_root": os.environ.get("ICONFUCIUS_ROOT", ""),
+
+    def _compute():
+        _sync_project_root()
+        _chdir_to_root()
+        result = run_wallet_balance(ckbtc_minter=ckbtc_minter)
+        if result is None:
+            try:
+                from iconfucius.config import get_pem_file
+                expected = get_pem_file()
+            except Exception:
+                expected = os.path.join(os.environ.get("ICONFUCIUS_ROOT", ""), ".wallet", "identity-private.pem")
+            return 404, {
+                "error": "Wallet not found. Run: iconfucius wallet create",
+                "expected_wallet_path": expected,
+                "project_root": os.environ.get("ICONFUCIUS_ROOT", ""),
+            }
+        btc_usd = result.get("btc_usd_rate")
+        balance = result.get("balance_sats") or 0
+        pending = result.get("pending_sats") or 0
+        return 200, {
+            "principal": result.get("principal", ""),
+            "btc_address": result.get("btc_address", ""),
+            "balance_sats": balance,
+            "balance_usd": (balance / 1e8) * btc_usd if btc_usd else None,
+            "pending_sats": pending,
+            "pending_usd": (pending / 1e8) * btc_usd if btc_usd else None,
+            "btc_usd_rate": btc_usd,
         }
-    btc_usd = result.get("btc_usd_rate")
-    balance = result.get("balance_sats") or 0
-    pending = result.get("pending_sats") or 0
-    resp = 200, {
-        "principal": result.get("principal", ""),
-        "btc_address": result.get("btc_address", ""),
-        "balance_sats": balance,
-        "balance_usd": (balance / 1e8) * btc_usd if btc_usd else None,
-        "pending_sats": pending,
-        "pending_usd": (pending / 1e8) * btc_usd if btc_usd else None,
-        "btc_usd_rate": btc_usd,
-    }
-    _cache_set("wallet_info", resp)
-    return resp
+
+    return _cache_fetch("wallet_info", _compute, bypass_cache=bypass_cache)
 
 
-def _handle_wallet_balances(*, bypass_cache=False):
+def _handle_wallet_balances(*, bypass_cache=False, ckbtc_minter=False):
     if not _HAS_ICONFUCIUS:
         return 503, {"error": "iconfucius SDK not installed. Run: pip install iconfucius"}
-    if not bypass_cache:
-        cached = _cache_get("wallet_balances")
-        if cached:
-            return cached
-    _sync_project_root()
-    _chdir_to_root()
-    bot_names = get_bot_names()
-    result = run_all_balances(bot_names=bot_names, ckbtc_minter=True)
-    if result is None:
-        return 404, {"error": "Wallet not found. Run: iconfucius wallet create"}
-    btc_usd = result.get("btc_usd_rate") if "btc_usd_rate" in result else None
-    if btc_usd is None:
-        try:
-            btc_usd = get_btc_to_usd_rate()
-        except Exception:
-            pass
-    wallet_sats = result.get("wallet_ckbtc_sats") or 0
-    pending_sats = result.get("wallet_pending_sats") or 0
-    bots = []
-    for b in result.get("bots", []):
-        odin_sats = b.get("odin_sats") or 0
-        bot_entry = {
-            "name": b["name"], "principal": b.get("principal", ""),
-            "odin_sats": odin_sats,
-            "has_odin_account": b.get("has_odin_account", False),
-            "tokens": b.get("tokens", []),
+
+    def _compute():
+        _sync_project_root()
+        _chdir_to_root()
+        bot_names = get_bot_names()
+        result = run_all_balances(bot_names=bot_names, ckbtc_minter=ckbtc_minter)
+        if result is None:
+            return 404, {"error": "Wallet not found. Run: iconfucius wallet create"}
+        btc_usd = result.get("btc_usd_rate") if "btc_usd_rate" in result else None
+        if btc_usd is None:
+            try:
+                btc_usd = get_btc_to_usd_rate()
+            except Exception:
+                pass
+        wallet_sats = result.get("wallet_ckbtc_sats") or 0
+        pending_sats = result.get("wallet_pending_sats") or 0
+        bots = []
+        for b in result.get("bots", []):
+            odin_sats = b.get("odin_sats") or 0
+            bot_entry = {
+                "name": b["name"], "principal": b.get("principal", ""),
+                "odin_sats": odin_sats,
+                "has_odin_account": b.get("has_odin_account", False),
+                "tokens": b.get("tokens", []),
+                "note": b.get("note"),
+            }
+            if btc_usd:
+                bot_entry["odin_usd"] = (odin_sats / 1e8) * btc_usd
+            bots.append(bot_entry)
+        totals = result.get("totals", {})
+        return 200, {
+            "wallet": {
+                "principal": result.get("wallet_principal", ""),
+                "btc_address": result.get("wallet_btc_address", ""),
+                "ckbtc_sats": wallet_sats,
+                "ckbtc_usd": (wallet_sats / 1e8) * btc_usd if btc_usd else None,
+                "pending_sats": pending_sats,
+            },
+            "bots": bots,
+            "totals": {
+                "odin_sats": totals.get("odin_sats") or 0,
+                "token_value_sats": totals.get("token_value_sats") or 0,
+                "wallet_sats": totals.get("wallet_sats") or 0,
+                "portfolio_sats": totals.get("portfolio_sats") or 0,
+                "portfolio_usd": ((totals.get("portfolio_sats") or 0) / 1e8) * btc_usd if btc_usd else None,
+                "tokens": totals.get("tokens") or {},
+            },
+            "btc_usd_rate": btc_usd,
         }
-        if btc_usd:
-            bot_entry["odin_usd"] = (odin_sats / 1e8) * btc_usd
-        bots.append(bot_entry)
-    totals = result.get("totals", {})
-    resp = 200, {
-        "wallet": {
-            "principal": result.get("wallet_principal", ""),
-            "btc_address": result.get("wallet_btc_address", ""),
-            "ckbtc_sats": wallet_sats,
-            "ckbtc_usd": (wallet_sats / 1e8) * btc_usd if btc_usd else None,
-            "pending_sats": pending_sats,
-        },
-        "bots": bots,
-        "totals": {
-            "odin_sats": totals.get("odin_sats") or 0,
-            "token_value_sats": totals.get("token_value_sats") or 0,
-            "wallet_sats": totals.get("wallet_sats") or 0,
-            "portfolio_sats": totals.get("portfolio_sats") or 0,
-            "portfolio_usd": ((totals.get("portfolio_sats") or 0) / 1e8) * btc_usd if btc_usd else None,
-            "tokens": totals.get("tokens") or {},
-        },
-        "btc_usd_rate": btc_usd,
-    }
-    _cache_set("wallet_balances", resp)
-    return resp
+
+    return _cache_fetch("wallet_balances", _compute, bypass_cache=bypass_cache)
 
 
 def _handle_wallet_trades():
@@ -1091,6 +1175,7 @@ class UIHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path
         refresh = "refresh" in parsed.query
+        ckbtc_minter = "ckbtc_minter" in parsed.query
 
         if path == "/api/wallet/backup":
             try:
@@ -1102,7 +1187,7 @@ class UIHandler(BaseHTTPRequestHandler):
 
         if path == "/api/wallet/info":
             try:
-                status, data = _handle_wallet_info(bypass_cache=refresh)
+                status, data = _handle_wallet_info(bypass_cache=refresh, ckbtc_minter=ckbtc_minter)
             except Exception as e:
                 traceback.print_exc()
                 status, data = 500, {"error": str(e)}
@@ -1111,7 +1196,7 @@ class UIHandler(BaseHTTPRequestHandler):
 
         if path == "/api/wallet/balances":
             try:
-                status, data = _handle_wallet_balances(bypass_cache=refresh)
+                status, data = _handle_wallet_balances(bypass_cache=refresh, ckbtc_minter=ckbtc_minter)
             except Exception as e:
                 traceback.print_exc()
                 status, data = 500, {"error": str(e)}
@@ -1130,6 +1215,15 @@ class UIHandler(BaseHTTPRequestHandler):
         if path == "/api/chat/health":
             try:
                 status, data = _handle_chat_health()
+            except Exception as e:
+                traceback.print_exc()
+                status, data = 500, {"error": str(e)}
+            _json_response(self, status, data)
+            return
+
+        if path == "/api/odin/health":
+            try:
+                status, data = _handle_odin_health()
             except Exception as e:
                 traceback.print_exc()
                 status, data = 500, {"error": str(e)}

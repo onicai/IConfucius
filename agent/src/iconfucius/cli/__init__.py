@@ -990,8 +990,22 @@ def ui(
     no_browser: bool = typer.Option(
         False, "--no-browser", help="Don't open browser automatically"
     ),
+    network: Optional[str] = typer.Option(
+        None, "--network", help="PoAIW network of ckSigner: prd, testing, development"
+    ),
+    verbose: Optional[bool] = typer.Option(
+        None, "--verbose/--quiet", "-v/-q", help="Show verbose output"
+    ),
+    experimental: Optional[bool] = typer.Option(
+        None, "--experimental", "-x", help="Enable experimental features"
+    ),
 ):
     """Launch the web UI."""
+    _resolve_network(network)
+    if verbose is not None:
+        state.verbose = verbose
+    if experimental is not None:
+        state.experimental = experimental
     from iconfucius.client.server import run_server
 
     run_server(port=port, open_browser=not no_browser)

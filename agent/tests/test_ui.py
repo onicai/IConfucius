@@ -18,6 +18,8 @@ from iconfucius.client.server import (
     _resolve_static,
     _save_resume_snapshot,
     _read_resume_file,
+    _find_resume_files,
+    _make_stamp,
     _STATIC_DIR,
     UIHandler,
     run_server,
@@ -39,6 +41,9 @@ class TestUiCommand:
         assert "Launch the web UI" in output
         assert "--port" in output
         assert "--no-browser" in output
+        assert "--network" in output
+        assert "--verbose" in output
+        assert "--experimental" in output
 
     def test_ui_listed_in_main_help(self):
         """Verify 'ui' appears in the top-level help output."""
@@ -77,6 +82,25 @@ class TestUiCommand:
         result = runner.invoke(app, ["ui", "-p", "9999", "--no-browser"])
         assert result.exit_code == 0
         mock_run.assert_called_once_with(port=9999, open_browser=False)
+
+    @patch("iconfucius.client.server.run_server")
+    def test_ui_network_option(self, mock_run):
+        """Verify --network is accepted."""
+        result = runner.invoke(app, ["ui", "--network", "testing"])
+        assert result.exit_code == 0
+        mock_run.assert_called_once_with(port=55129, open_browser=True)
+
+    @patch("iconfucius.client.server.run_server")
+    def test_ui_verbose_option(self, mock_run):
+        """Verify --verbose/--quiet is accepted."""
+        result = runner.invoke(app, ["ui", "--quiet"])
+        assert result.exit_code == 0
+
+    @patch("iconfucius.client.server.run_server")
+    def test_ui_experimental_option(self, mock_run):
+        """Verify --experimental is accepted."""
+        result = runner.invoke(app, ["ui", "--experimental"])
+        assert result.exit_code == 0
 
 
 # ---------------------------------------------------------------------------
@@ -445,3 +469,89 @@ class TestReadResumeFile:
         assert len(display) == 2
         assert display[0]["text"] == "what's my balance?"
         assert display[1]["text"] == "You have 1000 sats."
+
+
+# ---------------------------------------------------------------------------
+# _make_stamp
+# ---------------------------------------------------------------------------
+
+class TestMakeStamp:
+    def test_prd_no_network_suffix(self, monkeypatch):
+        """prd stamps have no network suffix (backward compatible)."""
+        monkeypatch.setattr("iconfucius.config.get_network", lambda: "prd")
+        stamp = _make_stamp("abcdef1234567890")
+        assert stamp.endswith("-web-abcdef12")
+        assert "-prd" not in stamp
+
+    def test_testing_suffix(self, monkeypatch):
+        """testing stamps end with -testing."""
+        monkeypatch.setattr("iconfucius.config.get_network", lambda: "testing")
+        stamp = _make_stamp("abcdef1234567890")
+        assert stamp.endswith("-testing")
+
+    def test_development_suffix(self, monkeypatch):
+        """development stamps end with -development."""
+        monkeypatch.setattr("iconfucius.config.get_network", lambda: "development")
+        stamp = _make_stamp("abcdef1234567890")
+        assert stamp.endswith("-development")
+
+
+# ---------------------------------------------------------------------------
+# _find_resume_files
+# ---------------------------------------------------------------------------
+
+class TestFindResumeFiles:
+    def test_prd_excludes_testing_and_development(self, tmp_path, monkeypatch):
+        """prd filter excludes files tagged with testing or development."""
+        monkeypatch.setattr("iconfucius.config.get_network", lambda: "prd")
+        (tmp_path / "20260301-120000-web-aabb1122-ai-for-resume.jsonl").touch()
+        (tmp_path / "20260301-130000-web-ccdd3344-testing-ai-for-resume.jsonl").touch()
+        (tmp_path / "20260301-140000-web-eeff5566-development-ai-for-resume.jsonl").touch()
+        result = _find_resume_files(tmp_path)
+        assert len(result) == 1
+        assert "aabb1122" in result[0].name
+
+    def test_testing_only_finds_testing(self, tmp_path, monkeypatch):
+        """testing filter returns only testing-tagged files."""
+        monkeypatch.setattr("iconfucius.config.get_network", lambda: "testing")
+        (tmp_path / "20260301-120000-web-aabb1122-ai-for-resume.jsonl").touch()
+        (tmp_path / "20260301-130000-web-ccdd3344-testing-ai-for-resume.jsonl").touch()
+        (tmp_path / "20260301-140000-web-eeff5566-development-ai-for-resume.jsonl").touch()
+        result = _find_resume_files(tmp_path)
+        assert len(result) == 1
+        assert "-testing-" in result[0].name
+
+    def test_development_only_finds_development(self, tmp_path, monkeypatch):
+        """development filter returns only development-tagged files."""
+        monkeypatch.setattr("iconfucius.config.get_network", lambda: "development")
+        (tmp_path / "20260301-120000-web-aabb1122-ai-for-resume.jsonl").touch()
+        (tmp_path / "20260301-130000-web-ccdd3344-testing-ai-for-resume.jsonl").touch()
+        (tmp_path / "20260301-140000-web-eeff5566-development-ai-for-resume.jsonl").touch()
+        result = _find_resume_files(tmp_path)
+        assert len(result) == 1
+        assert "-development-" in result[0].name
+
+    def test_empty_directory(self, tmp_path, monkeypatch):
+        """Empty directory returns empty list."""
+        monkeypatch.setattr("iconfucius.config.get_network", lambda: "prd")
+        result = _find_resume_files(tmp_path)
+        assert result == []
+
+    def test_no_matching_files(self, tmp_path, monkeypatch):
+        """No matching files for the active network returns empty list."""
+        monkeypatch.setattr("iconfucius.config.get_network", lambda: "testing")
+        (tmp_path / "20260301-120000-web-aabb1122-ai-for-resume.jsonl").touch()
+        result = _find_resume_files(tmp_path)
+        assert result == []
+
+    def test_files_sorted_chronologically(self, tmp_path, monkeypatch):
+        """Returned files are sorted by name (timestamp-based order)."""
+        monkeypatch.setattr("iconfucius.config.get_network", lambda: "prd")
+        (tmp_path / "20260302-120000-web-22222222-ai-for-resume.jsonl").touch()
+        (tmp_path / "20260301-120000-web-11111111-ai-for-resume.jsonl").touch()
+        (tmp_path / "20260303-120000-web-33333333-ai-for-resume.jsonl").touch()
+        result = _find_resume_files(tmp_path)
+        assert len(result) == 3
+        assert "11111111" in result[0].name
+        assert "22222222" in result[1].name
+        assert "33333333" in result[2].name

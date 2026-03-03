@@ -109,32 +109,47 @@ def collect_balances(bot_name: str, token_id: str = "29m8",
 
     # Check if bot has a registered Odin.fun account
     from iconfucius.accounts import resolve_odin_account
-    if resolve_odin_account(bot_principal_text) is None:
-        return BotBalances(
-            bot_name=bot_name,
-            bot_principal=bot_principal_text,
-            has_odin_account=False,
+
+    # ------------------------------------------------------------------
+    # Steps 1-3 run concurrently: account check, canister, REST API
+    # ------------------------------------------------------------------
+    from concurrent.futures import ThreadPoolExecutor
+
+    def _canister_balance(principal_text):
+        """Step 2: Odin.Fun trading canister balance."""
+        client = Client(url=IC_HOST)
+        anon_agent = Agent(Identity(anonymous=True), client)
+        odin = Canister(
+            agent=anon_agent,
+            canister_id=ODIN_TRADING_CANISTER_ID,
+            candid_str=ODIN_TRADING_CANDID,
         )
+        return odin.getBalance(principal_text, "btc",
+                               verify_certificate=get_verify_certificates())
 
-    # Create anonymous agent for query calls
-    client = Client(url=IC_HOST)
-    anon_agent = Agent(Identity(anonymous=True), client)
+    def _rest_balances(principal_text):
+        """Step 3: REST API balances."""
+        url = f"{ODIN_API_URL}/user/{principal_text}/balances"
+        log(f"GET {url}")
+        from iconfucius.http_utils import cffi_get_with_retry
+        return cffi_get_with_retry(url)
 
-    # -------------------------------------------------------------------
-    # Step 2: Odin.Fun trading balance
-    # -------------------------------------------------------------------
-    log("\n" + "=" * 60)
-    log("Step 2: Odin.Fun Trading Balance")
-    log("=" * 60)
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        account_future = pool.submit(resolve_odin_account, bot_principal_text)
+        canister_future = pool.submit(_canister_balance, bot_principal_text)
+        rest_future = pool.submit(_rest_balances, bot_principal_text)
 
-    odin = Canister(
-        agent=anon_agent,
-        canister_id=ODIN_TRADING_CANISTER_ID,
-        candid_str=ODIN_TRADING_CANDID,
-    )
+        has_account = account_future.result()
+        if has_account is None:
+            return BotBalances(
+                bot_name=bot_name,
+                bot_principal=bot_principal_text,
+                has_odin_account=False,
+            )
 
-    odin_balance_raw = odin.getBalance(bot_principal_text, "btc",
-                                       verify_certificate=get_verify_certificates())
+        # Step 2: parse canister result
+        odin_balance_raw = canister_future.result()
+
     if isinstance(odin_balance_raw, list) and len(odin_balance_raw) > 0:
         item = odin_balance_raw[0]
         odin_balance = item["value"] if isinstance(item, dict) and "value" in item else item
@@ -146,17 +161,8 @@ def collect_balances(bot_name: str, token_id: str = "29m8",
     log(f"Odin.Fun trading canister ({ODIN_TRADING_CANISTER_ID}):")
     log(f"  Odin.Fun Balance: {fmt_sats(int(odin_sats), btc_usd_rate)}")
 
-    # -------------------------------------------------------------------
-    # Step 3: REST API balances -> token holdings
-    # -------------------------------------------------------------------
-    log("\n" + "=" * 60)
-    log("Step 3: REST API Balances")
-    log("=" * 60)
-
-    url = f"{ODIN_API_URL}/user/{bot_principal_text}/balances"
-    log(f"GET {url}")
-    from iconfucius.http_utils import cffi_get_with_retry
-    resp = cffi_get_with_retry(url)
+    # Step 3: parse REST result
+    resp = rest_future.result()
     log(f"Status: {resp.status_code}")
     log(f"Response: {resp.text[:1000]}")
 
@@ -852,19 +858,23 @@ def run_all_balances(bot_names: list, token_id: str = "29m8",
     if not require_wallet():
         return None
 
+    import threading as _threading
     from iconfucius.cli.concurrent import report_status, run_per_bot
 
-    report_status("collecting wallet info...")
+    report_status("collecting balances...")
     btc_usd_rate = _fetch_btc_usd_rate()
-    wallet_data, wallet_lines = _collect_wallet_info(
-        btc_usd_rate, ckbtc_minter=ckbtc_minter,
-    )
 
-    wallet_balance = wallet_data["balance_sats"]
-    wallet_pending = wallet_data["pending_sats"]
-    wallet_withdrawal = wallet_data["withdrawal_balance_sats"]
+    # Run wallet info and bot balances in parallel
+    wallet_box: dict = {}
 
-    report_status(f"checking {len(bot_names)} bot(s)...")
+    def _fetch_wallet():
+        wallet_box["data"], wallet_box["lines"] = _collect_wallet_info(
+            btc_usd_rate, ckbtc_minter=ckbtc_minter,
+        )
+
+    wallet_thread = _threading.Thread(target=_fetch_wallet, daemon=True)
+    wallet_thread.start()
+
     logger.info("Gathering data for %d bot(s)...", len(bot_names))
 
     all_data = []
@@ -880,6 +890,15 @@ def run_all_balances(bot_names: list, token_id: str = "29m8",
             failed_bots[bot_name] = str(result)
         else:
             all_data.append(result)
+
+    wallet_thread.join()
+    wallet_data = wallet_box["data"]
+    wallet_lines = wallet_box["lines"]
+
+    wallet_balance = wallet_data["balance_sats"]
+    wallet_pending = wallet_data["pending_sats"]
+    wallet_withdrawal = wallet_data["withdrawal_balance_sats"]
+
     if not all_data:
         return None
 

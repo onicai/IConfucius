@@ -41,6 +41,16 @@ function BotCard({ bot, btcUsd }) {
         )}
       </div>
 
+      {bot.note && (
+        <div className="bg-red-dim border border-red/30 rounded px-3 py-2 mb-3">
+          <p className="text-xs text-red font-medium">Odin.fun error — this is not an iconfucius issue</p>
+          <details className="mt-1">
+            <summary className="text-[0.65rem] text-red/70 cursor-pointer">Details</summary>
+            <p className="text-[0.65rem] text-red/70 mt-1 break-all">{bot.note}</p>
+          </details>
+        </div>
+      )}
+
       {bot.principal && (
         <div className="text-[0.65rem] text-dim font-mono break-all mb-3 bg-bg rounded px-2 py-1 border border-border">
           {bot.principal}

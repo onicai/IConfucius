@@ -14,12 +14,18 @@ from pathlib import Path
 
 from filelock import FileLock
 
-from iconfucius.config import _project_root
+from iconfucius.config import _project_root, get_network
 
 
 def get_memory_dir(persona_name: str) -> Path:
-    """Return .memory/<persona_name>/ under project root. Create if missing."""
-    memory_dir = Path(_project_root()) / ".memory" / persona_name
+    """Return .memory/<persona_name>[-<network>]/ under project root.
+
+    prd uses bare persona name (backward compatible), non-prd appends
+    the network suffix (e.g. .memory/iconfucius-testing/).
+    """
+    network = get_network()
+    dir_name = persona_name if network == "prd" else f"{persona_name}-{network}"
+    memory_dir = Path(_project_root()) / ".memory" / dir_name
     memory_dir.mkdir(parents=True, exist_ok=True)
     return memory_dir
 

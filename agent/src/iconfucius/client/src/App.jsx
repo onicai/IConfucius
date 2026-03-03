@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo, Component } from "react";
-import { getBtcPrice, getChatHealth, getToken, getWalletStatus, getWalletInfo, getWalletBalances } from "./api";
+import { getBtcPrice, getChatHealth, getOdinHealth, getToken, getWalletStatus, getWalletBalances } from "./api";
 import { clearClientCache, preloadCache } from "./hooks";
 import { fmtSats } from "./utils";
 import TokensView from "./views/TokensView";
@@ -114,7 +114,7 @@ function StatusDot({ ok }) {
 export default function App() {
   const [active, setActive] = useState("trades");
   const [btcUsd, setBtcUsd] = useState(null);
-  const [proxyOk, setProxyOk] = useState(null);
+  const [odinOk, setOdinOk] = useState(null);
   const [sdkOk, setSdkOk] = useState(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [projectRoot, setProjectRoot] = useState(null);
@@ -123,6 +123,7 @@ export default function App() {
   const [portfolioSats, setPortfolioSats] = useState(null);
   const [botsSats, setBotsSats] = useState(null);
   const [walletSats, setWalletSats] = useState(null);
+  const [hasBotErrors, setHasBotErrors] = useState(false);
   const [chatOk, setChatOk] = useState(null);
   const [chatFocusTick, setChatFocusTick] = useState(0);
   const [chatWidth, setChatWidth] = useState(() => {
@@ -160,9 +161,9 @@ export default function App() {
         });
       })
       .catch(() => {});
-    fetch("/api/odin/tokens?limit=1")
-      .then((r) => setProxyOk(r.ok))
-      .catch(() => setProxyOk(false));
+    getOdinHealth()
+      .then((h) => setOdinOk(h.ok))
+      .catch(() => setOdinOk(false));
 
     (async () => {
       try {
@@ -200,7 +201,6 @@ export default function App() {
     })();
 
     // Eagerly preload slow data so tiles open instantly
-    preloadCache("wallet_info", getWalletInfo);
     preloadCache("wallet_balances", getWalletBalances);
     return () => { cancelled = true; };
   }, []);
@@ -221,6 +221,7 @@ export default function App() {
       setPortfolioSats(oSats + tSats + wSats);
       setBotsSats(oSats + tSats);
       setWalletSats(wSats);
+      setHasBotErrors((b?.bots || []).some((bot) => !!bot.note));
     }).catch(() => {});
     return () => { cancelled = true; };
   }, [refreshKey]);
@@ -244,13 +245,26 @@ export default function App() {
     let cancelled = false;
     const poll = () => {
       getChatHealth()
-        .then((h) => { if (!cancelled && h.ok === true) setChatOk(true); })
+        .then((h) => { if (!cancelled && h.ok !== false) setChatOk(h.ok ?? true); })
         .catch(() => {});
     };
     poll();
     const id = setInterval(poll, 30_000);
     return () => { cancelled = true; clearInterval(id); };
   }, [chatOk]);
+
+  // Poll /api/odin/health when odinOk is false to detect recovery
+  useEffect(() => {
+    if (odinOk !== false) return;
+    let cancelled = false;
+    const poll = () => {
+      getOdinHealth()
+        .then((h) => { if (!cancelled && h.ok === true) setOdinOk(true); })
+        .catch(() => {});
+    };
+    const id = setInterval(poll, 30_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [odinOk]);
 
   function toggleService(id) {
     userSelectedTabRef.current = true;
@@ -326,8 +340,8 @@ export default function App() {
         <div className="flex items-center gap-3 text-[0.7rem] text-dim">
           {btcUsd && <span className="hidden sm:inline">BTC ${Math.round(btcUsd).toLocaleString()}</span>}
           {icfPriceUsd != null && <span className="hidden sm:inline">ICONFUCIUS ${icfPriceUsd < 0.01 ? icfPriceUsd.toFixed(4) : icfPriceUsd.toFixed(2)}</span>}
-          <span className="flex items-center gap-1"><StatusDot ok={proxyOk} />{proxyOk ? "Odin" : "Offline"}</span>
-          <span className="flex items-center gap-1"><StatusDot ok={sdkOk === false ? false : chatOk === false ? false : sdkOk === true && chatOk !== false ? true : null} />{sdkOk === false ? "No Chat" : chatOk === false ? "Chat Error" : sdkOk ? "Chat" : "Chat"}</span>
+          <span className="flex items-center gap-1"><StatusDot ok={odinOk === false ? false : hasBotErrors ? false : odinOk} />{odinOk === false ? "Odin Error" : hasBotErrors ? "Odin Degraded" : "Odin"}</span>
+          <span className="flex items-center gap-1"><StatusDot ok={sdkOk === false ? false : chatOk === false ? false : sdkOk === true && chatOk === true ? true : null} />{sdkOk === false ? "No Chat" : chatOk === false ? "Chat Error" : sdkOk ? "Chat" : "Chat"}</span>
           {/* Mobile chat toggle */}
           <button
             onClick={() => setChatOpen((o) => !o)}
@@ -341,9 +355,9 @@ export default function App() {
         </div>
       </header>
 
-      {proxyOk === false && (
+      {odinOk === false && (
         <div className="shrink-0 bg-red-dim border-b border-red px-4 py-2 text-xs text-red">
-          Proxy server not running. Start with: <code className="font-mono">npm run proxy</code>
+          Odin.fun API unreachable — check your internet connection.
         </div>
       )}
 

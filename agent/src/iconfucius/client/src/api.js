@@ -101,6 +101,10 @@ export async function getChatHealth() {
   return fetchJSON("/api/chat/health");
 }
 
+export async function getOdinHealth() {
+  return fetchJSON("/api/odin/health");
+}
+
 // External
 export async function getBtcPrice() {
   const res = await fetch(
