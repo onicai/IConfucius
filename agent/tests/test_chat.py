@@ -118,6 +118,7 @@ def _make_persona(**overrides) -> Persona:
         ai_api_type="claude",
         ai_model=DEFAULT_MODEL,
         ai_base_url="",
+        ai_provider="Anthropic",
         system_prompt="You are a test bot.",
         greeting_prompt=(
             "Reply with exactly three lines (separate each with a blank line):\n"
@@ -198,13 +199,25 @@ class TestLanguageDetection:
         assert _get_language_code() == "en"
 
 
+class _FakeAnthropicError(Exception):
+    """Exception with __module__ starting with 'anthropic' for testing."""
+    __module__ = "anthropic.error"
+
+
 class TestFormatApiError:
     def test_credit_balance_error(self):
-        """Verify credit balance error."""
-        e = Exception("Your credit balance is too low")
+        """Verify credit balance error with Anthropic exception."""
+        e = _FakeAnthropicError("Your credit balance is too low")
         msg = _format_api_error(e)
         assert "credit" in msg.lower()
         assert "console.anthropic.com" in msg
+
+    def test_credit_balance_generic(self):
+        """Verify credit balance error with generic exception."""
+        e = Exception("Your credit balance is too low")
+        msg = _format_api_error(e)
+        assert "credit" in msg.lower()
+        assert "check your account billing" in msg.lower()
 
     def test_auth_error(self):
         """Verify auth error."""
@@ -214,15 +227,23 @@ class TestFormatApiError:
 
     def test_rate_limit_error(self):
         """Verify rate limit error."""
-        e = Exception("rate limit exceeded")
+        e = _FakeAnthropicError("rate limit exceeded")
         msg = _format_api_error(e)
-        assert "Rate limited" in msg
+        assert "rate limited" in msg.lower()
 
     def test_overloaded_error(self):
         """Verify overloaded error."""
         e = Exception("API is overloaded")
         msg = _format_api_error(e)
         assert "overloaded" in msg.lower()
+
+    def test_timeout_includes_prompt(self):
+        """Verify timeout error triggers CLI-specific timeout prompt."""
+        e = Exception("Request timed out")
+        with patch("iconfucius.cli.chat._prompt_increase_timeout", return_value="Timeout updated."):
+            msg = _format_api_error(e)
+        assert "timed out" in msg.lower()
+        assert "Timeout updated." in msg
 
     def test_generic_error_passthrough(self):
         """Verify generic error passthrough."""
@@ -763,7 +784,7 @@ class TestRunToolLoop:
         tool_block = MagicMock()
         tool_block.type = "tool_use"
         tool_block.id = "id_1"
-        tool_block.name = "setup_status"
+        tool_block.name = "setup_and_operational_status"
         tool_block.input = {}
         resp1 = MagicMock()
         resp1.content = [tool_block]
@@ -936,7 +957,7 @@ class TestRunToolLoop:
         tool_block = MagicMock()
         tool_block.type = "tool_use"
         tool_block.id = "id_loop"
-        tool_block.name = "setup_status"
+        tool_block.name = "setup_and_operational_status"
         tool_block.input = {}
         response = MagicMock()
         response.content = [tool_block]
@@ -1003,7 +1024,7 @@ class TestRunToolLoop:
         tool_block = MagicMock()
         tool_block.type = "tool_use"
         tool_block.id = "id_1"
-        tool_block.name = "setup_status"
+        tool_block.name = "setup_and_operational_status"
         tool_block.input = {}
         resp1 = MagicMock()
         resp1.content = [tool_block]
@@ -1019,7 +1040,7 @@ class TestRunToolLoop:
         _run_tool_loop(backend, messages, "system", [], "TestBot",
                        persona_key="iconfucius")
 
-        mock_exec.assert_called_once_with("setup_status", {},
+        mock_exec.assert_called_once_with("setup_and_operational_status", {},
                                           persona_name="iconfucius")
 
     @patch("iconfucius.cli.chat.execute_tool", return_value={"status": "ok"})
@@ -1184,7 +1205,7 @@ class TestChatHintsPlacement:
 
         def _mock_exec(name, _args=None, **_kwargs):
             """Dispatch execute_tool by tool name."""
-            if name == "setup_status":
+            if name == "setup_and_operational_status":
                 return {
                     "status": "ok", "config_exists": True, "wallet_exists": True,
                     "env_exists": True, "has_api_key": True, "ready": True,
@@ -1639,7 +1660,7 @@ class TestVerboseFlag:
 
         def _mock_exec(name, _args=None, **_kwargs):
             """Dispatch execute_tool by tool name."""
-            if name == "setup_status":
+            if name == "setup_and_operational_status":
                 return {
                     "status": "ok", "config_exists": True, "wallet_exists": True,
                     "env_exists": True, "has_api_key": True, "ready": True,
@@ -1744,7 +1765,7 @@ class TestStartupBalanceWizard:
         _setup_wizard_test(mock_load, mock_backend_factory, tmp_path, monkeypatch)
 
         def _mock_exec(name, _args=None, **_kw):
-            if name == "setup_status":
+            if name == "setup_and_operational_status":
                 return {
                     "status": "ok", "config_exists": True, "wallet_exists": True,
                     "env_exists": True, "has_api_key": True, "ready": True,
@@ -1778,7 +1799,7 @@ class TestStartupBalanceWizard:
 
         def _mock_exec(name, args=None, **kw):
             exec_log.append((name, args))
-            if name == "setup_status":
+            if name == "setup_and_operational_status":
                 return {
                     "status": "ok", "config_exists": True, "wallet_exists": True,
                     "env_exists": True, "has_api_key": True, "ready": True,
@@ -1825,7 +1846,7 @@ class TestStartupBalanceWizard:
             mock_exec.side_effect = lambda name, *a, **kw: {
                 "status": "ok", "config_exists": True, "wallet_exists": True,
                 "env_exists": True, "has_api_key": True, "ready": True,
-            } if name == "setup_status" else {}
+            } if name == "setup_and_operational_status" else {}
 
             from iconfucius.cli.chat import run_chat
             run_chat("iconfucius", "bot-1")
@@ -1852,7 +1873,7 @@ class TestStartupBalanceWizard:
 
         def _mock_exec(name, args=None, **kw):
             exec_log.append((name, args))
-            if name == "setup_status":
+            if name == "setup_and_operational_status":
                 return {
                     "status": "ok", "config_exists": True, "wallet_exists": True,
                     "env_exists": True, "has_api_key": True, "ready": True,
@@ -1885,7 +1906,7 @@ class TestStartupBalanceWizard:
         _setup_wizard_test(mock_load, mock_backend_factory, tmp_path, monkeypatch)
 
         def _mock_exec(name, _args=None, **_kw):
-            if name == "setup_status":
+            if name == "setup_and_operational_status":
                 return {
                     "status": "ok", "config_exists": True, "wallet_exists": True,
                     "env_exists": True, "has_api_key": True, "ready": True,
@@ -1937,7 +1958,7 @@ class TestBotHoldingsDisplay:
 
         def _mock_exec(name, _args=None, **_kwargs):
             """Dispatch execute_tool by tool name."""
-            if name == "setup_status":
+            if name == "setup_and_operational_status":
                 return {
                     "status": "ok", "config_exists": True, "wallet_exists": True,
                     "env_exists": True, "has_api_key": True, "ready": True,
@@ -2029,7 +2050,7 @@ class TestStartupNextStepAutoLoop:
 
         def _mock_exec(name, _args=None, **_kwargs):
             """Dispatch execute_tool by tool name."""
-            if name == "setup_status":
+            if name == "setup_and_operational_status":
                 return {
                     "status": "ok", "config_exists": True, "wallet_exists": True,
                     "env_exists": True, "has_api_key": True, "ready": True,

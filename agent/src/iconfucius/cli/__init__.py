@@ -382,7 +382,7 @@ def _start_chat():
     """
     from iconfucius.skills.executor import execute_tool
 
-    setup = execute_tool("setup_status", {})
+    setup = execute_tool("setup_and_operational_status", {})
 
     # --- Step 1: Project init ---
     if not setup.get("config_exists"):
@@ -417,7 +417,7 @@ def _start_chat():
         print(f"Created project with {num_bots} bot(s): {bot_list}")
         print()
         # Re-check after init
-        setup = execute_tool("setup_status", {})
+        setup = execute_tool("setup_and_operational_status", {})
 
     # --- Step 2: API key ---
     if not setup.get("has_api_key"):
@@ -452,7 +452,7 @@ def _start_chat():
             return
         print("Wallet created.")
         print()
-        setup = execute_tool("setup_status", {})
+        setup = execute_tool("setup_and_operational_status", {})
 
     from iconfucius.cli.chat import run_chat
 
@@ -982,6 +982,33 @@ def sweep(
                 print(f"{bot_name}: withdraw FAILED — {result.get('error', '')}")
             elif status == "partial":
                 print(f"{bot_name}: withdraw partial — {result.get('error', '')}")
+
+
+@app.command()
+def ui(
+    port: int = typer.Option(55129, "--port", "-p", help="Port to serve on"),
+    no_browser: bool = typer.Option(
+        False, "--no-browser", help="Don't open browser automatically"
+    ),
+    network: Optional[str] = typer.Option(
+        None, "--network", help="PoAIW network of ckSigner: prd, testing, development"
+    ),
+    verbose: Optional[bool] = typer.Option(
+        None, "--verbose/--quiet", "-v/-q", help="Show verbose output"
+    ),
+    experimental: Optional[bool] = typer.Option(
+        None, "--experimental", "-x", help="Enable experimental features"
+    ),
+):
+    """Launch the web UI."""
+    _resolve_network(network)
+    if verbose is not None:
+        state.verbose = verbose
+    if experimental is not None:
+        state.experimental = experimental
+    from iconfucius.client.server import run_server
+
+    run_server(port=port, open_browser=not no_browser)
 
 
 def main():

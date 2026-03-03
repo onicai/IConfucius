@@ -10,7 +10,7 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-from iconfucius.logging_config import _JWT_PATTERN, get_session_stamp
+from iconfucius.logging_config import _JWT_PATTERN
 
 _MAX_LOG_FILES = 100
 
@@ -28,8 +28,14 @@ class ConversationLogger:
       - ai-cached: system+tools replaced with "[cached]" when unchanged
     """
 
-    def __init__(self, base_dir: str | Path | None = None):
-        """Initialize the conversation logger and open a new JSONL log file for this session."""
+    def __init__(self, stamp: str, base_dir: str | Path | None = None):
+        """Initialize the conversation logger and open a new JSONL log file.
+
+        Args:
+            stamp: Session timestamp used as the log-file prefix
+                   (e.g. ``"20260301-120000"`` or ``"20260301-120000-web-a1b2c3d4"``).
+            base_dir: Root directory (defaults to ``ICONFUCIUS_ROOT`` or ``"."``).
+        """
         root = Path(base_dir) if base_dir else Path(
             os.environ.get("ICONFUCIUS_ROOT", ".")
         )
@@ -38,9 +44,8 @@ class ConversationLogger:
         os.chmod(conv_dir, 0o700)
         os.chmod(conv_dir.parent, 0o700)
 
-        stamp = get_session_stamp()
-
         self._path_cached = conv_dir / f"{stamp}-ai-cached.jsonl"
+        self._path_resume = conv_dir / f"{stamp}-ai-for-resume.jsonl"
 
         fd_cached = os.open(self._path_cached,
                             os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
@@ -110,9 +115,10 @@ class ConversationLogger:
     @staticmethod
     def _cleanup(conv_dir: Path) -> None:
         """Delete oldest conversation logs beyond _MAX_LOG_FILES."""
-        files = sorted(conv_dir.glob("*-ai-cached.jsonl"))
-        for old in files[:-_MAX_LOG_FILES]:
-            old.unlink()
+        for pattern in ("*-ai-cached.jsonl", "*-ai-for-resume.jsonl"):
+            files = sorted(conv_dir.glob(pattern))
+            for old in files[:-_MAX_LOG_FILES]:
+                old.unlink()
 
     def close(self) -> None:
         """Flush and close the log file."""
@@ -122,6 +128,11 @@ class ConversationLogger:
     def path_cached(self) -> Path:
         """Return the file path of the cached conversation log."""
         return self._path_cached
+
+    @property
+    def path_resume(self) -> Path:
+        """Return the file path of the resume log."""
+        return self._path_resume
 
 
 # ---------------------------------------------------------------------------

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "iconfucius"
-version = "0.8.0"
+version = "0.9.0rc5"
 description = "IConfucius | Wisdom for Bitcoin Markets"
 readme = "README.md"
 license = "MIT"
@@ -42,6 +42,7 @@ dependencies = [
     "filelock>=3.0",
     "anthropic>=0.40",
     "python-dotenv>=1.0",
+    "packaging>=21.0",
 ]
 
 [project.optional-dependencies]
@@ -72,7 +73,7 @@ include = ["iconfucius*"]
 exclude = ["canisters*"]
 
 [tool.setuptools.package-data]
-iconfucius = ["py.typed", "*.toml", "personas/**/*.toml", "personas/**/*.md"]
+iconfucius = ["py.typed", "*.toml", "personas/**/*.toml", "personas/**/*.md", "client/dist/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

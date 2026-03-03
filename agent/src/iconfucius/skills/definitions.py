@@ -11,11 +11,12 @@ TOOLS: list[dict] = [
     # Read-only tools (no confirmation needed)
     # ------------------------------------------------------------------
     {
-        "name": "setup_status",
+        "name": "setup_and_operational_status",
         "description": (
-            "Check if the iconfucius project is initialized and ready. "
-            "Returns which setup steps have been completed "
-            "(config, wallet, API key)."
+            "Check project setup and AI service operational status. "
+            "Returns setup steps (config, wallet, API key). "
+            "When setup is complete, also checks whether the AI provider "
+            "(e.g. Anthropic) is operational via its public status page."
         ),
         "input_schema": {
             "type": "object",
