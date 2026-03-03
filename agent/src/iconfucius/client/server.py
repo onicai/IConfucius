@@ -184,9 +184,9 @@ def _load_env_file():
                 value = value.strip().strip("'").strip('"')
                 if key and key not in os.environ:
                     os.environ[key] = value
-    except Exception:
+    except Exception as exc:
         # .env parsing should never prevent proxy startup
-        pass
+        print(f"  [warn] Failed to load {env_path}: {exc}")
 
 
 _load_env_file()
