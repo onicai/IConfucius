@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback, useRef } from "react";
-import { getWalletInfo, getWalletStatus, setupInit, setupWalletCreate, importWallet } from "../api";
+import { useState, useEffect, useCallback } from "react";
+import { getWalletStatus, setupInit, setupWalletCreate, importWallet } from "../api";
 import LoadingQuote from "../components/LoadingQuote";
-import { useFetch, clearClientCache } from "../hooks";
+import { clearClientCache } from "../hooks";
 import { fmtSats } from "../utils";
 
 const Spinner = ({ className = "" }) => (
@@ -267,22 +267,14 @@ function SetupWizard({ status, onComplete }) {
   );
 }
 
-function WalletInfoCards({ btcUsd, refreshKey = 0 }) {
-  const refreshRef = useRef(false);
-  const { data, loading, error, refetch } = useFetch(
-    () => { const r = refreshRef.current || refreshKey > 0; refreshRef.current = false; return getWalletInfo({ refresh: r }); },
-    [refreshKey], { cacheKey: "wallet_info" },
-  );
-  const hardRefresh = () => { refreshRef.current = true; refetch(); };
-  if (loading && !data) return <LoadingQuote message="Fetching your wallet from the Internet Computer..." />;
-  if (error && !data) return <div className="bg-red-dim border border-red rounded-[10px] px-4 py-3 mb-4 text-sm text-red">{error}</div>;
-  if (!data) return null;
+function WalletInfoCards({ btcUsd, data, loading, onRefresh }) {
+  if (!data) return <LoadingQuote message="Fetching your wallet from the Internet Computer..." />;
 
   return (
     <>
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-base font-semibold">Wallet</h3>
-        <button onClick={hardRefresh} disabled={loading}
+        <button onClick={onRefresh} disabled={loading}
           className="px-3 py-1.5 rounded-lg text-xs bg-surface border border-border text-dim hover:text-text hover:bg-surface-hover transition-colors cursor-pointer disabled:opacity-50">
           {loading ? <><Spinner className="w-3 h-3 mr-1" /> Refreshing...</> : "Refresh Balances"}
         </button>
@@ -290,8 +282,8 @@ function WalletInfoCards({ btcUsd, refreshKey = 0 }) {
       <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-3 mb-6">
         <StatCard
           label="ckBTC Balance"
-          value={fmtSats(data.balance_sats, btcUsd)}
-          sub={data.balance_usd != null ? `$${data.balance_usd.toFixed(3)}` : null}
+          value={fmtSats(data.ckbtc_sats, btcUsd)}
+          sub={data.ckbtc_usd != null ? `$${data.ckbtc_usd.toFixed(3)}` : null}
           help="Your trading funds. ckBTC is a 1:1 Bitcoin-backed token used for all trading on Odin.fun."
         />
         {data.pending_sats > 0 && (
@@ -313,7 +305,7 @@ function WalletInfoCards({ btcUsd, refreshKey = 0 }) {
   );
 }
 
-export default function WalletView({ btcUsd, refreshKey = 0 }) {
+export default function WalletView({ btcUsd, data: balanceData, loading: balanceLoading, onRefresh }) {
   const [setupDone, setSetupDone] = useState(null);
   const [status, setStatus] = useState(null);
   const [statusError, setStatusError] = useState(null);
@@ -337,7 +329,7 @@ export default function WalletView({ btcUsd, refreshKey = 0 }) {
 
   return (
     <>
-      <WalletInfoCards btcUsd={btcUsd} refreshKey={refreshKey} />
+      <WalletInfoCards btcUsd={btcUsd} data={balanceData?.wallet} loading={balanceLoading} onRefresh={onRefresh} />
 
       <div className="bg-surface border border-border rounded-[10px] p-4 mb-5">
         <h4 className="text-sm font-semibold mb-2">How funding works</h4>

@@ -1,7 +1,4 @@
-import { useRef } from "react";
-import { getWalletBalances } from "../api";
 import LoadingQuote from "../components/LoadingQuote";
-import { useFetch } from "../hooks";
 import { fmtSats, fmtUsd } from "../utils";
 
 const Spinner = ({ className = "" }) => (
@@ -114,22 +111,8 @@ function PortfolioSummary({ totals, btcUsd }) {
   );
 }
 
-export default function BotsView({ btcUsd, refreshKey = 0 }) {
-  const refreshRef = useRef(false);
-  const { data, loading, error, refetch } = useFetch(
-    () => { const r = refreshRef.current || refreshKey > 0; refreshRef.current = false; return getWalletBalances({ refresh: r }); },
-    [refreshKey], { cacheKey: "wallet_balances" },
-  );
-  const hardRefresh = () => { refreshRef.current = true; refetch(); };
-
-  if (loading && !data) return <LoadingQuote message="Consulting the blockchain for your bots..." />;
-  if (error) return (
-    <div className="text-center py-16">
-      <div className="bg-red-dim border border-red rounded-[10px] px-4 py-3 mb-4 text-sm text-red inline-block">{error}</div>
-      <div><button onClick={refetch} className="text-sm text-accent hover:underline cursor-pointer mt-2">Retry</button></div>
-    </div>
-  );
-  if (!data) return null;
+export default function BotsView({ btcUsd, data, loading, onRefresh }) {
+  if (!data) return <LoadingQuote message="Consulting the blockchain for your bots..." />;
 
   const bots = data.bots || [];
   const totals = data.totals;
@@ -141,7 +124,7 @@ export default function BotsView({ btcUsd, refreshKey = 0 }) {
 
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-base font-semibold">Bots ({bots.length})</h3>
-        <button onClick={hardRefresh} disabled={loading}
+        <button onClick={onRefresh} disabled={loading}
           className="px-3 py-1.5 rounded-lg text-xs bg-surface border border-border text-dim hover:text-text hover:bg-surface-hover transition-colors cursor-pointer disabled:opacity-50">
           {loading ? <><Spinner className="w-3 h-3 mr-1" /> Refreshing...</> : "Refresh"}
         </button>

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo, Component } from "react";
 import { getBtcPrice, getChatHealth, getOdinHealth, getToken, getWalletStatus, getWalletBalances } from "./api";
-import { clearClientCache, preloadCache } from "./hooks";
+import { clearClientCache } from "./hooks";
 import { fmtSats } from "./utils";
 import TokensView from "./views/TokensView";
 import TradesView from "./views/TradesView";
@@ -124,6 +124,8 @@ export default function App() {
   const [botsSats, setBotsSats] = useState(null);
   const [walletSats, setWalletSats] = useState(null);
   const [hasBotErrors, setHasBotErrors] = useState(false);
+  const [balanceData, setBalanceData] = useState(null);
+  const [balanceLoading, setBalanceLoading] = useState(false);
   const [chatOk, setChatOk] = useState(null);
   const [chatFocusTick, setChatFocusTick] = useState(0);
   const [chatWidth, setChatWidth] = useState(() => {
@@ -200,8 +202,6 @@ export default function App() {
       }
     })();
 
-    // Eagerly preload slow data so tiles open instantly
-    preloadCache("wallet_balances", getWalletBalances);
     return () => { cancelled = true; };
   }, []);
 
@@ -212,8 +212,11 @@ export default function App() {
       setBotsSats(null);
       setWalletSats(null);
     }
+    setBalanceLoading(true);
     getWalletBalances({ refresh: refreshKey > 0 }).then((b) => {
       if (cancelled) return;
+      setBalanceData(b);
+      setBalanceLoading(false);
       const totals = b?.totals || {};
       const oSats = Number(totals.odin_sats || 0);
       const tSats = Number(totals.token_value_sats || 0);
@@ -222,7 +225,7 @@ export default function App() {
       setBotsSats(oSats + tSats);
       setWalletSats(wSats);
       setHasBotErrors((b?.bots || []).some((bot) => !!bot.note));
-    }).catch(() => {});
+    }).catch(() => { if (!cancelled) setBalanceLoading(false); });
     return () => { cancelled = true; };
   }, [refreshKey]);
 
@@ -305,8 +308,8 @@ export default function App() {
 
   const renderView = () => {
     switch (active) {
-      case "wallet": return <WalletView btcUsd={btcUsd} refreshKey={refreshKey} />;
-      case "bots":   return <BotsView btcUsd={btcUsd} refreshKey={refreshKey} />;
+      case "wallet": return <WalletView btcUsd={btcUsd} data={balanceData} loading={balanceLoading} onRefresh={handleAction} />;
+      case "bots":   return <BotsView btcUsd={btcUsd} data={balanceData} loading={balanceLoading} onRefresh={handleAction} />;
       case "tokens":  return <TokensView btcUsd={btcUsd} />;
       case "trades":  return <TradesView btcUsd={btcUsd} refreshKey={refreshKey} />;
       case "search":  return <SearchView btcUsd={btcUsd} />;

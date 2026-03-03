@@ -879,9 +879,10 @@ class TestTradeRecordingSafeFloat:
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         from iconfucius.skills.executor import _HANDLERS
         original = _HANDLERS["trade_sell"]
+        # 500.5 display tokens = 50050000000000 milli-subunits (div=8, dec=3)
         _HANDLERS["trade_sell"] = self._fake_handler(
             {"status": "ok", "display": "Sold!",
-             "details": [{"amount": 500.5}]})
+             "details": [{"amount": 50050000000000}]})
         try:
             result = execute_tool("trade_sell",
                                   {"token_id": "29m8", "amount": 1000,
@@ -892,7 +893,7 @@ class TestTradeRecordingSafeFloat:
         assert result["status"] == "ok"
         mock_append.assert_called_once()
         entry = mock_append.call_args[0][1]
-        # Should use 500.5 from details, not 1000 from args
+        # amount is in milli-subunits; should be converted to display tokens
         assert entry["tokens_sold"] == 500.5
 
     @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100000.0)

@@ -1777,7 +1777,11 @@ def _record_trade(tool_name: str, args: dict, result: dict,
     elif is_sell_all:
         entry["tokens_sold"] = "all"
     else:
-        display_tokens = _safe_float(amount)
+        from iconfucius.units import millisubunits_to_display
+        msu = int(_safe_float(amount))
+        div = data.get("divisibility", 8) if data else 8
+        dec = data.get("decimals", 3) if data else 3
+        display_tokens = round(millisubunits_to_display(msu, div, dec), 2)
         entry["tokens_sold"] = display_tokens
         if price:
             from iconfucius.units import sats_from_display_tokens
