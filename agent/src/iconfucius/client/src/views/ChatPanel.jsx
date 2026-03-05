@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { chatStart, chatMessage, chatConfirm, chatSettings, chatResume } from "../api";
+import { useI18n } from "../i18n";
 
 const STORAGE_KEY = "iconfucius_chat_messages";
 const SESSION_KEY = "iconfucius_chat_session";
@@ -17,6 +18,7 @@ function saveMessages(msgs) {
 }
 
 function ApiKeyForm({ onSaved }) {
+  const { t } = useI18n();
   const [key, setKey] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -35,20 +37,20 @@ function ApiKeyForm({ onSaved }) {
   return (
     <div className="flex-1 flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
-        <h3 className="text-sm font-bold mb-1">API Key Required</h3>
+        <h3 className="text-sm font-bold mb-1">{t("chat.api_title")}</h3>
         <p className="text-xs text-dim mb-3">
-          Enter your Anthropic API key to start.{" "}
-          <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer">Get one here</a>
+          {t("chat.api_desc")}{" "}
+          <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer">{t("chat.api_link")}</a>
         </p>
         <form onSubmit={handleSubmit} className="flex gap-1.5">
           <input
             type="password" value={key} onChange={(e) => setKey(e.target.value)}
-            placeholder="sk-ant-..."
+            placeholder={t("chat.api_placeholder")}
             className="flex-1 min-w-0 px-2.5 py-2 bg-bg border border-border rounded-lg text-text text-xs outline-none focus:border-accent"
           />
           <button type="submit" disabled={saving}
             className="px-3 py-2 rounded-lg text-xs bg-accent text-bg font-semibold hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50 shrink-0">
-            {saving ? "..." : "Save"}
+            {saving ? t("chat.api_saving") : t("chat.api_save")}
           </button>
         </form>
         {error && <div className="mt-2 text-xs text-red">{error}</div>}
@@ -58,20 +60,21 @@ function ApiKeyForm({ onSaved }) {
 }
 
 function ConfirmBanner({ tools, onConfirm, loading }) {
+  const { t } = useI18n();
   return (
     <div className="mx-3 mb-2 bg-accent-dim border border-accent rounded-xl p-3">
-      <div className="text-xs font-semibold text-accent mb-1.5">Confirm Action</div>
-      {tools.map((t, i) => (
-        <div key={i} className="text-xs text-text mb-0.5">&bull; {t.description}</div>
+      <div className="text-xs font-semibold text-accent mb-1.5">{t("chat.confirm_title")}</div>
+      {tools.map((tool, i) => (
+        <div key={i} className="text-xs text-text mb-0.5">&bull; {tool.description}</div>
       ))}
       <div className="flex gap-1.5 mt-2">
         <button onClick={() => onConfirm(true)} disabled={loading}
           className="px-3 py-1 rounded-lg text-xs bg-green text-bg font-semibold hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50">
-          {loading ? <><Spinner className="w-3 h-3 mr-1" /> ...</> : "Approve"}
+          {loading ? <><Spinner className="w-3 h-3 mr-1" /> ...</> : t("chat.approve")}
         </button>
         <button onClick={() => onConfirm(false)} disabled={loading}
           className="px-3 py-1 rounded-lg text-xs bg-red text-bg font-semibold hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50">
-          Decline
+          {t("chat.decline")}
         </button>
       </div>
     </div>
@@ -94,6 +97,7 @@ function MessageBubble({ role, text }) {
 }
 
 export default function ChatPanel({ onAction, focusSignal = 0, onChatStatus }) {
+  const { t } = useI18n();
   const [sessionId, setSessionId] = useState(null);
   const [messages, setMessages] = useState(loadSavedMessages);
   const [input, setInput] = useState("");
@@ -110,7 +114,6 @@ export default function ChatPanel({ onAction, focusSignal = 0, onChatStatus }) {
 
   const scrollToBottom = useCallback(() => {
     if (isInitialMount.current) {
-      // Double rAF: wait for flex layout to resolve before scrolling
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           if (bottomRef.current) {
@@ -222,7 +225,7 @@ export default function ChatPanel({ onAction, focusSignal = 0, onChatStatus }) {
         sessionStorage.removeItem(SESSION_KEY);
         setSessionId(null);
         startSession();
-        setError("Session expired — reconnecting. Please resend your message.");
+        setError(t("chat.session_expired"));
       } else {
         setError(err.message);
         if (err.statusUrl) setStatusUrl(err.statusUrl);
@@ -264,7 +267,7 @@ export default function ChatPanel({ onAction, focusSignal = 0, onChatStatus }) {
   if (starting) {
     return (
       <div className="flex-1 flex items-center justify-center text-dim text-xs">
-        <Spinner className="mr-2" /> Connecting...
+        <Spinner className="mr-2" /> {t("chat.connecting")}
       </div>
     );
   }
@@ -276,7 +279,7 @@ export default function ChatPanel({ onAction, focusSignal = 0, onChatStatus }) {
           <div className="text-xs text-red mb-2">{error}</div>
           <button onClick={() => startSession()}
             className="px-3 py-1.5 rounded-lg text-xs bg-surface border border-border text-text hover:bg-surface-hover cursor-pointer">
-            Retry
+            {t("chat.retry")}
           </button>
         </div>
       </div>
@@ -290,9 +293,9 @@ export default function ChatPanel({ onAction, focusSignal = 0, onChatStatus }) {
         {messages.length === 0 && !loading && (
           <div className="text-center py-8 text-dim text-xs leading-relaxed">
             <div className="text-accent text-base mb-2">&#x5b54;</div>
-            Ask me anything about trading.
+            {t("chat.empty_title")}
             <br />
-            <span className="text-[0.65rem]">Try: "What's my balance?" or "Buy 5000 sats of ICONFUCIUS"</span>
+            <span className="text-[0.65rem]">{t("chat.empty_hint")}</span>
           </div>
         )}
         {messages.map((m, i) => (
@@ -301,7 +304,7 @@ export default function ChatPanel({ onAction, focusSignal = 0, onChatStatus }) {
         {loading && (
           <div className="flex justify-start mb-2">
             <div className="bg-accent-dim text-dim border border-accent/15 rounded-xl rounded-bl-sm px-3 py-2 text-xs">
-              <Spinner className="w-3 h-3 mr-1.5" /> Thinking...
+              <Spinner className="w-3 h-3 mr-1.5" /> {t("chat.thinking")}
             </div>
           </div>
         )}
@@ -322,7 +325,7 @@ export default function ChatPanel({ onAction, focusSignal = 0, onChatStatus }) {
               {" "}
               <a href={statusUrl} target="_blank" rel="noopener noreferrer"
                 className="underline text-accent hover:text-accent/80">
-                Check status
+                {t("chat.check_status")}
               </a>
             </>
           )}
@@ -335,7 +338,7 @@ export default function ChatPanel({ onAction, focusSignal = 0, onChatStatus }) {
           ref={inputRef}
           type="text" value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Message..."
+          placeholder={t("chat.placeholder")}
           disabled={loading || confirmLoading || !sessionId}
           className="flex-1 min-w-0 px-3 py-2 bg-surface border border-border rounded-lg text-text text-xs outline-none focus:border-accent disabled:opacity-50"
         />
@@ -351,7 +354,7 @@ export default function ChatPanel({ onAction, focusSignal = 0, onChatStatus }) {
       <div className="shrink-0 text-center pb-2">
         <button onClick={handleClear}
           className="text-[0.65rem] text-dim hover:text-text transition-colors cursor-pointer">
-          ↻ New Chat
+          {t("chat.new_chat")}
         </button>
       </div>
     </div>
