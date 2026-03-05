@@ -1,4 +1,5 @@
 import LoadingQuote from "../components/LoadingQuote";
+import { useI18n } from "../i18n";
 import { fmtSats, fmtUsd } from "../utils";
 
 const Spinner = ({ className = "" }) => (
@@ -17,6 +18,7 @@ function TokenBadge({ ticker, tokenId, balance, valueSats, btcUsd }) {
 }
 
 function BotCard({ bot, btcUsd }) {
+  const { t } = useI18n();
   const hasAccount = bot.has_odin_account;
 
   return (
@@ -25,24 +27,24 @@ function BotCard({ bot, btcUsd }) {
         <div className="flex items-center gap-2">
           <h4 className="text-sm font-bold">{bot.name}</h4>
           {hasAccount ? (
-            <span className="px-1.5 py-0.5 text-[0.65rem] font-medium rounded bg-green-dim text-green border border-green/30">Active</span>
+            <span className="px-1.5 py-0.5 text-[0.65rem] font-medium rounded bg-green-dim text-green border border-green/30">{t("bots.active")}</span>
           ) : (
-            <span className="px-1.5 py-0.5 text-[0.65rem] font-medium rounded bg-surface-hover text-dim border border-border">Not registered</span>
+            <span className="px-1.5 py-0.5 text-[0.65rem] font-medium rounded bg-surface-hover text-dim border border-border">{t("bots.not_registered")}</span>
           )}
         </div>
         {bot.odin_sats != null && (
           <div className="text-right">
             <div className="text-sm font-bold tabular-nums">{fmtSats(bot.odin_sats, btcUsd)}</div>
-            <div className="text-[0.65rem] text-dim">Odin BTC Holding</div>
+            <div className="text-[0.65rem] text-dim">{t("bots.odin_balance")}</div>
           </div>
         )}
       </div>
 
       {bot.note && (
         <div className="bg-red-dim border border-red/30 rounded px-3 py-2 mb-3">
-          <p className="text-xs text-red font-medium">Odin.fun error — this is not an iconfucius issue</p>
+          <p className="text-xs text-red font-medium">{t("bots.odin_error_message")}</p>
           <details className="mt-1">
-            <summary className="text-[0.65rem] text-red/70 cursor-pointer">Details</summary>
+            <summary className="text-[0.65rem] text-red/70 cursor-pointer">{t("bots.odin_error_details")}</summary>
             <p className="text-[0.65rem] text-red/70 mt-1 break-all">{bot.note}</p>
           </details>
         </div>
@@ -56,18 +58,18 @@ function BotCard({ bot, btcUsd }) {
 
       {bot.tokens && bot.tokens.length > 0 ? (
         <div>
-          <div className="text-[0.7rem] text-dim mb-1.5 font-medium">Token Holdings</div>
+          <div className="text-[0.7rem] text-dim mb-1.5 font-medium">{t("bots.token_holdings")}</div>
           <div className="flex flex-wrap gap-1.5">
-            {bot.tokens.map((t) => (
-              <TokenBadge key={t.id || t.ticker} ticker={t.ticker} tokenId={t.id} balance={t.balance} valueSats={t.value_sats} btcUsd={btcUsd} />
+            {bot.tokens.map((tk) => (
+              <TokenBadge key={tk.id || tk.ticker} ticker={tk.ticker} tokenId={tk.id} balance={tk.balance} valueSats={tk.value_sats} btcUsd={btcUsd} />
             ))}
           </div>
         </div>
       ) : hasAccount ? (
-        <div className="text-xs text-dim">No token holdings</div>
+        <div className="text-xs text-dim">{t("bots.no_holdings")}</div>
       ) : (
         <div className="text-xs text-dim">
-          Register this bot on Odin.fun via Chat: <code className="text-accent">"register bot-1 on odin"</code>
+          {t("bots.register_hint")} <code className="text-accent">&quot;{t("bots.register_cmd", { name: bot.name })}&quot;</code>
         </div>
       )}
     </div>
@@ -75,15 +77,16 @@ function BotCard({ bot, btcUsd }) {
 }
 
 function TokenTotals({ tokens, btcUsd }) {
+  const { t } = useI18n();
   if (!tokens || Object.keys(tokens).length === 0) return null;
   const sorted = Object.entries(tokens).sort((a, b) => b[1].value_sats - a[1].value_sats);
   return (
     <div className="bg-surface border border-border rounded-[10px] p-4 mb-6">
-      <div className="text-xs uppercase tracking-wide text-dim mb-2">Token Totals (All Bots)</div>
+      <div className="text-xs uppercase tracking-wide text-dim mb-2">{t("bots.token_totals")}</div>
       <div className="flex flex-wrap gap-1.5">
-        {sorted.map(([ticker, t]) => (
-          <TokenBadge key={t.id || ticker} ticker={ticker} tokenId={t.id}
-            balance={t.balance} valueSats={t.value_sats} btcUsd={btcUsd} />
+        {sorted.map(([ticker, tk]) => (
+          <TokenBadge key={tk.id || ticker} ticker={ticker} tokenId={tk.id}
+            balance={tk.balance} valueSats={tk.value_sats} btcUsd={btcUsd} />
         ))}
       </div>
     </div>
@@ -91,6 +94,7 @@ function TokenTotals({ tokens, btcUsd }) {
 }
 
 function PortfolioSummary({ totals, btcUsd }) {
+  const { t } = useI18n();
   if (!totals) return null;
   const odinSats = Number(totals.odin_sats || 0);
   const tokenSats = Number(totals.token_value_sats || 0);
@@ -98,15 +102,15 @@ function PortfolioSummary({ totals, btcUsd }) {
   return (
     <div className="grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-3 mb-6">
       <div className="bg-surface border border-border rounded-[10px] p-4">
-        <div className="text-xs uppercase tracking-wide text-dim mb-1">Bots Total</div>
+        <div className="text-xs uppercase tracking-wide text-dim mb-1">{t("bots.summary.bots_total")}</div>
         <div className="text-xl font-bold tabular-nums">{fmtSats(odinSats + tokenSats, btcUsd)}</div>
       </div>
       <div className="bg-surface border border-border rounded-[10px] p-4">
-        <div className="text-xs uppercase tracking-wide text-dim mb-1">Odin Tokens</div>
+        <div className="text-xs uppercase tracking-wide text-dim mb-1">{t("bots.summary.odin_tokens")}</div>
         <div className="text-xl font-bold tabular-nums">{fmtSats(tokenSats, btcUsd)}</div>
       </div>
       <div className="bg-surface border border-border rounded-[10px] p-4">
-        <div className="text-xs uppercase tracking-wide text-dim mb-1">Odin BTC</div>
+        <div className="text-xs uppercase tracking-wide text-dim mb-1">{t("bots.summary.odin_btc")}</div>
         <div className="text-xl font-bold tabular-nums">{fmtSats(odinSats, btcUsd)}</div>
       </div>
     </div>
@@ -114,7 +118,8 @@ function PortfolioSummary({ totals, btcUsd }) {
 }
 
 export default function BotsView({ btcUsd, data, loading, onRefresh }) {
-  if (!data) return <LoadingQuote message="Consulting the blockchain for your bots..." />;
+  const { t } = useI18n();
+  if (!data) return <LoadingQuote message={t("bots.loading")} />;
 
   const bots = data.bots || [];
   const totals = data.totals;
@@ -125,15 +130,15 @@ export default function BotsView({ btcUsd, data, loading, onRefresh }) {
       <TokenTotals tokens={totals?.tokens} btcUsd={btcUsd} />
 
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-base font-semibold">Bots ({bots.length})</h3>
+        <h3 className="text-base font-semibold">{t("bots.title")} ({bots.length})</h3>
         <button onClick={onRefresh} disabled={loading}
           className="px-3 py-1.5 rounded-lg text-xs bg-surface border border-border text-dim hover:text-text hover:bg-surface-hover transition-colors cursor-pointer disabled:opacity-50">
-          {loading ? <><Spinner className="w-3 h-3 mr-1" /> Refreshing...</> : "Refresh"}
+          {loading ? <><Spinner className="w-3 h-3 mr-1" /> {t("bots.refreshing")}</> : t("bots.refresh")}
         </button>
       </div>
 
       {bots.length === 0 ? (
-        <div className="text-center py-8 text-dim text-sm">No bots configured. Use the Chat tab to set up bots.</div>
+        <div className="text-center py-8 text-dim text-sm">{t("bots.empty")}</div>
       ) : (
         <div className="grid grid-cols-1 gap-3">
           {bots.map((bot) => (
@@ -143,12 +148,12 @@ export default function BotsView({ btcUsd, data, loading, onRefresh }) {
       )}
 
       <div className="bg-surface border border-border rounded-[10px] p-4 mt-6">
-        <h4 className="text-sm font-semibold mb-2">Bot Commands (via Chat)</h4>
+        <h4 className="text-sm font-semibold mb-2">{t("bots.commands_title")}</h4>
         <div className="text-xs text-dim leading-relaxed space-y-1">
-          <div><code className="text-accent">"fund bot-1 with 10000 sats"</code> — Transfer ckBTC from wallet to a bot</div>
-          <div><code className="text-accent">"buy 5000 sats of ICONFUCIUS on bot-1"</code> — Buy a token on Odin.fun</div>
-          <div><code className="text-accent">"sell all ICONFUCIUS on bot-1"</code> — Sell token holdings</div>
-          <div><code className="text-accent">"withdraw bot-1"</code> — Move bot funds back to your wallet (not external BTC)</div>
+          <div>{t("bots.cmd_fund")}</div>
+          <div>{t("bots.cmd_buy")}</div>
+          <div>{t("bots.cmd_sell")}</div>
+          <div>{t("bots.cmd_withdraw")}</div>
         </div>
       </div>
     </>

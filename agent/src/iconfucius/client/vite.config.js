@@ -5,15 +5,15 @@ import tailwindcss from "@tailwindcss/vite";
 export default defineConfig({
   plugins: [tailwindcss(), react()],
   server: {
-    port: 3000,
+    port: 55129,
     hmr: {
       host: "localhost",
-      port: 3000,
+      port: 55129,
       protocol: "ws",
     },
     proxy: {
       "/api": {
-        target: "http://localhost:3001",
+        target: "http://localhost:55129",
         changeOrigin: true,
         ws: false, // don't proxy WebSocket on /api — keeps HMR working
       },

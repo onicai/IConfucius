@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { searchTokens, getToken } from "../api";
+import { useI18n } from "../i18n";
 import { fmtUsd, fmtNumber } from "../utils";
 
 export default function SearchView({ btcUsd }) {
+  const { t } = useI18n();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState(null);
   const [detail, setDetail] = useState(null);
@@ -37,18 +39,23 @@ export default function SearchView({ btcUsd }) {
     catch (err) { setError(err.message); }
   }
 
+  const headers = [
+    t("search.col_token"), t("search.col_id"), t("search.col_mcap"),
+    t("search.col_holders"), t("search.col_status"), "",
+  ];
+
   return (
     <>
       <form onSubmit={handleSearch} className="flex gap-2 mb-5">
         <input
           autoFocus
           type="text" value={query} onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search by name, ticker, or token ID..."
+          placeholder={t("search.placeholder")}
           className="flex-1 px-3.5 py-2.5 bg-surface border border-border rounded-[10px] text-text text-sm outline-none focus:border-accent"
         />
         <button type="submit" disabled={loading}
           className="px-5 py-2.5 rounded-[10px] text-sm cursor-pointer bg-surface border border-border text-text hover:bg-surface-hover transition-colors">
-          {loading ? "..." : "Search"}
+          {loading ? "..." : t("search.btn")}
         </button>
       </form>
 
@@ -56,7 +63,7 @@ export default function SearchView({ btcUsd }) {
 
       {detail && (
         <div className="bg-surface border border-border rounded-[10px] p-4 mb-4 cursor-pointer" onClick={() => setDetail(null)}>
-          <div className="text-xs uppercase tracking-wide text-dim mb-2">Token Detail (click to close)</div>
+          <div className="text-xs uppercase tracking-wide text-dim mb-2">{t("search.detail_title")}</div>
           <pre className="text-xs text-dim whitespace-pre-wrap">{JSON.stringify(detail, null, 2)}</pre>
         </div>
       )}
@@ -66,8 +73,8 @@ export default function SearchView({ btcUsd }) {
           <table className="w-full border-collapse text-sm">
             <thead>
               <tr>
-                {["Token", "ID", "Market Cap", "Holders", "Status", ""].map((h, i) => (
-                  <th key={h} className={`${i === 2 || i === 3 ? "text-right" : "text-left"} px-4 py-3 font-semibold text-xs uppercase tracking-wide text-dim border-b border-border whitespace-nowrap`}>
+                {headers.map((h, i) => (
+                  <th key={h || i} className={`${i === 2 || i === 3 ? "text-right" : "text-left"} px-4 py-3 font-semibold text-xs uppercase tracking-wide text-dim border-b border-border whitespace-nowrap`}>
                     {h}
                   </th>
                 ))}
@@ -75,23 +82,23 @@ export default function SearchView({ btcUsd }) {
             </thead>
             <tbody>
               {results.length === 0 ? (
-                <tr><td colSpan={6} className="text-center py-8 text-dim">No results found</td></tr>
-              ) : results.map((t) => (
-                <tr key={t.id} className="border-b border-border last:border-b-0 transition-colors hover:bg-surface-hover">
+                <tr><td colSpan={6} className="text-center py-8 text-dim">{t("search.no_results")}</td></tr>
+              ) : results.map((tk) => (
+                <tr key={tk.id} className="border-b border-border last:border-b-0 transition-colors hover:bg-surface-hover">
                   <td className="px-4 py-3 whitespace-nowrap">
-                    <span className="font-semibold text-text">{t.ticker || t.name}</span>
-                    {t.ticker && t.name !== t.ticker && <div className="text-dim text-xs">{t.name}</div>}
+                    <span className="font-semibold text-text">{tk.ticker || tk.name}</span>
+                    {tk.ticker && tk.name !== tk.ticker && <div className="text-dim text-xs">{tk.name}</div>}
                   </td>
-                  <td className="px-4 py-3 text-dim whitespace-nowrap">{t.id}</td>
-                  <td className="px-4 py-3 text-right tabular-nums whitespace-nowrap">{t.marketcap != null ? fmtUsd(t.marketcap / 1e3, btcUsd) : "—"}</td>
-                  <td className="px-4 py-3 text-right tabular-nums whitespace-nowrap">{t.holder_count != null ? fmtNumber(t.holder_count) : "—"}</td>
+                  <td className="px-4 py-3 text-dim whitespace-nowrap">{tk.id}</td>
+                  <td className="px-4 py-3 text-right tabular-nums whitespace-nowrap">{tk.marketcap != null ? fmtUsd(tk.marketcap / 1e3, btcUsd) : "—"}</td>
+                  <td className="px-4 py-3 text-right tabular-nums whitespace-nowrap">{tk.holder_count != null ? fmtNumber(tk.holder_count) : "—"}</td>
                   <td className="px-4 py-3 whitespace-nowrap">
-                    {t.bonded && <span className="inline-block px-2 py-0.5 rounded-full text-[0.7rem] font-semibold bg-green-dim text-green">Bonded</span>}{" "}
-                    {t.twitter_verified && <span className="inline-block px-2 py-0.5 rounded-full text-[0.7rem] font-semibold bg-accent-dim text-accent">Verified</span>}
+                    {tk.bonded && <span className="inline-block px-2 py-0.5 rounded-full text-[0.7rem] font-semibold bg-green-dim text-green">{t("tokens.bonded")}</span>}{" "}
+                    {tk.twitter_verified && <span className="inline-block px-2 py-0.5 rounded-full text-[0.7rem] font-semibold bg-accent-dim text-accent">{t("tokens.verified")}</span>}
                   </td>
                   <td className="px-4 py-3">
-                    <button className="px-2.5 py-1 rounded-[10px] text-xs border border-transparent text-dim hover:text-text hover:bg-surface cursor-pointer" onClick={() => handleDetail(t.id)}>
-                      Details
+                    <button className="px-2.5 py-1 rounded-[10px] text-xs border border-transparent text-dim hover:text-text hover:bg-surface cursor-pointer" onClick={() => handleDetail(tk.id)}>
+                      {t("search.details")}
                     </button>
                   </td>
                 </tr>
@@ -102,7 +109,7 @@ export default function SearchView({ btcUsd }) {
       )}
 
       {!results && !loading && (
-        <div className="text-center py-16 text-dim">Search for tokens on Odin.fun by name, ticker, or ID</div>
+        <div className="text-center py-16 text-dim">{t("search.empty")}</div>
       )}
     </>
   );

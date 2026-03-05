@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo, Component } from "re
 import { getBtcPrice, getChatHealth, getOdinHealth, getToken, getWalletStatus, getWalletBalances } from "./api";
 import { clearClientCache } from "./hooks";
 import { fmtSats } from "./utils";
+import { useI18n, AVAILABLE_LOCALES } from "./i18n";
 import TokensView from "./views/TokensView";
 import TradesView from "./views/TradesView";
 import SearchView from "./views/SearchView";
@@ -16,55 +17,40 @@ class ViewErrorBoundary extends Component {
     if (this.state.error) return (
       <div className="bg-red-dim border border-red rounded-xl px-4 py-3 text-sm text-red">
         {this.state.error.message}
-        <button className="ml-3 underline cursor-pointer" onClick={() => this.setState({ error: null })}>retry</button>
+        <button className="ml-3 underline cursor-pointer" onClick={() => this.setState({ error: null })}>{this.props.retryLabel || "retry"}</button>
       </div>
     );
     return this.props.children;
   }
 }
 
-const PRIMARY = [
-  {
-    id: "trades", label: "Trades", icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/>
-      </svg>
-    ), desc: "Your trade history",
-  },
-  {
-    id: "bots", label: "Bots", icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="3"/><path d="M8 16h.01"/><path d="M16 16h.01"/>
-      </svg>
-    ), desc: "Bot holdings & portfolio",
-  },
-  {
-    id: "wallet", label: "Wallet", icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="2" y="6" width="20" height="14" rx="2"/><path d="M2 10h20"/><path d="M16 14h2"/>
-      </svg>
-    ), desc: "ckBTC balance & addresses",
-  },
-];
-
-const EXPLORE = [
-  {
-    id: "tokens", label: "Tokens", icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="12" r="10"/><path d="M12 6v12"/><path d="M8 10h8"/><path d="M8 14h8"/>
-      </svg>
-    ), desc: "Market data & trending",
-  },
-  {
-    id: "search", label: "Search", icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-      </svg>
-    ), desc: "Find tokens by name or ID",
-  },
-];
-
-const ALL_SERVICES = [...PRIMARY, ...EXPLORE];
+const ICONS = {
+  trades: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/>
+    </svg>
+  ),
+  bots: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="3"/><path d="M8 16h.01"/><path d="M16 16h.01"/>
+    </svg>
+  ),
+  wallet: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="6" width="20" height="14" rx="2"/><path d="M2 10h20"/><path d="M16 14h2"/>
+    </svg>
+  ),
+  tokens: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10"/><path d="M12 6v12"/><path d="M8 10h8"/><path d="M8 14h8"/>
+    </svg>
+  ),
+  search: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+    </svg>
+  ),
+};
 
 const GRID_COLS = { 2: "grid-cols-2", 3: "grid-cols-3", 5: "grid-cols-5" };
 const CHAT_WIDTH_KEY = "iconfucius_chat_panel_width";
@@ -111,7 +97,27 @@ function StatusDot({ ok }) {
   return <span className={`inline-block w-1.5 h-1.5 rounded-full ${cls}`} />;
 }
 
+function LanguageToggle() {
+  const { locale, setLocale } = useI18n();
+  return (
+    <div className="flex items-center border border-border rounded-lg overflow-hidden text-xs bg-surface" title="Language / 语言">
+      {AVAILABLE_LOCALES.map((l) => (
+        <button
+          key={l.code}
+          onClick={() => setLocale(l.code)}
+          className={`px-2.5 py-1 cursor-pointer transition-colors font-medium ${
+            locale === l.code ? "bg-accent text-bg" : "text-dim hover:text-text hover:bg-surface-hover"
+          }`}
+        >
+          {l.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function App() {
+  const { t } = useI18n();
   const [active, setActive] = useState("trades");
   const [btcUsd, setBtcUsd] = useState(null);
   const [odinOk, setOdinOk] = useState(null);
@@ -154,10 +160,10 @@ export default function App() {
       .then((rate) => {
         if (cancelled) return null;
         setBtcUsd(rate);
-        return getToken("29m8").then((t) => {
+        return getToken("29m8").then((tok) => {
           if (cancelled) return;
-          if (t?.price && rate) {
-            const sats = t.price / 1000; // msat → sats
+          if (tok?.price && rate) {
+            const sats = tok.price / 1000;
             setIcfPriceUsd((sats / 1e8) * rate);
           }
         });
@@ -173,17 +179,14 @@ export default function App() {
         if (cancelled) return;
         setSdkOk(s.sdk_available);
         if (s.project_root) setProjectRoot(s.project_root);
-        // Set initial chat health from operational status
         if (s.ai_operational === true) setChatOk(true);
         else if (s.ai_operational === false) setChatOk(false);
 
-        // If wallet/setup isn't ready, default to Wallet tab.
         if (!s.sdk_available || !s.ready) {
           if (!userSelectedTabRef.current) setActive("wallet");
           return;
         }
 
-        // If no tradable funds (wallet + bot sats + token value), default to Wallet.
         const b = await getWalletBalances();
         if (cancelled) return;
         const totals = b?.totals || {};
@@ -242,7 +245,6 @@ export default function App() {
     return () => window.removeEventListener("resize", onWindowResize);
   }, [clampChatWidth]);
 
-  // Poll /api/chat/health when chatOk is false to detect recovery
   useEffect(() => {
     if (chatOk !== false) return;
     let cancelled = false;
@@ -256,7 +258,6 @@ export default function App() {
     return () => { cancelled = true; clearInterval(id); };
   }, [chatOk]);
 
-  // Poll /api/odin/health when odinOk is false to detect recovery
   useEffect(() => {
     if (odinOk !== false) return;
     let cancelled = false;
@@ -272,7 +273,7 @@ export default function App() {
   function toggleService(id) {
     userSelectedTabRef.current = true;
     setActive((prev) => prev === id ? null : id);
-    setChatFocusTick((t) => t + 1);
+    setChatFocusTick((val) => val + 1);
   }
 
   const beginResizeChat = useCallback((e) => {
@@ -294,17 +295,28 @@ export default function App() {
     window.addEventListener("mouseup", onUp);
   }, [clampChatWidth]);
 
-  const primaryTiles = useMemo(() => PRIMARY.map((t) => {
-    if (t.id === "bots" && botsSats != null && btcUsd) {
+  const PRIMARY = useMemo(() => [
+    { id: "trades", label: t("nav.trades"), icon: ICONS.trades, desc: t("nav.trades_desc") },
+    { id: "bots", label: t("nav.bots"), icon: ICONS.bots, desc: t("nav.bots_desc") },
+    { id: "wallet", label: t("nav.wallet"), icon: ICONS.wallet, desc: t("nav.wallet_desc") },
+  ], [t]);
+
+  const EXPLORE = useMemo(() => [
+    { id: "tokens", label: t("nav.tokens"), icon: ICONS.tokens, desc: t("nav.tokens_desc") },
+    { id: "search", label: t("nav.search"), icon: ICONS.search, desc: t("nav.search_desc") },
+  ], [t]);
+
+  const primaryTiles = useMemo(() => PRIMARY.map((tile) => {
+    if (tile.id === "bots" && botsSats != null && btcUsd) {
       const val = fmtSats(botsSats, btcUsd);
-      return { ...t, desc: val, liveDesc: val };
+      return { ...tile, desc: val, liveDesc: val };
     }
-    if (t.id === "wallet" && walletSats != null && btcUsd) {
+    if (tile.id === "wallet" && walletSats != null && btcUsd) {
       const val = fmtSats(walletSats, btcUsd);
-      return { ...t, desc: val, liveDesc: val };
+      return { ...tile, desc: val, liveDesc: val };
     }
-    return t;
-  }), [botsSats, walletSats, btcUsd]);
+    return tile;
+  }), [PRIMARY, botsSats, walletSats, btcUsd]);
 
   const renderView = () => {
     switch (active) {
@@ -317,16 +329,19 @@ export default function App() {
     }
   };
 
+  const odinLabel = odinOk === false ? "Odin Error" : hasBotErrors ? "Odin Degraded" : "Odin";
+  const chatLabel = sdkOk === false ? t("status.no_sdk") : chatOk === false ? "Chat Error" : "Chat";
+
   return (
     <div className={`h-full flex flex-col ${isResizingChat ? "select-none" : ""}`}>
       {/* Header */}
       <header className="shrink-0 flex items-center justify-between px-4 py-3 border-b border-border lg:px-6">
         <h1 className="text-lg font-bold flex items-center gap-2.5">
-          <img src="/icon.webp" alt="IConfucius" className="w-8 h-8 rounded-full object-cover ring-1 ring-accent/30" />
+          <img src="/icon.webp" alt={t("app.title")} className="w-8 h-8 rounded-full object-cover ring-1 ring-accent/30" />
           <div className="flex flex-col leading-tight">
-            <span className="text-accent">IConfucius</span>
+            <span className="text-accent">{t("app.title")}</span>
             <span className="text-[0.6rem] text-dim font-normal -mt-0.5">
-              {projectRoot ? (projectRoot.split("/").pop() || projectRoot) : "The Runes trading Agent"}
+              {projectRoot ? (projectRoot.split("/").pop() || projectRoot) : t("app.subtitle")}
             </span>
           </div>
           {portfolioSats != null ? (
@@ -336,15 +351,15 @@ export default function App() {
           ) : (
             <span className="text-[0.65rem] text-dim ml-1 flex items-center gap-1.5">
               <span className="inline-block w-3 h-3 border-2 border-dim/40 border-t-dim rounded-full animate-spin" />
-              loading balances...
             </span>
           )}
         </h1>
         <div className="flex items-center gap-3 text-[0.7rem] text-dim">
           {btcUsd && <span className="hidden sm:inline">BTC ${Math.round(btcUsd).toLocaleString()}</span>}
           {icfPriceUsd != null && <span className="hidden sm:inline">ICONFUCIUS ${icfPriceUsd < 0.01 ? icfPriceUsd.toFixed(4) : icfPriceUsd.toFixed(2)}</span>}
-          <span className="flex items-center gap-1"><StatusDot ok={odinOk === false ? false : hasBotErrors ? false : odinOk} />{odinOk === false ? "Odin Error" : hasBotErrors ? "Odin Degraded" : "Odin"}</span>
-          <span className="flex items-center gap-1"><StatusDot ok={sdkOk === false ? false : chatOk === false ? false : sdkOk === true && chatOk === true ? true : null} />{sdkOk === false ? "No Chat" : chatOk === false ? "Chat Error" : sdkOk ? "Chat" : "Chat"}</span>
+          <span className="flex items-center gap-1"><StatusDot ok={odinOk === false ? false : hasBotErrors ? false : odinOk} />{odinLabel}</span>
+          <span className="flex items-center gap-1"><StatusDot ok={sdkOk === false ? false : chatOk === false ? false : sdkOk === true && chatOk === true ? true : null} />{chatLabel}</span>
+          <LanguageToggle />
           {/* Mobile chat toggle */}
           <button
             onClick={() => setChatOpen((o) => !o)}
@@ -353,14 +368,14 @@ export default function App() {
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
             </svg>
-            Chat
+            {t("app.chat_btn")}
           </button>
         </div>
       </header>
 
       {odinOk === false && (
         <div className="shrink-0 bg-red-dim border-b border-red px-4 py-2 text-xs text-red">
-          Odin.fun API unreachable — check your internet connection.
+          {t("app.proxy_offline")} <code className="font-mono">npm run proxy</code>
         </div>
       )}
 
@@ -372,7 +387,7 @@ export default function App() {
           {renderTileGroup(primaryTiles, active, toggleService)}
           <div className="flex items-center gap-2 mb-3 mt-1">
             <div className="h-px flex-1 bg-border/50" />
-            <span className="text-[0.6rem] uppercase tracking-widest text-dim/50 font-medium">Explore</span>
+            <span className="text-[0.6rem] uppercase tracking-widest text-dim/50 font-medium">{t("app.explore")}</span>
             <div className="h-px flex-1 bg-border/50" />
           </div>
           {renderTileGroup(EXPLORE, active, toggleService)}
@@ -380,7 +395,7 @@ export default function App() {
           {/* Expanded view */}
           {active && (
             <div className="flex-1 min-h-0">
-              <ViewErrorBoundary key={active}>
+              <ViewErrorBoundary key={active} retryLabel={t("app.error_retry")}>
                 {renderView()}
               </ViewErrorBoundary>
             </div>
@@ -391,8 +406,8 @@ export default function App() {
             <div className="flex-1 flex items-center justify-center text-dim text-sm">
               <div className="text-center">
                 <div className="text-3xl mb-3 opacity-30">&#x5b54;</div>
-                <div>Select a service above to get started</div>
-                <div className="text-xs mt-1 text-dim/60">or use Chat to interact with your trading agent</div>
+                <div>{t("app.empty_title")}</div>
+                <div className="text-xs mt-1 text-dim/60">{t("app.empty_sub")}</div>
               </div>
             </div>
           )}
@@ -404,7 +419,7 @@ export default function App() {
             isResizingChat ? "bg-accent/10" : "hover:bg-surface-hover"
           }`}
           onMouseDown={beginResizeChat}
-          title="Drag to resize chat"
+          title={t("app.chat_resize")}
         >
           <div className="w-px h-full bg-border" />
         </div>
@@ -419,7 +434,7 @@ export default function App() {
           <div className="flex-1 bg-black/60 backdrop-blur-sm" onClick={() => setChatOpen(false)} />
           <div className="h-[75vh] bg-bg border-t border-border rounded-t-2xl flex flex-col overflow-hidden animate-[slideUp_200ms_ease-out]">
             <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
-              <span className="font-semibold text-sm">IConfucius Chat</span>
+              <span className="font-semibold text-sm">{t("app.chat_mobile_title")}</span>
               <button onClick={() => setChatOpen(false)}
                 className="text-dim hover:text-text cursor-pointer p-1">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
