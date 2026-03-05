@@ -24,7 +24,7 @@ npm run proxy
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+Open [http://localhost:55129](http://localhost:55129) in your browser.
 
 ## Architecture
 

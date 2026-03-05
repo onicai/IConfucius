@@ -100,13 +100,13 @@ function StatusDot({ ok }) {
 function LanguageToggle() {
   const { locale, setLocale } = useI18n();
   return (
-    <div className="flex items-center border border-border rounded-md overflow-hidden text-[0.65rem]">
+    <div className="flex items-center border border-border rounded-lg overflow-hidden text-xs bg-surface" title="Language / 语言">
       {AVAILABLE_LOCALES.map((l) => (
         <button
           key={l.code}
           onClick={() => setLocale(l.code)}
-          className={`px-1.5 py-0.5 cursor-pointer transition-colors ${
-            locale === l.code ? "bg-accent text-bg font-semibold" : "bg-surface text-dim hover:text-text"
+          className={`px-2.5 py-1 cursor-pointer transition-colors font-medium ${
+            locale === l.code ? "bg-accent text-bg" : "text-dim hover:text-text hover:bg-surface-hover"
           }`}
         >
           {l.label}
