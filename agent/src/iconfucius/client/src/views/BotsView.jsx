@@ -1,10 +1,6 @@
 import LoadingQuote from "../components/LoadingQuote";
 import { fmtSats, fmtUsd } from "../utils";
 
-const Spinner = ({ className = "" }) => (
-  <span className={`inline-block w-5 h-5 border-2 border-border border-t-accent rounded-full animate-spin align-middle ${className}`} />
-);
-
 function TokenBadge({ ticker, tokenId, balance, valueSats, btcUsd }) {
   return (
     <a href={`https://odin.fun/token/${tokenId}`} target="_blank" rel="noopener noreferrer"
@@ -113,7 +109,7 @@ function PortfolioSummary({ totals, btcUsd }) {
   );
 }
 
-export default function BotsView({ btcUsd, data, loading, onRefresh }) {
+export default function BotsView({ btcUsd, data, loading }) {
   if (!data) return <LoadingQuote message="Consulting the blockchain for your bots..." />;
 
   const bots = data.bots || [];
@@ -126,10 +122,6 @@ export default function BotsView({ btcUsd, data, loading, onRefresh }) {
 
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-base font-semibold">Bots ({bots.length})</h3>
-        <button onClick={onRefresh} disabled={loading}
-          className="px-3 py-1.5 rounded-lg text-xs bg-surface border border-border text-dim hover:text-text hover:bg-surface-hover transition-colors cursor-pointer disabled:opacity-50">
-          {loading ? <><Spinner className="w-3 h-3 mr-1" /> Refreshing...</> : "Refresh"}
-        </button>
       </div>
 
       {bots.length === 0 ? (

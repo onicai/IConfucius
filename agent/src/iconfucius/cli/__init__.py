@@ -281,25 +281,29 @@ def _version_callback(value: bool):
 def main_callback(
     ctx: typer.Context,
     bot: Optional[str] = typer.Option(
-        None, "--bot", "-b", help="Bot name to use"
+        None, "--bot", help="Bot name to use"
     ),
     all_bots: bool = typer.Option(
         False, "--all-bots", help="Target all bots"
     ),
     verbose: bool = typer.Option(
-        True, "--verbose/--quiet", "-v/-q", help="Show verbose output"
+        True, "--verbose/--quiet", help="Show verbose output"
     ),
     network: str = typer.Option(
         "prd", "--network", help="PoAIW network of ckSigner: prd, testing, development"
     ),
     persona: Optional[str] = typer.Option(
-        None, "--persona", "-p", help="Persona to use for chat"
+        None, "--persona", help="Persona to use for chat"
     ),
     experimental: bool = typer.Option(
-        False, "--experimental", "-x", help="Enable experimental features (e.g. /ai command)"
+        False, "--experimental", help="Enable experimental features (e.g. /ai command)"
+    ),
+    port: int = typer.Option(55129, "--port", help="Port to serve on"),
+    no_browser: bool = typer.Option(
+        False, "--no-browser", help="Don't open browser automatically"
     ),
     version: bool = typer.Option(
-        False, "--version", "-V", help="Show version and exit",
+        False, "--version", help="Show version and exit",
         callback=_version_callback, is_eager=True,
     ),
 ):
@@ -314,8 +318,10 @@ def main_callback(
     state.experimental = experimental
     set_network(network)
     if ctx.invoked_subcommand is None:
-        # Bare invocation: start chat with default persona
-        _start_chat()
+        # Bare invocation: launch the web UI
+        from iconfucius.client.server import run_server
+
+        run_server(port=port, open_browser=not no_browser)
 
 
 # ---------------------------------------------------------------------------
@@ -506,21 +512,20 @@ GITIGNORE_CONTENT = """\
 @app.command()
 def chat(
     persona: Optional[str] = typer.Option(
-        None, "--persona", "-p", help="Persona to use"
+        None, "--persona", help="Persona to use"
     ),
-    bot: Optional[str] = typer.Option(None, "--bot", "-b", help="Bot name to use"),
+    bot: Optional[str] = typer.Option(None, "--bot", help="Bot name to use"),
     network: Optional[str] = typer.Option(
         None, "--network", help="PoAIW network of ckSigner: prd, testing, development"
     ),
 ):
     """Start interactive chat with a trading persona."""
     _resolve_network(network)
-    from iconfucius.cli.chat import run_chat
-
-    persona_name = persona or state.persona or get_default_persona()
-    bot_name = bot or state.bot_name or "bot-1"
-    run_chat(persona_name=persona_name, bot_name=bot_name, verbose=state.verbose,
-             experimental=state.experimental)
+    if persona:
+        state.persona = persona
+    if bot:
+        state.bot_name = bot
+    _start_chat()
 
 
 ENV_TEMPLATE = (
@@ -616,11 +621,11 @@ def _upgrade_config() -> None:
 
 @app.command()
 def init(
-    force: bool = typer.Option(False, "--force", "-f", help="Overwrite existing config"),
+    force: bool = typer.Option(False, "--force", help="Overwrite existing config"),
     upgrade: bool = typer.Option(
         False, "--upgrade", "-u", help="Upgrade existing project (add new files/settings)"
     ),
-    bots: int = typer.Option(3, "--bots", "-n", help="Number of bots to create (1-1000)"),
+    bots: int = typer.Option(0, "--bots", help="Number of bots to create (0-1000)"),
 ):
     """Initialize or upgrade an iconfucius project."""
     config_path = Path(CONFIG_FILENAME)
@@ -650,19 +655,19 @@ def init(
     # Write config
     config_content = create_default_config(num_bots=bots)
     config_path.write_text(config_content)
-    bot_list = ", ".join(f"bot-{i}" for i in range(1, bots + 1))
-    print(f"Created {CONFIG_FILENAME} with bots: {bot_list}")
+    if bots > 0:
+        bot_list = ", ".join(f"bot-{i}" for i in range(1, bots + 1))
+        print(f"Created {CONFIG_FILENAME} with bots: {bot_list}")
+    else:
+        print(f"Created {CONFIG_FILENAME} (no bots — add them after funding)")
 
     print()
     print("Next steps:")
-    print("  1. Get your API key at: https://console.anthropic.com/settings/keys")
-    print("     Add it to .env:")
-    print("     ANTHROPIC_API_KEY=sk-ant-...")
-    print("  2. Create your wallet identity:")
+    print("  1. Create your wallet identity:")
     print("     iconfucius wallet create")
-    print("  3. Fund your wallet:")
+    print("  2. Fund your wallet:")
     print("     iconfucius wallet receive")
-    print("  4. Start chatting:")
+    print("  3. Launch the web UI:")
     print("     iconfucius")
 
 
@@ -692,7 +697,7 @@ def config(
 
 @app.command()
 def instructions(
-    bot: Optional[str] = typer.Option(None, "--bot", "-b", help="Bot name to use"),
+    bot: Optional[str] = typer.Option(None, "--bot", help="Bot name to use"),
     all_bots: bool = typer.Option(False, "--all-bots", help="Show all bots"),
     network: Optional[str] = typer.Option(
         None, "--network", help="PoAIW network of ckSigner: prd, testing, development"
@@ -712,7 +717,7 @@ def instructions(
 @app.command()
 def fund(
     amount: int = typer.Argument(..., help="Amount in sats to send to each bot"),
-    bot: Optional[str] = typer.Option(None, "--bot", "-b", help="Bot name to use"),
+    bot: Optional[str] = typer.Option(None, "--bot", help="Bot name to use"),
     all_bots: bool = typer.Option(False, "--all-bots", help="Fund all bots"),
     network: Optional[str] = typer.Option(
         None, "--network", help="PoAIW network of ckSigner: prd, testing, development"
@@ -743,7 +748,7 @@ def withdraw(
     amount: str = typer.Argument(
         ..., help="Amount in sats, or 'all' for entire balance"
     ),
-    bot: Optional[str] = typer.Option(None, "--bot", "-b", help="Bot name to use"),
+    bot: Optional[str] = typer.Option(None, "--bot", help="Bot name to use"),
     all_bots: bool = typer.Option(False, "--all-bots", help="Withdraw from all bots"),
     network: Optional[str] = typer.Option(
         None, "--network", help="PoAIW network of ckSigner: prd, testing, development"
@@ -807,7 +812,7 @@ def trade(
     amount: str = typer.Argument(
         ..., help="Amount in sats (buy), tokens (sell), or 'all' (sell entire balance)"
     ),
-    bot: Optional[str] = typer.Option(None, "--bot", "-b", help="Bot name to use"),
+    bot: Optional[str] = typer.Option(None, "--bot", help="Bot name to use"),
     all_bots: bool = typer.Option(False, "--all-bots", help="Trade with all bots"),
     network: Optional[str] = typer.Option(
         None, "--network", help="PoAIW network of ckSigner: prd, testing, development"
@@ -871,9 +876,9 @@ def transfer(
         ..., help="Amount in raw token sub-units, or 'all' for entire balance"
     ),
     to_address: str = typer.Argument(..., help="Destination address (IC principal, BTC deposit, or BTC wallet address of an Odin.fun account)"),
-    bot: Optional[str] = typer.Option(None, "--bot", "-b", help="Bot name to use"),
+    bot: Optional[str] = typer.Option(None, "--bot", help="Bot name to use"),
     all_bots: bool = typer.Option(False, "--all-bots", help="Transfer from all bots"),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
+    yes: bool = typer.Option(False, "--yes", help="Skip confirmation prompt"),
     network: Optional[str] = typer.Option(
         None, "--network", help="PoAIW network of ckSigner: prd, testing, development"
     ),
@@ -926,7 +931,7 @@ def transfer(
 
 @app.command()
 def sweep(
-    bot: Optional[str] = typer.Option(None, "--bot", "-b", help="Bot name to use"),
+    bot: Optional[str] = typer.Option(None, "--bot", help="Bot name to use"),
     all_bots: bool = typer.Option(False, "--all-bots", help="Sweep all bots"),
     network: Optional[str] = typer.Option(
         None, "--network", help="PoAIW network of ckSigner: prd, testing, development"
@@ -986,7 +991,7 @@ def sweep(
 
 @app.command()
 def ui(
-    port: int = typer.Option(55129, "--port", "-p", help="Port to serve on"),
+    port: int = typer.Option(55129, "--port", help="Port to serve on"),
     no_browser: bool = typer.Option(
         False, "--no-browser", help="Don't open browser automatically"
     ),
@@ -994,10 +999,10 @@ def ui(
         None, "--network", help="PoAIW network of ckSigner: prd, testing, development"
     ),
     verbose: Optional[bool] = typer.Option(
-        None, "--verbose/--quiet", "-v/-q", help="Show verbose output"
+        None, "--verbose/--quiet", help="Show verbose output"
     ),
     experimental: Optional[bool] = typer.Option(
-        None, "--experimental", "-x", help="Enable experimental features"
+        None, "--experimental", help="Enable experimental features"
     ),
 ):
     """Launch the web UI."""

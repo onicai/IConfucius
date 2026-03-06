@@ -857,10 +857,15 @@ def _handle_wallet_backup(handler):
         return
     with open(pem_path, "rb") as f:
         data = f.read()
+    project_name = os.path.basename(root) if root else ""
+    if project_name:
+        filename = f"iconfucius-{project_name}-wallet-identity-private.pem"
+    else:
+        filename = "iconfucius-identity-private.pem"
     handler.send_response(200)
     handler._cors_headers()
     handler.send_header("Content-Type", "application/x-pem-file")
-    handler.send_header("Content-Disposition", 'attachment; filename="iconfucius-identity-private.pem"')
+    handler.send_header("Content-Disposition", f'attachment; filename="{filename}"')
     handler.send_header("Content-Length", str(len(data)))
     handler.end_headers()
     handler.wfile.write(data)
@@ -958,6 +963,11 @@ def _handle_wallet_balances(*, bypass_cache=False, ckbtc_minter=False):
     def _compute():
         _sync_project_root()
         _chdir_to_root()
+        # Check PEM directly — avoids require_wallet() printing CLI instructions
+        import os as _os
+        from iconfucius.config import get_pem_file
+        if not _os.path.exists(get_pem_file()):
+            return 404, {"error": "Wallet not found. Run: iconfucius wallet create"}
         bot_names = get_bot_names()
         result = run_all_balances(bot_names=bot_names, ckbtc_minter=ckbtc_minter)
         if result is None:
@@ -984,6 +994,20 @@ def _handle_wallet_balances(*, bypass_cache=False, ckbtc_minter=False):
                 bot_entry["odin_usd"] = (odin_sats / 1e8) * btc_usd
             bots.append(bot_entry)
         totals = result.get("totals", {})
+        # Derive status message from bot notes
+        status_message = None
+        uninit_bots = [b for b in bots if b.get("note") and "not yet initialized" in b["note"]]
+        siwb_unavail = [b for b in bots if b.get("note") and "SIWB temporarily" in b["note"]]
+        if uninit_bots:
+            n = len(uninit_bots)
+            from iconfucius.siwb import SIWB_LOGIN_COST_SATS
+            needed = n * SIWB_LOGIN_COST_SATS
+            status_message = f"{n} bot(s) awaiting registration. Wallet needs at least {needed} sats."
+        elif siwb_unavail:
+            status_message = "Odin.fun sign-in temporarily unavailable. Will retry automatically."
+        elif len(bots) == 0 and wallet_sats > 0:
+            status_message = "Wallet funded! Configure bots to start trading."
+
         return 200, {
             "wallet": {
                 "principal": result.get("wallet_principal", ""),
@@ -1002,6 +1026,7 @@ def _handle_wallet_balances(*, bypass_cache=False, ckbtc_minter=False):
                 "tokens": totals.get("tokens") or {},
             },
             "btc_usd_rate": btc_usd,
+            "status_message": status_message,
         }
 
     cache_key = f"wallet_balances:ckbtc_minter={int(ckbtc_minter)}"
@@ -1105,6 +1130,65 @@ def _handle_action_set_bots(body):
     return 200, result
 
 
+def _handle_action_register_bot(body):
+    """Register a single bot with Odin.Fun via SIWB login."""
+    err = _require_sdk()
+    if err:
+        return err
+    _sync_project_root()
+    _chdir_to_root()
+
+    bot_name = body.get("bot_name")
+    if not bot_name:
+        return 400, {"status": "error", "error": "'bot_name' is required."}
+
+    from iconfucius.siwb import (
+        siwb_login, read_cached_principal,
+        wallet_has_siwb_funds, siwb_canister_reachable,
+    )
+
+    # Fast path: already registered
+    cached = read_cached_principal(bot_name)
+    if cached:
+        return 200, {
+            "status": "ok",
+            "bot_name": bot_name,
+            "principal": cached,
+            "already_registered": True,
+        }
+
+    # Pre-flight: check funds
+    if not wallet_has_siwb_funds():
+        return 400, {
+            "status": "error",
+            "bot_name": bot_name,
+            "error": "Insufficient ckBTC for SIWB registration fee.",
+        }
+
+    # Pre-flight: check canister reachability
+    if not siwb_canister_reachable():
+        return 400, {
+            "status": "error",
+            "bot_name": bot_name,
+            "error": "SIWB canister is unreachable. Try again later.",
+        }
+
+    try:
+        result = siwb_login(bot_name=bot_name, verbose=False)
+        return 200, {
+            "status": "ok",
+            "bot_name": bot_name,
+            "principal": result.get("bot_principal_text", ""),
+            "address": result.get("address", ""),
+        }
+    except Exception as e:
+        return 500, {
+            "status": "error",
+            "bot_name": bot_name,
+            "error": str(e),
+        }
+
+
 # ---------------------------------------------------------------------------
 # HTTP handler
 # ---------------------------------------------------------------------------
@@ -1147,6 +1231,7 @@ class UIHandler(BaseHTTPRequestHandler):
             "/api/setup/init": _handle_action_init,
             "/api/setup/wallet-create": _handle_action_wallet_create,
             "/api/setup/set-bots": _handle_action_set_bots,
+            "/api/setup/register-bot": _handle_action_register_bot,
             "/api/chat/start": _handle_chat_start,
             "/api/chat/resume": _handle_chat_resume,
             "/api/chat/message": _handle_chat_message,

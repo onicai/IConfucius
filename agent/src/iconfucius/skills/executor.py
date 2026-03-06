@@ -101,7 +101,22 @@ def _handle_setup_and_operational_status(_args: dict) -> dict:
     else:
         has_api_key = True
 
-    ready = all([config_path is not None, pem_exists, has_api_key])
+    ready = all([config_path is not None, pem_exists])
+
+    # Bot count
+    bot_count = 0
+    if config_path is not None:
+        from iconfucius.config import get_bot_names
+        bot_count = len(get_bot_names())
+
+    # Wallet funded check (fast anonymous query)
+    wallet_funded = False
+    if pem_exists:
+        try:
+            from iconfucius.siwb import wallet_has_siwb_funds
+            wallet_funded = wallet_has_siwb_funds()
+        except Exception:
+            pass
 
     result = {
         "status": "ok",
@@ -110,6 +125,8 @@ def _handle_setup_and_operational_status(_args: dict) -> dict:
         "env_exists": env_exists,
         "has_api_key": has_api_key,
         "ready": ready,
+        "bot_count": bot_count,
+        "wallet_funded": wallet_funded,
     }
 
     if ready:

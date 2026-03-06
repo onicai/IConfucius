@@ -38,7 +38,11 @@ runner = CliRunner()
 
 class TestChatCommand:
     @patch("iconfucius.cli.chat.run_chat")
-    def test_explicit_chat_command(self, mock_run_chat):
+    @patch("iconfucius.skills.executor.execute_tool", return_value={
+        "status": "ok", "config_exists": True, "wallet_exists": True,
+        "env_exists": True, "has_api_key": True, "ready": True,
+    })
+    def test_explicit_chat_command(self, mock_execute, mock_run_chat):
         """Verify explicit chat command."""
         result = runner.invoke(app, ["chat"])
         assert result.exit_code == 0
@@ -47,7 +51,11 @@ class TestChatCommand:
         assert args.kwargs["persona_name"] == "iconfucius"
 
     @patch("iconfucius.cli.chat.run_chat")
-    def test_chat_with_persona_flag(self, mock_run_chat):
+    @patch("iconfucius.skills.executor.execute_tool", return_value={
+        "status": "ok", "config_exists": True, "wallet_exists": True,
+        "env_exists": True, "has_api_key": True, "ready": True,
+    })
+    def test_chat_with_persona_flag(self, mock_execute, mock_run_chat):
         """Verify chat with persona flag."""
         result = runner.invoke(app, ["chat", "--persona", "iconfucius"])
         assert result.exit_code == 0
@@ -55,35 +63,17 @@ class TestChatCommand:
         assert args.kwargs["persona_name"] == "iconfucius"
 
     @patch("iconfucius.cli.chat.run_chat")
-    def test_chat_with_bot_flag(self, mock_run_chat):
+    @patch("iconfucius.skills.executor.execute_tool", return_value={
+        "status": "ok", "config_exists": True, "wallet_exists": True,
+        "env_exists": True, "has_api_key": True, "ready": True,
+    })
+    def test_chat_with_bot_flag(self, mock_execute, mock_run_chat):
         """Verify chat with bot flag."""
         result = runner.invoke(app, ["chat", "--bot", "bot-2"])
         assert result.exit_code == 0
         args = mock_run_chat.call_args
         assert args.kwargs["bot_name"] == "bot-2"
 
-    @patch("iconfucius.cli.chat.run_chat")
-    @patch("iconfucius.skills.executor.execute_tool", return_value={
-        "status": "ok", "config_exists": True, "wallet_exists": True,
-        "env_exists": True, "has_api_key": True, "ready": True,
-    })
-    def test_bare_invocation_starts_chat(self, mock_exec, mock_run_chat):
-        """Verify bare invocation starts chat."""
-        result = runner.invoke(app, [])
-        assert result.exit_code == 0
-        mock_run_chat.assert_called_once()
-
-    @patch("iconfucius.cli.chat.run_chat")
-    @patch("iconfucius.skills.executor.execute_tool", return_value={
-        "status": "ok", "config_exists": True, "wallet_exists": True,
-        "env_exists": True, "has_api_key": True, "ready": True,
-    })
-    def test_bare_with_persona_option(self, mock_exec, mock_run_chat):
-        """Verify bare with persona option."""
-        result = runner.invoke(app, ["--persona", "iconfucius"])
-        assert result.exit_code == 0
-        args = mock_run_chat.call_args
-        assert args.kwargs["persona_name"] == "iconfucius"
 
 
 class TestPersonaCommands:
