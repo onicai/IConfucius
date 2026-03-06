@@ -2,11 +2,10 @@ import { useState, useEffect, useCallback, useRef, useMemo, Component } from "re
 import { getBtcPrice, getChatHealth, getOdinHealth, getToken, getWalletStatus, getWalletBalances } from "./api";
 import { clearClientCache } from "./hooks";
 import { fmtSats } from "./utils";
-import TokensView from "./views/TokensView";
 import TradesView from "./views/TradesView";
-import SearchView from "./views/SearchView";
 import WalletView from "./views/WalletView";
 import BotsView from "./views/BotsView";
+import TokenView from "./views/TokenView";
 import ChatPanel from "./views/ChatPanel";
 
 class ViewErrorBoundary extends Component {
@@ -25,11 +24,18 @@ class ViewErrorBoundary extends Component {
 
 const PRIMARY = [
   {
-    id: "trades", label: "Trades", icon: (
+    id: "tokens", label: "Tokens", icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/>
+        <circle cx="12" cy="12" r="10"/><path d="M12 6v12"/><path d="M8 10h8"/><path d="M8 14h8"/>
       </svg>
-    ), desc: "Your trade history",
+    ), desc: "Market data & search",
+  },
+  {
+    id: "wallet", label: "Wallet", icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="2" y="6" width="20" height="14" rx="2"/><path d="M2 10h20"/><path d="M16 14h2"/>
+      </svg>
+    ), desc: "ckBTC balance & addresses",
   },
   {
     id: "bots", label: "Bots", icon: (
@@ -39,34 +45,15 @@ const PRIMARY = [
     ), desc: "Bot holdings & portfolio",
   },
   {
-    id: "wallet", label: "Wallet", icon: (
+    id: "trades", label: "Trades", icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="2" y="6" width="20" height="14" rx="2"/><path d="M2 10h20"/><path d="M16 14h2"/>
+        <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/>
       </svg>
-    ), desc: "ckBTC balance & addresses",
+    ), desc: "Your trade history",
   },
 ];
 
-const EXPLORE = [
-  {
-    id: "tokens", label: "Tokens", icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="12" r="10"/><path d="M12 6v12"/><path d="M8 10h8"/><path d="M8 14h8"/>
-      </svg>
-    ), desc: "Market data & trending",
-  },
-  {
-    id: "search", label: "Search", icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-      </svg>
-    ), desc: "Find tokens by name or ID",
-  },
-];
-
-const ALL_SERVICES = [...PRIMARY, ...EXPLORE];
-
-const GRID_COLS = { 2: "grid-cols-2", 3: "grid-cols-3", 5: "grid-cols-5" };
+const GRID_COLS = { 2: "grid-cols-2", 3: "grid-cols-3", 4: "grid-cols-4", 5: "grid-cols-5" };
 const CHAT_WIDTH_KEY = "iconfucius_chat_panel_width";
 const DEFAULT_CHAT_WIDTH = typeof window !== "undefined" ? Math.floor(window.innerWidth / 2) : 600;
 const MIN_CHAT_WIDTH = 320;
@@ -120,7 +107,7 @@ function StatusDot({ ok }) {
 }
 
 export default function App() {
-  const [active, setActive] = useState("trades");
+  const [active, setActive] = useState("tokens");
   const [btcUsd, setBtcUsd] = useState(null);
   const [odinOk, setOdinOk] = useState(null);
   const [sdkOk, setSdkOk] = useState(null);
@@ -131,6 +118,7 @@ export default function App() {
   const [portfolioSats, setPortfolioSats] = useState(null);
   const [botsSats, setBotsSats] = useState(null);
   const [walletSats, setWalletSats] = useState(null);
+  const [tokensSats, setTokensSats] = useState(null);
   const [hasBotErrors, setHasBotErrors] = useState(false);
   const [balanceData, setBalanceData] = useState(null);
   const [balanceLoading, setBalanceLoading] = useState(false);
@@ -145,6 +133,7 @@ export default function App() {
   });
   const [isResizingChat, setIsResizingChat] = useState(false);
   const userSelectedTabRef = useRef(false);
+  const ckbtcMinterRef = useRef(false);
 
   const clampChatWidth = useCallback((w) => {
     if (typeof window === "undefined") return Math.max(MIN_CHAT_WIDTH, w);
@@ -154,6 +143,13 @@ export default function App() {
 
   const handleAction = useCallback(() => {
     clearClientCache();
+    ckbtcMinterRef.current = false;
+    setRefreshKey((k) => k + 1);
+  }, []);
+
+  const handleCheckBalance = useCallback((ckbtcMinter = false) => {
+    clearClientCache();
+    ckbtcMinterRef.current = ckbtcMinter;
     setRefreshKey((k) => k + 1);
   }, []);
 
@@ -234,6 +230,7 @@ export default function App() {
       setPortfolioSats(null);
       setBotsSats(null);
       setWalletSats(null);
+      setTokensSats(null);
     }
     setBalanceLoading(true);
     // Refresh setupComplete on balance refresh
@@ -243,7 +240,7 @@ export default function App() {
         setSetupComplete(s.sdk_available && s.ready && (s.bot_count || 0) > 0);
       }).catch(() => {});
     }
-    getWalletBalances({ refresh: refreshKey > 0 }).then((b) => {
+    getWalletBalances({ refresh: refreshKey > 0, ckbtcMinter: ckbtcMinterRef.current }).then((b) => {
       if (cancelled) return;
       setBalanceData(b);
       setBalanceLoading(false);
@@ -254,6 +251,7 @@ export default function App() {
       setPortfolioSats(oSats + tSats + wSats);
       setBotsSats(oSats + tSats);
       setWalletSats(wSats);
+      setTokensSats(tSats);
       setHasBotErrors((b?.bots || []).some((bot) => !!bot.note));
       setStatusMessage(b?.status_message || null);
     }).catch(() => { if (!cancelled) { setBalanceLoading(false); setPortfolioSats(0); } });
@@ -334,7 +332,7 @@ export default function App() {
 
   const disabledIds = useMemo(() => {
     if (setupComplete) return null;
-    const ids = new Set(ALL_SERVICES.map((s) => s.id));
+    const ids = new Set(PRIMARY.map((s) => s.id));
     ids.delete("wallet");
     return ids;
   }, [setupComplete]);
@@ -348,16 +346,19 @@ export default function App() {
       const val = fmtSats(walletSats, btcUsd);
       return { ...t, desc: val, liveDesc: val };
     }
+    if (t.id === "tokens" && tokensSats != null && btcUsd) {
+      const val = fmtSats(tokensSats, btcUsd);
+      return { ...t, desc: val, liveDesc: val };
+    }
     return t;
-  }), [botsSats, walletSats, btcUsd]);
+  }), [botsSats, walletSats, tokensSats, btcUsd]);
 
   const renderView = () => {
     switch (active) {
-      case "wallet": return <WalletView btcUsd={btcUsd} data={balanceData} loading={balanceLoading} onRefresh={handleAction} onNavigate={toggleService} projectRoot={projectRoot} onSetupComplete={handleSetupComplete} />;
-      case "bots":   return <BotsView btcUsd={btcUsd} data={balanceData} loading={balanceLoading} />;
-      case "tokens":  return <TokensView btcUsd={btcUsd} />;
+      case "wallet": return <WalletView btcUsd={btcUsd} data={balanceData} loading={balanceLoading} onRefresh={handleAction} onCheckBalance={handleCheckBalance} onNavigate={toggleService} projectRoot={projectRoot} onSetupComplete={handleSetupComplete} />;
+      case "bots":   return <BotsView btcUsd={btcUsd} data={balanceData} loading={balanceLoading} onRefresh={handleAction} />;
+      case "tokens":  return <TokenView btcUsd={btcUsd} balanceData={balanceData} refreshKey={refreshKey} />;
       case "trades":  return <TradesView btcUsd={btcUsd} refreshKey={refreshKey} />;
-      case "search":  return <SearchView btcUsd={btcUsd} />;
       default: return null;
     }
   };
@@ -433,12 +434,6 @@ export default function App() {
         <main className="flex-1 min-w-0 flex flex-col overflow-y-auto scrollbar-thin p-4 lg:p-6">
           {/* Service tiles */}
           {renderTileGroup(primaryTiles, active, toggleService, disabledIds)}
-          <div className="flex items-center gap-2 mb-3 mt-1">
-            <div className="h-px flex-1 bg-border/50" />
-            <span className="text-[0.6rem] uppercase tracking-widest text-dim/50 font-medium">Explore</span>
-            <div className="h-px flex-1 bg-border/50" />
-          </div>
-          {renderTileGroup(EXPLORE, active, toggleService, disabledIds)}
 
           {/* Expanded view */}
           {active && (

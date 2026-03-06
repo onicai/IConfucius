@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { getWalletStatus, getWalletInfo, setupInit, setupWalletCreate, setupSetBots, setupRegisterBot, importWallet } from "../api";
+import { getWalletStatus, getWalletInfo, setupInit, setupWalletCreate, setupSetBots, setupRegisterBot, setupFundBot, importWallet, walletSend } from "../api";
 import LoadingQuote from "../components/LoadingQuote";
 import { clearClientCache } from "../hooks";
 import { fmtSats } from "../utils";
@@ -118,7 +118,7 @@ function ImportWalletButton({ onImported, className = "" }) {
   );
 }
 
-function SetupWizard({ status, onComplete, projectName, btcUsd }) {
+function SetupWizard({ status, onComplete, onCheckBalance, onNavigate, balanceData, balanceLoading, projectName, btcUsd }) {
   const sdkMissing = !status.sdk_available;
   const configExists = status.config_exists;
   const walletExists = status.wallet_exists;
@@ -134,8 +134,17 @@ function SetupWizard({ status, onComplete, projectName, btcUsd }) {
   const [botLoading, setBotLoading] = useState(false);
   const [registerProgress, setRegisterProgress] = useState(null); // {current, total, botName}
   const [registerResults, setRegisterResults] = useState([]); // [{botName, status, error?}]
-  const [fundingBalance, setFundingBalance] = useState(null);
-  const [fundingLoading, setFundingLoading] = useState(false);
+  const [botNames, setBotNames] = useState([]); // saved from step 4 for step 5
+  const [botsFunded, setBotsFunded] = useState(false);
+  const [fundAmount, setFundAmount] = useState(5000);
+  const [fundLoading, setFundLoading] = useState(false);
+  const [fundProgress, setFundProgress] = useState(null); // {current, total, botName}
+  const [fundResults, setFundResults] = useState([]); // [{botName, status, error?}]
+  const [fundResult, setFundResult] = useState(null);
+  const fundingBalance = balanceData?.wallet
+    ? { balance_sats: balanceData.wallet.ckbtc_sats ?? 0, pending_sats: balanceData.wallet.pending_sats ?? 0 }
+    : null;
+  const fundingLoading = balanceLoading;
 
   const walletCreated = (configExists && walletExists) || (result && result.status !== "error");
 
@@ -153,7 +162,8 @@ function SetupWizard({ status, onComplete, projectName, btcUsd }) {
     : (!backupConfirmed && !isImport) ? 2
     : !fundingConfirmed ? 3
     : !botsAdded ? 4
-    : 5;
+    : !botsFunded ? 5
+    : 6;
 
   useEffect(() => {
     if (activeStep === 3 && !walletInfo) fetchWalletInfo();
@@ -232,6 +242,7 @@ function SetupWizard({ status, onComplete, projectName, btcUsd }) {
       const failures = results.filter(r => r.status === "error");
       if (failures.length === 0) {
         setBotResult({ status: "ok", display: `All ${botsToRegister.length} bot(s) registered with Odin.Fun.` });
+        setBotNames(botsToRegister);
         setBotsAdded(true);
       } else {
         const failNames = failures.map(f => f.botName).join(", ");
@@ -242,11 +253,14 @@ function SetupWizard({ status, onComplete, projectName, btcUsd }) {
   }
 
   useEffect(() => {
-    if (activeStep === 5) {
-      const t = setTimeout(onComplete, 1500);
+    if (activeStep === 6) {
+      const t = setTimeout(() => {
+        onComplete();
+        if (onNavigate) onNavigate("tokens");
+      }, 1500);
       return () => clearTimeout(t);
     }
-  }, [activeStep, onComplete]);
+  }, [activeStep, onComplete, onNavigate]);
 
   const ActionBtn = ({ onClick, loading: l, children, className: cls = "" }) => (
     <button onClick={onClick} disabled={l}
@@ -255,12 +269,44 @@ function SetupWizard({ status, onComplete, projectName, btcUsd }) {
     </button>
   );
 
+  async function handleFundBots() {
+    setFundLoading(true); setFundResult(null);
+    setFundProgress(null); setFundResults([]);
+    try {
+      const results = [];
+      for (let i = 0; i < botNames.length; i++) {
+        const botName = botNames[i];
+        setFundProgress({ current: i + 1, total: botNames.length, botName });
+        try {
+          await setupFundBot({ botName, amount: fundAmount });
+          results.push({ botName, status: "ok" });
+        } catch (e) {
+          results.push({ botName, status: "error", error: e.message });
+        }
+        setFundResults([...results]);
+      }
+      setFundProgress(null);
+
+      const failures = results.filter(r => r.status === "error");
+      if (failures.length === 0) {
+        setFundResult({ status: "ok", display: `All ${botNames.length} bot(s) funded with ${fundAmount.toLocaleString()} sats each.` });
+        setBotsFunded(true);
+        onCheckBalance(false);
+      } else {
+        const failNames = failures.map(f => f.botName).join(", ");
+        setFundResult({ status: "error", error: `Funding failed for: ${failNames}. Click Fund to retry.` });
+      }
+    } catch (e) { setFundResult({ status: "error", error: e.message }); }
+    finally { setFundLoading(false); }
+  }
+
   const stepDef = [
     { n: 1, label: "Create or Import Wallet" },
     { n: 2, label: "Download & Backup" },
     { n: 3, label: "Fund Your Wallet" },
     { n: 4, label: "Create Bots (Odin Accounts)" },
-    { n: 5, label: "Ready" },
+    { n: 5, label: "Fund Your Bots" },
+    { n: 6, label: "Ready" },
   ];
 
   const totalFee = numBots * 120;
@@ -299,7 +345,7 @@ function SetupWizard({ status, onComplete, projectName, btcUsd }) {
         if (n === 2 && isImport) return null;
 
         return (
-          <div key={n} className={`flex gap-3.5 py-4 ${n < 5 ? "border-b border-border" : ""} ${!done && !active ? "opacity-40" : done ? "opacity-50" : ""}`}>
+          <div key={n} className={`flex gap-3.5 py-4 ${n < 6 ? "border-b border-border" : ""} ${!done && !active ? "opacity-40" : done ? "opacity-50" : ""}`}>
             <StepCircle number={n} done={done} active={active} />
             <div className="flex-1">
               <div className="font-semibold mb-1">{label}</div>
@@ -383,26 +429,12 @@ function SetupWizard({ status, onComplete, projectName, btcUsd }) {
                     </div>
                   </div>
                   <div className="mt-3 flex items-center gap-2">
-                    <button onClick={async () => {
-                        setFundingLoading(true);
-                        try {
-                          const info = await getWalletInfo({ refresh: true });
-                          setFundingBalance({ balance_sats: info.balance_sats ?? 0, pending_sats: info.pending_sats ?? 0 });
-                        } catch { /* ignore */ }
-                        finally { setFundingLoading(false); }
-                      }}
+                    <button onClick={() => onCheckBalance(false)}
                       disabled={fundingLoading}
                       className="px-4 py-2 rounded-[10px] text-sm bg-surface border border-border text-text hover:bg-surface-hover transition-colors cursor-pointer disabled:opacity-50">
                       {fundingLoading ? <><Spinner className="w-3.5 h-3.5 mr-2" /> Checking...</> : "Check ckBTC"}
                     </button>
-                    <button onClick={async () => {
-                        setFundingLoading(true);
-                        try {
-                          const info = await getWalletInfo({ refresh: true, ckbtcMinter: true });
-                          setFundingBalance({ balance_sats: info.balance_sats ?? 0, pending_sats: info.pending_sats ?? 0 });
-                        } catch { /* ignore */ }
-                        finally { setFundingLoading(false); }
-                      }}
+                    <button onClick={() => onCheckBalance(true)}
                       disabled={fundingLoading}
                       className="px-4 py-2 rounded-[10px] text-sm bg-surface border border-border text-text hover:bg-surface-hover transition-colors cursor-pointer disabled:opacity-50">
                       {fundingLoading ? <><Spinner className="w-3.5 h-3.5 mr-2" /> Checking...</> : "Check BTC + ckMinter"}
@@ -419,12 +451,12 @@ function SetupWizard({ status, onComplete, projectName, btcUsd }) {
                     </div>
                   )}
                   <div className="text-[0.7rem] text-dim mt-2">
-                    Minimum deposit: 5,000 sats (Continue activates at 4,000+ after fees)
+                    Minimum deposit: 7,500 sats (5,000 per bot + 1,000 wallet reserve + fees)
                   </div>
                   <div className="mt-2">
                     <button
                       onClick={() => setFundingConfirmed(true)}
-                      disabled={!(fundingBalance?.balance_sats >= 4000)}
+                      disabled={!(fundingBalance?.balance_sats >= 7500)}
                       className="px-5 py-2 rounded-[10px] text-sm bg-surface border border-border text-text hover:bg-surface-hover transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
                       Continue
                     </button>
@@ -489,9 +521,63 @@ function SetupWizard({ status, onComplete, projectName, btcUsd }) {
                 <span className="text-[0.82rem] text-green">Bots added</span>
               )}
 
-              {/* Step 5: Ready */}
+              {/* Step 5: Fund bots */}
               {n === 5 && active && (
-                <div className="text-sm text-green">Setup complete! Loading wallet dashboard...</div>
+                <div className="text-sm text-dim leading-relaxed">
+                  {!fundLoading && (
+                    <>
+                      <div className="flex items-center gap-3 mt-2">
+                        <label className="text-[0.82rem]">
+                          Sats per bot:{" "}
+                          <input type="number" min={5000} max={1000000} value={fundAmount}
+                            onChange={(e) => {
+                              const v = parseInt(e.target.value, 10);
+                              setFundAmount(Number.isFinite(v) ? Math.max(5000, v) : 5000);
+                            }}
+                            className="w-20 px-2 py-1 bg-bg border border-border rounded text-text text-sm" />
+                        </label>
+                      </div>
+                      <div className="text-[0.7rem] text-dim mt-2 mb-3 leading-snug">
+                        Total: {fmtSats(fundAmount * botNames.length, btcUsd)} for {botNames.length} bot{botNames.length !== 1 ? "s" : ""}, keeping 1,000 sats in wallet for fees.
+                      </div>
+                      <ActionBtn onClick={handleFundBots} loading={fundLoading}>Fund</ActionBtn>
+                    </>
+                  )}
+                  {fundLoading && (fundResults.length > 0 || fundProgress) && (
+                    <div className="mt-2 space-y-1.5">
+                      {fundResults.map((r) => (
+                        <div key={r.botName} className="flex items-center gap-2 text-[0.82rem]">
+                          {r.status === "ok"
+                            ? <span className="text-green">{"\u2713"}</span>
+                            : <span className="text-red">{"\u2717"}</span>}
+                          <span className={r.status === "ok" ? "text-green" : "text-red"}>
+                            {r.botName} {r.status === "ok" ? `funded ${fundAmount.toLocaleString()} sats` : `failed: ${r.error}`}
+                          </span>
+                        </div>
+                      ))}
+                      {fundProgress && (
+                        <div className="flex items-center gap-2 text-[0.82rem]">
+                          <Spinner className="w-3.5 h-3.5" />
+                          <span>Funding {fundProgress.botName}... ({fundProgress.current}/{fundProgress.total})</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {fundLoading && !fundProgress && fundResults.length === 0 && (
+                    <div className="flex items-center gap-2 mt-2 text-[0.82rem]">
+                      <Spinner className="w-3.5 h-3.5" /> Preparing fund transfer...
+                    </div>
+                  )}
+                  <ResultBox result={fundResult} />
+                </div>
+              )}
+              {n === 5 && done && (
+                <span className="text-[0.82rem] text-green">Bots funded</span>
+              )}
+
+              {/* Step 6: Ready */}
+              {n === 6 && active && (
+                <div className="text-sm text-green">Setup complete! Switching to Tokens view...</div>
               )}
             </div>
           </div>
@@ -617,6 +703,69 @@ function ConfigureBotsCard({ funded, onRefresh, btcUsd }) {
   );
 }
 
+function WalletSendCard({ onRefresh }) {
+  const [expanded, setExpanded] = useState(false);
+  const [address, setAddress] = useState("");
+  const [amount, setAmount] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+
+  async function handleSend() {
+    setLoading(true); setResult(null);
+    try {
+      const res = await walletSend({ amount, address });
+      setResult(res);
+      if (res.status === "ok" && onRefresh) onRefresh();
+    } catch (e) { setResult({ status: "error", error: e.message }); }
+    finally { setLoading(false); }
+  }
+
+  function handleCancel() {
+    setExpanded(false); setAddress(""); setAmount(""); setResult(null);
+  }
+
+  return (
+    <div className="mb-5">
+      <button onClick={() => { setExpanded((e) => !e); setResult(null); }}
+        className="px-4 py-2 rounded-[10px] text-sm bg-surface border border-border text-text hover:bg-surface-hover transition-colors cursor-pointer inline-flex items-center gap-2">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/>
+        </svg>
+        Send ckBTC / BTC
+      </button>
+      {expanded && (
+        <div className="mt-2 bg-surface border border-border rounded-[10px] p-4">
+          <div className="space-y-2">
+            <label className="block text-[0.82rem]">
+              Address (IC principal or BTC address)
+              <input type="text" value={address} onChange={(e) => setAddress(e.target.value)}
+                placeholder="bc1q... or xxxxx-xxxxx-..."
+                className="mt-1 w-full px-3 py-1.5 bg-bg border border-border rounded text-text text-sm font-mono" />
+            </label>
+            <label className="block text-[0.82rem]">
+              Amount (sats)
+              <input type="text" value={amount} onChange={(e) => setAmount(e.target.value)}
+                placeholder="10000 or all"
+                className="mt-1 w-32 px-3 py-1.5 bg-bg border border-border rounded text-text text-sm" />
+            </label>
+          </div>
+          <div className="flex items-center gap-2 mt-3">
+            <button onClick={handleSend} disabled={loading || !address || !amount}
+              className="px-4 py-1.5 rounded-[10px] text-sm bg-surface border border-border text-text hover:bg-surface-hover transition-colors cursor-pointer disabled:opacity-50">
+              {loading ? <><Spinner className="w-3.5 h-3.5 mr-2" /> Sending...</> : "Send"}
+            </button>
+            <button onClick={handleCancel} disabled={loading}
+              className="px-4 py-1.5 rounded-[10px] text-sm text-dim hover:text-text transition-colors cursor-pointer disabled:opacity-50">
+              Cancel
+            </button>
+          </div>
+          <ResultBox result={result} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function WalletInfoCards({ btcUsd, data }) {
   if (!data) return <LoadingQuote message="Fetching your wallet from the Internet Computer..." />;
 
@@ -651,7 +800,7 @@ function WalletInfoCards({ btcUsd, data }) {
   );
 }
 
-export default function WalletView({ btcUsd, data: balanceData, loading: balanceLoading, onRefresh, onNavigate, projectRoot, onSetupComplete }) {
+export default function WalletView({ btcUsd, data: balanceData, loading: balanceLoading, onRefresh, onCheckBalance, onNavigate, projectRoot, onSetupComplete }) {
   const projectName = projectRoot ? (projectRoot.split("/").pop() || "") : "";
   const [setupDone, setSetupDone] = useState(null);
   const [status, setStatus] = useState(null);
@@ -685,7 +834,7 @@ export default function WalletView({ btcUsd, data: balanceData, loading: balance
       <button className="ml-3 underline cursor-pointer" onClick={checkStatus}>retry</button>
     </div>
   );
-  if (!setupDone && status) return <SetupWizard status={status} onComplete={checkStatus} projectName={projectName} btcUsd={btcUsd} />;
+  if (!setupDone && status) return <SetupWizard status={status} onComplete={checkStatus} onCheckBalance={onCheckBalance} onNavigate={onNavigate} balanceData={balanceData} balanceLoading={balanceLoading} projectName={projectName} btcUsd={btcUsd} />;
 
   const walletFunded = (balanceData?.wallet?.ckbtc_sats || 0) > 0;
   const botCount = (balanceData?.bots || []).length;
@@ -696,15 +845,7 @@ export default function WalletView({ btcUsd, data: balanceData, loading: balance
 
       {botCount === 0 && <ConfigureBotsCard funded={walletFunded} onRefresh={onRefresh} btcUsd={btcUsd} />}
 
-      {botCount > 0 && (
-        <button onClick={() => onNavigate && onNavigate("bots")}
-          className="mb-5 px-4 py-2 rounded-[10px] text-sm bg-surface border border-border text-text hover:bg-surface-hover transition-colors cursor-pointer inline-flex items-center gap-2">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="3"/><path d="M8 16h.01"/><path d="M16 16h.01"/>
-          </svg>
-          View Bots ({botCount})
-        </button>
-      )}
+      <WalletSendCard onRefresh={onRefresh} />
 
       <div className="bg-surface border border-border rounded-[10px] p-4 mb-5">
         <h4 className="text-sm font-semibold mb-2">How funding works</h4>

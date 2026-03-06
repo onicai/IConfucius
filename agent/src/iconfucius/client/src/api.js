@@ -51,8 +51,12 @@ export async function getWalletInfo({ refresh = false, ckbtcMinter = false } = {
   return fetchJSON(`${WALLET}/info${qs}`);
 }
 
-export async function getWalletBalances({ refresh = false } = {}) {
-  return fetchJSON(`${WALLET}/balances${refresh ? "?refresh" : ""}`);
+export async function getWalletBalances({ refresh = false, ckbtcMinter = false } = {}) {
+  const params = [];
+  if (refresh) params.push("refresh");
+  if (ckbtcMinter) params.push("ckbtc_minter");
+  const qs = params.length ? `?${params.join("&")}` : "";
+  return fetchJSON(`${WALLET}/balances${qs}`);
 }
 
 export async function getWalletTrades() {
@@ -82,6 +86,18 @@ export async function setupSetBots({ numBots, force = false }) {
 
 export async function setupRegisterBot({ botName }) {
   return postJSON("/api/setup/register-bot", { bot_name: botName });
+}
+
+export async function setupFundBot({ botName, amount }) {
+  return postJSON("/api/setup/fund-bot", { bot_name: botName, amount });
+}
+
+export async function walletWithdraw({ botName, amount }) {
+  return postJSON("/api/wallet/withdraw", { bot_name: botName, amount });
+}
+
+export async function walletSend({ amount, address }) {
+  return postJSON("/api/wallet/send", { amount, address });
 }
 
 // Chat endpoints

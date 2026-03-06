@@ -1189,6 +1189,69 @@ def _handle_action_register_bot(body):
         }
 
 
+def _handle_action_fund_bot(body):
+    """Fund a single bot — same as chat 'fund' command."""
+    err = _require_sdk()
+    if err:
+        return err
+    _sync_project_root()
+    _chdir_to_root()
+
+    bot_name = body.get("bot_name")
+    amount = body.get("amount")
+    if not bot_name or not amount:
+        return 400, {"status": "error", "error": "'bot_name' and 'amount' are required."}
+
+    from iconfucius.skills.executor import execute_tool
+
+    result = execute_tool("fund", {"amount": int(amount), "bot_name": bot_name})
+    _cache_clear()
+    status = 200 if result.get("status") == "ok" else 500
+    return status, result
+
+
+def _handle_action_withdraw(body):
+    """Withdraw from a bot — same as chat 'withdraw' command."""
+    err = _require_sdk()
+    if err:
+        return err
+    _sync_project_root()
+    _chdir_to_root()
+
+    bot_name = body.get("bot_name")
+    amount = body.get("amount")
+    if not bot_name or not amount:
+        return 400, {"status": "error", "error": "'bot_name' and 'amount' are required."}
+
+    from iconfucius.skills.executor import execute_tool
+
+    result = execute_tool("withdraw", {"amount": str(amount), "bot_name": bot_name})
+    _cache_clear()
+    status = 200 if result.get("status") == "ok" else 500
+    return status, result
+
+
+def _handle_action_wallet_send(body):
+    """Send ckBTC/BTC — same as chat 'wallet_send' command."""
+    err = _require_sdk()
+    if err:
+        return err
+    _sync_project_root()
+    _chdir_to_root()
+
+    amount = body.get("amount")
+    address = body.get("address")
+    if not amount or not address:
+        return 400, {"status": "error", "error": "'amount' and 'address' are required."}
+
+    from iconfucius.skills.executor import execute_tool
+
+    result = execute_tool("wallet_send", {"amount": str(amount), "address": address})
+    _cache_clear()
+    status = 200 if result.get("status") == "ok" else 500
+    return status, result
+
+
 # ---------------------------------------------------------------------------
 # HTTP handler
 # ---------------------------------------------------------------------------
@@ -1232,6 +1295,9 @@ class UIHandler(BaseHTTPRequestHandler):
             "/api/setup/wallet-create": _handle_action_wallet_create,
             "/api/setup/set-bots": _handle_action_set_bots,
             "/api/setup/register-bot": _handle_action_register_bot,
+            "/api/setup/fund-bot": _handle_action_fund_bot,
+            "/api/wallet/withdraw": _handle_action_withdraw,
+            "/api/wallet/send": _handle_action_wallet_send,
             "/api/chat/start": _handle_chat_start,
             "/api/chat/resume": _handle_chat_resume,
             "/api/chat/message": _handle_chat_message,
