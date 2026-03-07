@@ -703,7 +703,7 @@ function ConfigureBotsCard({ funded, onRefresh, btcUsd }) {
   );
 }
 
-function WalletSendCard({ onRefresh }) {
+function WalletSendCard({ onRefresh, ckbtcSats }) {
   const [expanded, setExpanded] = useState(false);
   const [address, setAddress] = useState("");
   const [amount, setAmount] = useState("");
@@ -743,7 +743,16 @@ function WalletSendCard({ onRefresh }) {
                 className="mt-1 w-full px-3 py-1.5 bg-bg border border-border rounded text-text text-sm font-mono" />
             </label>
             <label className="block text-[0.82rem]">
-              Amount (sats)
+              <span className="flex items-center gap-2">
+                Amount (sats)
+                {ckbtcSats > 0 && (
+                  <button type="button"
+                    onClick={() => setAmount("all")}
+                    className="text-accent text-xs hover:underline cursor-pointer">
+                    all
+                  </button>
+                )}
+              </span>
               <input type="text" value={amount} onChange={(e) => setAmount(e.target.value)}
                 placeholder="10000 or all"
                 className="mt-1 w-32 px-3 py-1.5 bg-bg border border-border rounded text-text text-sm" />
@@ -845,7 +854,7 @@ export default function WalletView({ btcUsd, data: balanceData, loading: balance
 
       {botCount === 0 && <ConfigureBotsCard funded={walletFunded} onRefresh={onRefresh} btcUsd={btcUsd} />}
 
-      <WalletSendCard onRefresh={onRefresh} />
+      <WalletSendCard onRefresh={onRefresh} ckbtcSats={balanceData?.wallet?.ckbtc_sats} />
 
       <div className="bg-surface border border-border rounded-[10px] p-4 mb-5">
         <h4 className="text-sm font-semibold mb-2">How funding works</h4>
