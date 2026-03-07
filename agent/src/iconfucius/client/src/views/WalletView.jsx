@@ -256,7 +256,7 @@ function SetupWizard({ status, onComplete, onCheckBalance, onNavigate, balanceDa
     if (activeStep === 6) {
       const t = setTimeout(() => {
         onComplete();
-        if (onNavigate) onNavigate("tokens");
+        if (onNavigate) onNavigate("bots");
       }, 1500);
       return () => clearTimeout(t);
     }
@@ -451,7 +451,7 @@ function SetupWizard({ status, onComplete, onCheckBalance, onNavigate, balanceDa
                     </div>
                   )}
                   <div className="text-[0.7rem] text-dim mt-2">
-                    Minimum deposit: 7,500 sats (5,000 per bot + 1,000 wallet reserve + fees)
+                    Minimum deposit: {fmtSats(7500, btcUsd)}
                   </div>
                   <div className="mt-2">
                     <button
