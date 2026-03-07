@@ -425,8 +425,10 @@ class TestCollectBalances:
     @patch("iconfucius.cli.balance.Client")
     @patch("iconfucius.cli.balance.Identity")
     @patch("iconfucius.cli.balance.siwb_login")
+    @patch("iconfucius.cli.balance.wallet_has_siwb_funds", return_value=True)
     @patch("iconfucius.cli.balance.read_cached_principal", return_value=None)
     def test_falls_back_to_siwb_login(self, _mock_read_principal,
+                                       _mock_has_funds,
                                        mock_login,
                                        _MockId, _MockClient, _MockAgent,
                                        MockCanister, mock_cffi):
@@ -541,8 +543,10 @@ class TestCollectBalances:
         assert "not yet initialized" in result.note
 
     @patch("iconfucius.cli.balance.siwb_login")
+    @patch("iconfucius.cli.balance.wallet_has_siwb_funds", return_value=True)
     @patch("iconfucius.cli.balance.read_cached_principal", return_value=None)
     def test_other_runtime_errors_propagate(self, _mock_read_principal,
+                                             _mock_has_funds,
                                              mock_login):
         """RuntimeErrors from siwb_login propagate."""
         mock_login.side_effect = RuntimeError("signBip322 failed: timeout")

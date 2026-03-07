@@ -79,8 +79,15 @@ export default function SearchView({ btcUsd }) {
               ) : results.map((t) => (
                 <tr key={t.id} className="border-b border-border last:border-b-0 transition-colors hover:bg-surface-hover">
                   <td className="px-4 py-3 whitespace-nowrap">
-                    <span className="font-semibold text-text">{t.ticker || t.name}</span>
-                    {t.ticker && t.name !== t.ticker && <div className="text-dim text-xs">{t.name}</div>}
+                    <div className="flex items-center gap-2">
+                      <img src={`/api/odin/token/${t.id}/image`}
+                        className="w-6 h-6 rounded-full object-cover shrink-0 bg-border"
+                        alt="" onError={(e) => { e.target.style.display = "none"; }} />
+                      <div>
+                        <span className="font-semibold text-text">{t.ticker || t.name}</span>
+                        {t.ticker && t.name !== t.ticker && <div className="text-dim text-xs">{t.name}</div>}
+                      </div>
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-dim whitespace-nowrap">{t.id}</td>
                   <td className="px-4 py-3 text-right tabular-nums whitespace-nowrap">{t.marketcap != null ? fmtUsd(t.marketcap / 1e3, btcUsd) : "—"}</td>

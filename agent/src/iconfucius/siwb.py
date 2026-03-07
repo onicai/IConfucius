@@ -59,6 +59,94 @@ from iconfucius.transfers import CKBTC_FEE, unwrap_canister_result
 
 
 # ---------------------------------------------------------------------------
+# SIWB login cost & pre-checks
+# ---------------------------------------------------------------------------
+
+SIWB_LOGIN_COST_SATS = 240  # ~120 sats/bot × 2 for safety margin
+
+_siwb_funds_cache = {"result": None, "ts": 0.0}
+_siwb_funds_lock = threading.Lock()
+
+
+def wallet_has_siwb_funds(min_sats: int = SIWB_LOGIN_COST_SATS) -> bool:
+    """Fast anonymous check: does the wallet have enough ckBTC for SIWB login?
+
+    Uses icrc1_balance_of (query, ~200ms, no fees). Cached for 10 seconds.
+    """
+    now = time.time()
+    with _siwb_funds_lock:
+        if _siwb_funds_cache["result"] is not None and now - _siwb_funds_cache["ts"] < 10:
+            return _siwb_funds_cache["result"]
+
+    try:
+        pem_path = get_pem_file()
+        if not os.path.exists(pem_path):
+            return False
+        with open(pem_path, "r") as f:
+            pem_content = f.read()
+        wallet_identity = Identity.from_pem(pem_content)
+        principal_text = str(wallet_identity.sender())
+
+        client = Client(url=IC_HOST)
+        anon_agent = Agent(Identity(anonymous=True), client)
+        from iconfucius.transfers import create_icrc1_canister, get_balance
+        ckbtc = create_icrc1_canister(anon_agent)
+        balance = get_balance(ckbtc, principal_text)  # in e8s
+        balance_sats = balance  # ckBTC balance is in e8s = sats
+        result = balance_sats >= min_sats
+    except Exception:
+        result = False
+
+    with _siwb_funds_lock:
+        _siwb_funds_cache["result"] = result
+        _siwb_funds_cache["ts"] = time.time()
+    return result
+
+
+_siwb_reachable_cache = {"result": None, "ts": 0.0}
+_siwb_reachable_lock = threading.Lock()
+
+
+def siwb_canister_reachable() -> bool:
+    """Check if the SIWB canister is reachable using a free query call.
+
+    Uses siwb_get_delegation with dummy params — it will return an error but
+    proves the canister is responding. Cached for 30 seconds.
+    """
+    now = time.time()
+    with _siwb_reachable_lock:
+        if _siwb_reachable_cache["result"] is not None and now - _siwb_reachable_cache["ts"] < 30:
+            return _siwb_reachable_cache["result"]
+
+    try:
+        client = Client(url=IC_HOST)
+        anon_agent = Agent(Identity(anonymous=True), client)
+        siwb = Canister(
+            agent=anon_agent,
+            canister_id=ODIN_SIWB_CANISTER_ID,
+            candid_str=ODIN_SIWB_CANDID,
+        )
+        # Dummy query — will return Err but proves canister responds
+        siwb.siwb_get_delegation(
+            "bc1p0000000000000000000000000000000000000000000000000000",
+            bytes(32),
+            0,
+            verify_certificate=get_verify_certificates(),
+        )
+        result = True
+    except Exception as exc:
+        # A canister error (Err variant) means it's reachable
+        # A transport/network error means it's not
+        err_str = str(exc)
+        result = "503" not in err_str and "timed out" not in err_str.lower()
+
+    with _siwb_reachable_lock:
+        _siwb_reachable_cache["result"] = result
+        _siwb_reachable_cache["ts"] = time.time()
+    return result
+
+
+# ---------------------------------------------------------------------------
 # icp-py-core result unwrapping
 # ---------------------------------------------------------------------------
 
@@ -483,6 +571,10 @@ def siwb_login(bot_name: str = None, verbose: bool = True) -> dict:
         bot_name: str (the bot name used)
     """
     set_verbose(verbose)
+
+    # Pre-check: ensure SIWB canister is reachable before paying any fees
+    if not siwb_canister_reachable():
+        raise RuntimeError("SIWB canister is unreachable — skipping login to avoid wasting fees")
 
     # Load controller identity from PEM file
     pem_path = get_pem_file()

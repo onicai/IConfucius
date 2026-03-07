@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { setupFundBot, walletWithdraw } from "../api";
 import LoadingQuote from "../components/LoadingQuote";
 import { fmtSats, fmtUsd } from "../utils";
 
@@ -16,8 +18,53 @@ function TokenBadge({ ticker, tokenId, balance, valueSats, btcUsd }) {
   );
 }
 
-function BotCard({ bot, btcUsd }) {
+function BotActionForm({ botName, action, onDone, onCancel }) {
+  const [amount, setAmount] = useState(action === "deposit" ? "5000" : "");
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+
+  async function handleSubmit() {
+    setLoading(true); setResult(null);
+    try {
+      const fn = action === "deposit" ? setupFundBot : walletWithdraw;
+      const res = await fn({ botName, amount: amount.toLowerCase() === "all" ? "all" : parseInt(amount, 10) });
+      setResult(res);
+      if (res.status === "ok" && onDone) onDone();
+    } catch (e) { setResult({ status: "error", error: e.message }); }
+    finally { setLoading(false); }
+  }
+
+  const err = result?.status === "error";
+  return (
+    <div className="mt-2 bg-bg border border-border rounded-lg p-3">
+      <div className="flex items-center gap-2">
+        <label className="text-[0.78rem]">
+          Amount (sats){action === "withdraw" ? ' or "all"' : ""}:
+          <input type="text" value={amount} onChange={(e) => setAmount(e.target.value)}
+            placeholder={action === "deposit" ? "5000" : "all"}
+            className="ml-2 w-24 px-2 py-1 bg-surface border border-border rounded text-text text-sm" />
+        </label>
+        <button onClick={handleSubmit} disabled={loading || !amount}
+          className="px-3 py-1 rounded-md text-xs font-medium bg-surface border border-border text-text hover:bg-surface-hover transition-colors cursor-pointer disabled:opacity-50">
+          {loading ? <Spinner className="w-3 h-3" /> : action === "deposit" ? "Fund" : "Withdraw"}
+        </button>
+        <button onClick={onCancel} disabled={loading}
+          className="px-3 py-1 rounded-md text-xs text-dim hover:text-text transition-colors cursor-pointer disabled:opacity-50">
+          Cancel
+        </button>
+      </div>
+      {result && (
+        <div className={`mt-2 px-3 py-2 rounded-md text-[0.78rem] whitespace-pre-wrap leading-relaxed border ${err ? "bg-red-dim text-red border-red" : "bg-green-dim text-green border-green"}`}>
+          {result.display || result.error || "Done"}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BotCard({ bot, btcUsd, onRefresh }) {
   const hasAccount = bot.has_odin_account;
+  const [activeAction, setActiveAction] = useState(null); // "deposit" | "withdraw" | null
 
   return (
     <div className="bg-surface border border-border rounded-[10px] p-4">
@@ -51,6 +98,29 @@ function BotCard({ bot, btcUsd }) {
       {bot.principal && (
         <div className="text-[0.65rem] text-dim font-mono break-all mb-3 bg-bg rounded px-2 py-1 border border-border">
           {bot.principal}
+        </div>
+      )}
+
+      {hasAccount && (
+        <div className="mb-3">
+          <div className="flex items-center gap-2">
+            <button onClick={() => setActiveAction(activeAction === "deposit" ? null : "deposit")}
+              className={`px-3 py-1 rounded-md text-xs font-medium border transition-colors cursor-pointer ${activeAction === "deposit" ? "bg-accent-dim text-accent border-accent/30" : "bg-surface border-border text-dim hover:text-text hover:bg-surface-hover"}`}>
+              Deposit
+            </button>
+            <button onClick={() => setActiveAction(activeAction === "withdraw" ? null : "withdraw")}
+              className={`px-3 py-1 rounded-md text-xs font-medium border transition-colors cursor-pointer ${activeAction === "withdraw" ? "bg-accent-dim text-accent border-accent/30" : "bg-surface border-border text-dim hover:text-text hover:bg-surface-hover"}`}>
+              Withdraw
+            </button>
+          </div>
+          {activeAction && (
+            <BotActionForm
+              botName={bot.name}
+              action={activeAction}
+              onDone={onRefresh}
+              onCancel={() => setActiveAction(null)}
+            />
+          )}
         </div>
       )}
 
@@ -126,10 +196,6 @@ export default function BotsView({ btcUsd, data, loading, onRefresh }) {
 
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-base font-semibold">Bots ({bots.length})</h3>
-        <button onClick={onRefresh} disabled={loading}
-          className="px-3 py-1.5 rounded-lg text-xs bg-surface border border-border text-dim hover:text-text hover:bg-surface-hover transition-colors cursor-pointer disabled:opacity-50">
-          {loading ? <><Spinner className="w-3 h-3 mr-1" /> Refreshing...</> : "Refresh"}
-        </button>
       </div>
 
       {bots.length === 0 ? (
@@ -137,7 +203,7 @@ export default function BotsView({ btcUsd, data, loading, onRefresh }) {
       ) : (
         <div className="grid grid-cols-1 gap-3">
           {bots.map((bot) => (
-            <BotCard key={bot.name} bot={bot} btcUsd={btcUsd} />
+            <BotCard key={bot.name} bot={bot} btcUsd={btcUsd} onRefresh={onRefresh} />
           ))}
         </div>
       )}

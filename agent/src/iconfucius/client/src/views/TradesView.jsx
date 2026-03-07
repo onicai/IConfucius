@@ -3,10 +3,6 @@ import { useFetch } from "../hooks";
 import { fmtSats } from "../utils";
 import LoadingQuote from "../components/LoadingQuote";
 
-const Spinner = ({ className = "" }) => (
-  <span className={`inline-block w-5 h-5 border-2 border-border border-t-accent rounded-full animate-spin align-middle ${className}`} />
-);
-
 function fmtTime(iso) {
   if (!iso) return "";
   const d = new Date(iso);
@@ -78,7 +74,7 @@ function TradeChatExamples() {
 }
 
 export default function TradesView({ btcUsd, refreshKey = 0 }) {
-  const { data, loading, error, refetch } = useFetch(
+  const { data, loading, error } = useFetch(
     () => getWalletTrades(),
     [refreshKey], { cacheKey: "wallet_trades" },
   );
@@ -90,10 +86,6 @@ export default function TradesView({ btcUsd, refreshKey = 0 }) {
     <>
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-base font-semibold">Trade History</h3>
-        <button onClick={refetch} disabled={loading}
-          className="px-3 py-1.5 rounded-lg text-xs bg-surface border border-border text-dim hover:text-text hover:bg-surface-hover transition-colors cursor-pointer disabled:opacity-50">
-          {loading ? <><Spinner className="w-3 h-3 mr-1" /> Refreshing...</> : "Refresh"}
-        </button>
       </div>
 
       {error && <div className="bg-red-dim border border-red rounded-xl px-4 py-3 mb-4 text-sm text-red">{error}</div>}

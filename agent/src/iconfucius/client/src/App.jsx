@@ -2,11 +2,10 @@ import { useState, useEffect, useCallback, useRef, useMemo, Component } from "re
 import { getBtcPrice, getChatHealth, getOdinHealth, getToken, getWalletStatus, getWalletBalances } from "./api";
 import { clearClientCache } from "./hooks";
 import { fmtSats } from "./utils";
-import TokensView from "./views/TokensView";
 import TradesView from "./views/TradesView";
-import SearchView from "./views/SearchView";
 import WalletView from "./views/WalletView";
 import BotsView from "./views/BotsView";
+import TokenView from "./views/TokenView";
 import ChatPanel from "./views/ChatPanel";
 
 class ViewErrorBoundary extends Component {
@@ -25,11 +24,18 @@ class ViewErrorBoundary extends Component {
 
 const PRIMARY = [
   {
-    id: "trades", label: "Trades", icon: (
+    id: "tokens", label: "Tokens", icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/>
+        <circle cx="12" cy="12" r="10"/><path d="M12 6v12"/><path d="M8 10h8"/><path d="M8 14h8"/>
       </svg>
-    ), desc: "Your trade history",
+    ), desc: "Market data & search",
+  },
+  {
+    id: "wallet", label: "Wallet", icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="2" y="6" width="20" height="14" rx="2"/><path d="M2 10h20"/><path d="M16 14h2"/>
+      </svg>
+    ), desc: "ckBTC balance & addresses",
   },
   {
     id: "bots", label: "Bots", icon: (
@@ -39,55 +45,44 @@ const PRIMARY = [
     ), desc: "Bot holdings & portfolio",
   },
   {
-    id: "wallet", label: "Wallet", icon: (
+    id: "trades", label: "Trades", icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="2" y="6" width="20" height="14" rx="2"/><path d="M2 10h20"/><path d="M16 14h2"/>
+        <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/>
       </svg>
-    ), desc: "ckBTC balance & addresses",
+    ), desc: "Your trade history",
   },
 ];
 
-const EXPLORE = [
-  {
-    id: "tokens", label: "Tokens", icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="12" r="10"/><path d="M12 6v12"/><path d="M8 10h8"/><path d="M8 14h8"/>
-      </svg>
-    ), desc: "Market data & trending",
-  },
-  {
-    id: "search", label: "Search", icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-      </svg>
-    ), desc: "Find tokens by name or ID",
-  },
-];
-
-const ALL_SERVICES = [...PRIMARY, ...EXPLORE];
-
-const GRID_COLS = { 2: "grid-cols-2", 3: "grid-cols-3", 5: "grid-cols-5" };
+const GRID_COLS = { 2: "grid-cols-2", 3: "grid-cols-3", 4: "grid-cols-4", 5: "grid-cols-5" };
 const CHAT_WIDTH_KEY = "iconfucius_chat_panel_width";
-const DEFAULT_CHAT_WIDTH = 380;
+const DEFAULT_CHAT_WIDTH = typeof window !== "undefined" ? Math.floor(window.innerWidth / 2) : 600;
 const MIN_CHAT_WIDTH = 320;
 
-function renderTileGroup(items, active, onToggle) {
+function renderTileGroup(items, active, onToggle, disabledIds) {
   const hasActive = active !== null;
   const colsCls = hasActive ? (GRID_COLS[items.length] || "grid-cols-3") : "grid-cols-2 sm:grid-cols-3";
   return (
     <div className={`grid gap-2 mb-3 ${colsCls}`}>
       {items.map((s) => {
         const isActive = active === s.id;
+        const isDisabled = disabledIds && disabledIds.has(s.id);
         return (
           <button
             key={s.id}
-            onClick={() => onToggle(s.id)}
-            className={`group relative flex items-center gap-2.5 rounded-xl border transition-all duration-200 cursor-pointer text-left
-              ${hasActive && !isActive
+            onClick={isDisabled ? undefined : () => onToggle(s.id)}
+            title={isDisabled ? "Complete setup first" : undefined}
+            className={`group relative flex items-center gap-2.5 rounded-xl border transition-all duration-200 text-left
+              ${isDisabled
+                ? "opacity-40 cursor-not-allowed pointer-events-none px-3 py-3 bg-surface/50 border-border/50"
+                : "cursor-pointer"
+              }
+              ${!isDisabled && hasActive && !isActive
                 ? "px-3 py-3 bg-surface/50 border-border/50 hover:bg-surface hover:border-border"
-                : isActive
+                : !isDisabled && isActive
                   ? "px-3 py-3 bg-accent-dim border-accent text-accent shadow-[0_0_12px_rgba(247,147,26,0.08)]"
-                  : "flex-col px-4 py-4 bg-surface border-border hover:border-accent/40 hover:bg-surface-hover"
+                  : !isDisabled && !hasActive
+                    ? "flex-col px-4 py-4 bg-surface border-border hover:border-accent/40 hover:bg-surface-hover"
+                    : ""
               }`}
           >
             <span className={`shrink-0 ${isActive ? "text-accent" : "text-dim group-hover:text-accent"} transition-colors`}>
@@ -112,7 +107,7 @@ function StatusDot({ ok }) {
 }
 
 export default function App() {
-  const [active, setActive] = useState("trades");
+  const [active, setActive] = useState("tokens");
   const [btcUsd, setBtcUsd] = useState(null);
   const [odinOk, setOdinOk] = useState(null);
   const [sdkOk, setSdkOk] = useState(null);
@@ -123,11 +118,14 @@ export default function App() {
   const [portfolioSats, setPortfolioSats] = useState(null);
   const [botsSats, setBotsSats] = useState(null);
   const [walletSats, setWalletSats] = useState(null);
+  const [tokensSats, setTokensSats] = useState(null);
   const [hasBotErrors, setHasBotErrors] = useState(false);
   const [balanceData, setBalanceData] = useState(null);
   const [balanceLoading, setBalanceLoading] = useState(false);
   const [chatOk, setChatOk] = useState(null);
   const [chatFocusTick, setChatFocusTick] = useState(0);
+  const [setupComplete, setSetupComplete] = useState(null);
+  const [statusMessage, setStatusMessage] = useState(null);
   const [chatWidth, setChatWidth] = useState(() => {
     if (typeof window === "undefined") return DEFAULT_CHAT_WIDTH;
     const saved = Number(window.localStorage.getItem(CHAT_WIDTH_KEY));
@@ -135,6 +133,7 @@ export default function App() {
   });
   const [isResizingChat, setIsResizingChat] = useState(false);
   const userSelectedTabRef = useRef(false);
+  const ckbtcMinterRef = useRef(false);
 
   const clampChatWidth = useCallback((w) => {
     if (typeof window === "undefined") return Math.max(MIN_CHAT_WIDTH, w);
@@ -144,25 +143,42 @@ export default function App() {
 
   const handleAction = useCallback(() => {
     clearClientCache();
+    ckbtcMinterRef.current = false;
     setRefreshKey((k) => k + 1);
   }, []);
+
+  const handleCheckBalance = useCallback((ckbtcMinter = false) => {
+    clearClientCache();
+    ckbtcMinterRef.current = ckbtcMinter;
+    setRefreshKey((k) => k + 1);
+  }, []);
+
+  // Fetch BTC + ICONFUCIUS prices on mount, every 60s, and on balance refresh
+  useEffect(() => {
+    let cancelled = false;
+    function fetchPrices() {
+      getBtcPrice()
+        .then((rate) => {
+          if (cancelled) return null;
+          setBtcUsd(rate);
+          return getToken("29m8").then((t) => {
+            if (cancelled) return;
+            if (t?.price && rate) {
+              const sats = t.price / 1000; // msat → sats
+              setIcfPriceUsd((sats / 1e8) * rate);
+            }
+          });
+        })
+        .catch(() => {});
+    }
+    fetchPrices();
+    const id = setInterval(fetchPrices, 60_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [refreshKey]);
 
   useEffect(() => {
     let cancelled = false;
 
-    getBtcPrice()
-      .then((rate) => {
-        if (cancelled) return null;
-        setBtcUsd(rate);
-        return getToken("29m8").then((t) => {
-          if (cancelled) return;
-          if (t?.price && rate) {
-            const sats = t.price / 1000; // msat → sats
-            setIcfPriceUsd((sats / 1e8) * rate);
-          }
-        });
-      })
-      .catch(() => {});
     getOdinHealth()
       .then((h) => setOdinOk(h.ok))
       .catch(() => setOdinOk(false));
@@ -177,8 +193,11 @@ export default function App() {
         if (s.ai_operational === true) setChatOk(true);
         else if (s.ai_operational === false) setChatOk(false);
 
-        // If wallet/setup isn't ready, default to Wallet tab.
-        if (!s.sdk_available || !s.ready) {
+        const isSetupComplete = s.sdk_available && s.ready && (s.bot_count || 0) > 0;
+        setSetupComplete(isSetupComplete);
+
+        // If wallet/setup isn't ready or no bots, default to Wallet tab.
+        if (!s.sdk_available || !s.ready || !s.bot_count) {
           if (!userSelectedTabRef.current) setActive("wallet");
           return;
         }
@@ -211,9 +230,17 @@ export default function App() {
       setPortfolioSats(null);
       setBotsSats(null);
       setWalletSats(null);
+      setTokensSats(null);
     }
     setBalanceLoading(true);
-    getWalletBalances({ refresh: refreshKey > 0 }).then((b) => {
+    // Refresh setupComplete on balance refresh
+    if (refreshKey > 0) {
+      getWalletStatus().then((s) => {
+        if (cancelled) return;
+        setSetupComplete(s.sdk_available && s.ready && (s.bot_count || 0) > 0);
+      }).catch(() => {});
+    }
+    getWalletBalances({ refresh: refreshKey > 0, ckbtcMinter: ckbtcMinterRef.current }).then((b) => {
       if (cancelled) return;
       setBalanceData(b);
       setBalanceLoading(false);
@@ -224,8 +251,10 @@ export default function App() {
       setPortfolioSats(oSats + tSats + wSats);
       setBotsSats(oSats + tSats);
       setWalletSats(wSats);
+      setTokensSats(tSats);
       setHasBotErrors((b?.bots || []).some((bot) => !!bot.note));
-    }).catch(() => { if (!cancelled) setBalanceLoading(false); });
+      setStatusMessage(b?.status_message || null);
+    }).catch(() => { if (!cancelled) { setBalanceLoading(false); setPortfolioSats(0); } });
     return () => { cancelled = true; };
   }, [refreshKey]);
 
@@ -270,6 +299,7 @@ export default function App() {
   }, [odinOk]);
 
   function toggleService(id) {
+    if (!setupComplete && id !== "wallet") return;
     userSelectedTabRef.current = true;
     setActive((prev) => prev === id ? null : id);
     setChatFocusTick((t) => t + 1);
@@ -294,6 +324,19 @@ export default function App() {
     window.addEventListener("mouseup", onUp);
   }, [clampChatWidth]);
 
+  const handleSetupComplete = useCallback(() => {
+    setSetupComplete(true);
+    clearClientCache();
+    setRefreshKey((k) => k + 1);
+  }, []);
+
+  const disabledIds = useMemo(() => {
+    if (setupComplete) return null;
+    const ids = new Set(PRIMARY.map((s) => s.id));
+    ids.delete("wallet");
+    return ids;
+  }, [setupComplete]);
+
   const primaryTiles = useMemo(() => PRIMARY.map((t) => {
     if (t.id === "bots" && botsSats != null && btcUsd) {
       const val = fmtSats(botsSats, btcUsd);
@@ -303,16 +346,19 @@ export default function App() {
       const val = fmtSats(walletSats, btcUsd);
       return { ...t, desc: val, liveDesc: val };
     }
+    if (t.id === "tokens" && tokensSats != null && btcUsd) {
+      const val = fmtSats(tokensSats, btcUsd);
+      return { ...t, desc: val, liveDesc: val };
+    }
     return t;
-  }), [botsSats, walletSats, btcUsd]);
+  }), [botsSats, walletSats, tokensSats, btcUsd]);
 
   const renderView = () => {
     switch (active) {
-      case "wallet": return <WalletView btcUsd={btcUsd} data={balanceData} loading={balanceLoading} onRefresh={handleAction} />;
+      case "wallet": return <WalletView btcUsd={btcUsd} data={balanceData} loading={balanceLoading} onRefresh={handleAction} onCheckBalance={handleCheckBalance} onNavigate={toggleService} projectRoot={projectRoot} onSetupComplete={handleSetupComplete} />;
       case "bots":   return <BotsView btcUsd={btcUsd} data={balanceData} loading={balanceLoading} onRefresh={handleAction} />;
-      case "tokens":  return <TokensView btcUsd={btcUsd} />;
+      case "tokens":  return <TokenView btcUsd={btcUsd} balanceData={balanceData} refreshKey={refreshKey} />;
       case "trades":  return <TradesView btcUsd={btcUsd} refreshKey={refreshKey} />;
-      case "search":  return <SearchView btcUsd={btcUsd} />;
       default: return null;
     }
   };
@@ -330,9 +376,21 @@ export default function App() {
             </span>
           </div>
           {portfolioSats != null ? (
-            <span className="text-sm font-semibold ml-1" style={{ color: "#3b82f6" }}>
-              {fmtSats(portfolioSats, btcUsd)}
-            </span>
+            <>
+              <span className="text-sm font-semibold ml-1" style={{ color: "#3b82f6" }}>
+                {fmtSats(portfolioSats, btcUsd)}
+              </span>
+              <button onClick={handleAction} disabled={balanceLoading}
+                className="ml-2 w-7 h-7 rounded-lg flex items-center justify-center hover:opacity-70 transition-opacity cursor-pointer disabled:opacity-50"
+                style={{ color: "#3b82f6" }}
+                title="Refresh balances">
+                {balanceLoading
+                  ? <span className="inline-block w-3 h-3 border-2 border-bg/40 border-t-bg rounded-full animate-spin" />
+                  : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                    </svg>}
+              </button>
+            </>
           ) : (
             <span className="text-[0.65rem] text-dim ml-1 flex items-center gap-1.5">
               <span className="inline-block w-3 h-3 border-2 border-dim/40 border-t-dim rounded-full animate-spin" />
@@ -364,18 +422,18 @@ export default function App() {
         </div>
       )}
 
+      {statusMessage && (
+        <div className="shrink-0 border-b border-accent/30 px-4 py-2 text-xs text-accent bg-accent-dim">
+          {statusMessage}
+        </div>
+      )}
+
       {/* Main body */}
       <div className="flex-1 flex min-h-0">
         {/* Left content area */}
         <main className="flex-1 min-w-0 flex flex-col overflow-y-auto scrollbar-thin p-4 lg:p-6">
           {/* Service tiles */}
-          {renderTileGroup(primaryTiles, active, toggleService)}
-          <div className="flex items-center gap-2 mb-3 mt-1">
-            <div className="h-px flex-1 bg-border/50" />
-            <span className="text-[0.6rem] uppercase tracking-widest text-dim/50 font-medium">Explore</span>
-            <div className="h-px flex-1 bg-border/50" />
-          </div>
-          {renderTileGroup(EXPLORE, active, toggleService)}
+          {renderTileGroup(primaryTiles, active, toggleService, disabledIds)}
 
           {/* Expanded view */}
           {active && (
