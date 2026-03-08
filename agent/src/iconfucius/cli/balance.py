@@ -36,7 +36,10 @@ from iconfucius.config import (
     require_wallet,
     set_verbose,
 )
-from iconfucius.siwb import siwb_login, save_session, read_cached_principal
+from iconfucius.siwb import (
+    siwb_login, save_session, read_cached_principal,
+    wallet_has_siwb_funds, siwb_canister_reachable, SIWB_LOGIN_COST_SATS,
+)
 
 from iconfucius.candid import ODIN_TRADING_CANDID
 
@@ -93,17 +96,41 @@ def collect_balances(bot_name: str, token_id: str = "29m8",
     # Only do SIWB login when principal is unknown (first time for this bot).
     bot_principal_text = read_cached_principal(bot_name)
     if not bot_principal_text:
+        # Pre-check: skip SIWB login if wallet can't afford fees
+        if not wallet_has_siwb_funds():
+            log("Wallet has insufficient funds for SIWB login, skipping...")
+            return BotBalances(
+                bot_name=bot_name,
+                bot_principal="",
+                note=f"Bot not yet initialized — wallet needs at least {SIWB_LOGIN_COST_SATS} sats for first-time registration.",
+            )
+        # Pre-check: skip SIWB login if canister is unreachable
+        if not siwb_canister_reachable():
+            log("SIWB canister unreachable, skipping login...")
+            return BotBalances(
+                bot_name=bot_name,
+                bot_principal="",
+                note="SIWB temporarily unavailable — will retry automatically.",
+            )
         log("No cached principal, performing SIWB login to discover it...")
         try:
             auth = siwb_login(bot_name=bot_name, verbose=verbose)
             bot_principal_text = auth["bot_principal_text"]
         except RuntimeError as exc:
-            if "InsufficientFunds" in str(exc):
+            err_str = str(exc)
+            if "InsufficientFunds" in err_str:
                 log(f"SIWB login failed (insufficient funds): {exc}")
                 return BotBalances(
                     bot_name=bot_name,
                     bot_principal="",
                     note="Bot not yet initialized (no cached principal and wallet lacks funds for first login).",
+                )
+            if "unreachable" in err_str.lower():
+                log(f"SIWB canister unreachable: {exc}")
+                return BotBalances(
+                    bot_name=bot_name,
+                    bot_principal="",
+                    note="SIWB temporarily unavailable — will retry automatically.",
                 )
             raise
 
@@ -898,6 +925,24 @@ def run_all_balances(bot_names: list, token_id: str = "29m8",
     wallet_balance = wallet_data["balance_sats"]
     wallet_pending = wallet_data["pending_sats"]
     wallet_withdrawal = wallet_data["withdrawal_balance_sats"]
+
+    if not all_data and not bot_names:
+        # No bots configured — return wallet-only data
+        wallet_total_sats = wallet_balance + wallet_pending + wallet_withdrawal
+        return {
+            "wallet_ckbtc_sats": wallet_balance,
+            "wallet_pending_sats": wallet_pending,
+            "wallet_withdrawal_sats": wallet_withdrawal,
+            "wallet_principal": wallet_data["principal"],
+            "wallet_btc_address": wallet_data["btc_address"],
+            "bots": [],
+            "totals": {
+                "odin_sats": 0, "tokens": {}, "token_value_sats": 0,
+                "bots_value_sats": 0, "wallet_sats": wallet_total_sats,
+                "portfolio_sats": wallet_total_sats,
+            },
+            "_display": "\n".join(wallet_lines),
+        }
 
     if not all_data:
         return None

@@ -101,7 +101,22 @@ def _handle_setup_and_operational_status(_args: dict) -> dict:
     else:
         has_api_key = True
 
-    ready = all([config_path is not None, pem_exists, has_api_key])
+    ready = all([config_path is not None, pem_exists])
+
+    # Bot count
+    bot_count = 0
+    if config_path is not None:
+        from iconfucius.config import get_bot_names
+        bot_count = len(get_bot_names())
+
+    # Wallet funded check (fast anonymous query)
+    wallet_funded = False
+    if pem_exists:
+        try:
+            from iconfucius.siwb import wallet_has_siwb_funds
+            wallet_funded = wallet_has_siwb_funds()
+        except Exception:
+            pass
 
     result = {
         "status": "ok",
@@ -110,6 +125,8 @@ def _handle_setup_and_operational_status(_args: dict) -> dict:
         "env_exists": env_exists,
         "has_api_key": has_api_key,
         "ready": ready,
+        "bot_count": bot_count,
+        "wallet_funded": wallet_funded,
     }
 
     if ready:
@@ -1093,6 +1110,7 @@ def _handle_token_discover(args: dict) -> dict:
             f"    Price: {t['price_sats']:,.3f} sats | "
             f"MCap: {mcap_str} | "
             f"Vol 24h: {vol_str} | "
+            f"Power Holders: {t.get('power_holder_count', 0):,} | "
             f"Holders: {t['holder_count']:,}"
         )
         lines.append(f"    {t['safety']}")
@@ -1139,6 +1157,7 @@ def _handle_token_price(args: dict) -> dict:
     marketcap_sats = msat_to_sats(data.get("marketcap", 0))
     volume_24_sats = msat_to_sats(data.get("volume_24", 0))
     holder_count = data.get("holder_count", 0)
+    power_holder_count = data.get("power_holder_count", 0)
     btc_liquidity_sats = msat_to_sats(data.get("btc_liquidity", 0))
 
     # Price: API gives msat per token, convert to sats
@@ -1173,7 +1192,8 @@ def _handle_token_price(args: dict) -> dict:
         f"Market cap:   {fmt_sats(marketcap_sats, btc_usd)}",
         f"24h volume:   {fmt_sats(volume_24_sats, btc_usd)}",
         f"Liquidity:    {fmt_sats(btc_liquidity_sats, btc_usd)}",
-        f"Holders:      {holder_count:,}",
+        f"Power Holders: {power_holder_count:,}",
+        f"Holders:       {holder_count:,}",
         f"Supply:       21,000,000 (21M)",
     ]
 
@@ -1191,6 +1211,7 @@ def _handle_token_price(args: dict) -> dict:
         "marketcap_sats": marketcap_sats,
         "volume_24h_sats": volume_24_sats,
         "holder_count": holder_count,
+        "power_holder_count": power_holder_count,
         "total_supply": 21_000_000,
     }
 

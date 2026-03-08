@@ -151,8 +151,8 @@ class TestInitExecutor:
         assert "[bots.bot-2]" in content
         assert "[bots.bot-3]" not in content
 
-    def test_init_without_num_bots_defaults_to_three(self, tmp_path, monkeypatch):
-        """Verify init without num bots defaults to three."""
+    def test_init_without_num_bots_creates_no_bots(self, tmp_path, monkeypatch):
+        """Verify init without num bots creates no bot sections."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         import iconfucius.config as cfg
@@ -162,8 +162,7 @@ class TestInitExecutor:
         result = execute_tool("init", {})
         assert result["status"] == "ok"
         content = (tmp_path / "iconfucius.toml").read_text()
-        assert "[bots.bot-3]" in content
-        assert "[bots.bot-4]" not in content
+        assert "[bots.bot-1]" not in content
 
 
 class TestBotListExecutor:

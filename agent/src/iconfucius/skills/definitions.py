@@ -561,7 +561,9 @@ TOOLS: list[dict] = [
             "Minimum trade: 500 sats. "
             "REQUIRED: (1) token_id, (2) amount or amount_usd, (3) bot_name. "
             "If the user gives a token name, call token_lookup FIRST to get the token_id. "
-            "If any parameter is missing, ask the user before calling this tool."
+            "If any parameter is missing, ask the user before calling this tool. "
+            "Buys execute entirely on Odin.fun using the bot's BTC — "
+            "NO wallet ckBTC balance is needed."
         ),
         "input_schema": {
             "type": "object",
@@ -613,7 +615,9 @@ TOOLS: list[dict] = [
             "Minimum trade value: 500 sats. "
             "REQUIRED: (1) token_id, (2) amount or amount_usd or 'all', (3) bot_name. "
             "If the user gives a token name, call token_lookup FIRST to get the token_id. "
-            "If any parameter is missing, ask the user before calling this tool."
+            "If any parameter is missing, ask the user before calling this tool. "
+            "Sells execute entirely on Odin.fun — "
+            "NO wallet ckBTC balance is needed."
         ),
         "input_schema": {
             "type": "object",
@@ -665,7 +669,9 @@ TOOLS: list[dict] = [
         "description": (
             "Withdraw BTC from bot Odin.fun accounts back to the iconfucius wallet. "
             "REQUIRED: (1) amount or amount_usd or 'all', (2) bot_name or bot_names or all_bots. "
-            "If the user does not specify which bot, ask them."
+            "If the user does not specify which bot, ask them. "
+            "Withdrawals use the bot's own ckBTC to pay transfer fees — "
+            "NO wallet ckBTC balance is needed."
         ),
         "input_schema": {
             "type": "object",
@@ -718,7 +724,9 @@ TOOLS: list[dict] = [
             "token_transfer. "
             "WARNING: Transfers are irreversible. Sending to a wrong address means "
             "permanent loss of tokens. Always verify the destination address. "
-            "Provide amount as token count (e.g. '1000'), or 'all' for the entire balance."
+            "Provide amount as token count (e.g. '1000'), or 'all' for the entire balance. "
+            "Transfers execute on Odin.fun using the bot's identity — "
+            "NO wallet ckBTC balance is needed."
         ),
         "input_schema": {
             "type": "object",

@@ -172,9 +172,7 @@ PEM_FILE = ".wallet/identity-private.pem"
 
 DEFAULT_CONFIG = {
     "settings": {"default_persona": "iconfucius"},
-    "bots": {
-        "bot-1": {"description": "Bot 1"},
-    },
+    "bots": {},
     "ai": {},
 }
 
@@ -417,7 +415,7 @@ def create_default_config(num_bots: int = 3) -> str:
     Returns:
         TOML content as string.
     """
-    num_bots = max(1, min(1000, num_bots))
+    num_bots = max(0, min(1000, num_bots))
     header = '''# iconfucius configuration
 # See: https://github.com/onicai/IConfucius
 

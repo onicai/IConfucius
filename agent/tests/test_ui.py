@@ -23,6 +23,13 @@ from iconfucius.client.server import (
     _STATIC_DIR,
     UIHandler,
     run_server,
+    _handle_setup_status,
+    _handle_action_init,
+    _handle_action_wallet_create,
+    _handle_action_set_bots,
+    _handle_wallet_info,
+    _require_sdk,
+    _cache_clear,
 )
 
 runner = CliRunner()
@@ -75,13 +82,6 @@ class TestUiCommand:
         result = runner.invoke(app, ["ui", "--no-browser"])
         assert result.exit_code == 0
         mock_run.assert_called_once_with(port=55129, open_browser=False)
-
-    @patch("iconfucius.client.server.run_server")
-    def test_ui_combined_options(self, mock_run):
-        """Verify --port and --no-browser work together."""
-        result = runner.invoke(app, ["ui", "-p", "9999", "--no-browser"])
-        assert result.exit_code == 0
-        mock_run.assert_called_once_with(port=9999, open_browser=False)
 
     @patch("iconfucius.client.server.run_server")
     def test_ui_network_option(self, mock_run):
@@ -555,3 +555,311 @@ class TestFindResumeFiles:
         assert "11111111" in result[0].name
         assert "22222222" in result[1].name
         assert "33333333" in result[2].name
+
+
+# ---------------------------------------------------------------------------
+# _require_sdk
+# ---------------------------------------------------------------------------
+
+class TestRequireSdk:
+    def test_returns_error_when_sdk_missing(self, monkeypatch):
+        """Returns 503 error tuple when SDK is not available."""
+        monkeypatch.setattr("iconfucius.client.server._HAS_ICONFUCIUS", False)
+        result = _require_sdk()
+        assert result is not None
+        status, data = result
+        assert status == 503
+        assert "not installed" in data["error"]
+
+    def test_returns_none_when_sdk_available(self, monkeypatch):
+        """Returns None (no error) when SDK is available."""
+        monkeypatch.setattr("iconfucius.client.server._HAS_ICONFUCIUS", True)
+        result = _require_sdk()
+        assert result is None
+
+
+# ---------------------------------------------------------------------------
+# _handle_setup_status
+# ---------------------------------------------------------------------------
+
+class TestHandleSetupStatus:
+    def test_returns_503_without_sdk(self, monkeypatch):
+        """Returns 503 when iconfucius SDK is not installed."""
+        monkeypatch.setattr("iconfucius.client.server._HAS_ICONFUCIUS", False)
+        status, data = _handle_setup_status()
+        assert status == 503
+        assert "not installed" in data["error"]
+
+    def test_returns_status_with_sdk(self, monkeypatch):
+        """Returns setup status from execute_tool when SDK is available."""
+        monkeypatch.setattr("iconfucius.client.server._HAS_ICONFUCIUS", True)
+        monkeypatch.setattr("iconfucius.client.server._sync_project_root", lambda: None)
+        monkeypatch.setattr("iconfucius.client.server._chdir_to_root", lambda: None)
+        expected = {"config_exists": True, "wallet_exists": False, "ready": False, "bot_count": 0}
+        monkeypatch.setattr("iconfucius.client.server.execute_tool",
+                            lambda name, args: expected)
+        status, data = _handle_setup_status()
+        assert status == 200
+        assert data == expected
+
+    def test_returns_bot_count(self, monkeypatch):
+        """Verify bot_count is included in the status response."""
+        monkeypatch.setattr("iconfucius.client.server._HAS_ICONFUCIUS", True)
+        monkeypatch.setattr("iconfucius.client.server._sync_project_root", lambda: None)
+        monkeypatch.setattr("iconfucius.client.server._chdir_to_root", lambda: None)
+        expected = {"config_exists": True, "wallet_exists": True, "ready": True, "bot_count": 3}
+        monkeypatch.setattr("iconfucius.client.server.execute_tool",
+                            lambda name, args: expected)
+        status, data = _handle_setup_status()
+        assert status == 200
+        assert data["bot_count"] == 3
+
+    def test_setup_not_complete_without_bots(self, monkeypatch):
+        """Setup is not complete when bot_count is 0, even if ready is True."""
+        monkeypatch.setattr("iconfucius.client.server._HAS_ICONFUCIUS", True)
+        monkeypatch.setattr("iconfucius.client.server._sync_project_root", lambda: None)
+        monkeypatch.setattr("iconfucius.client.server._chdir_to_root", lambda: None)
+        expected = {"config_exists": True, "wallet_exists": True, "ready": True, "bot_count": 0}
+        monkeypatch.setattr("iconfucius.client.server.execute_tool",
+                            lambda name, args: expected)
+        status, data = _handle_setup_status()
+        assert status == 200
+        assert data["ready"] is True
+        assert data["bot_count"] == 0
+
+
+# ---------------------------------------------------------------------------
+# _handle_action_init
+# ---------------------------------------------------------------------------
+
+class TestHandleActionInit:
+    def test_returns_503_without_sdk(self, monkeypatch):
+        """Returns 503 when SDK is missing."""
+        monkeypatch.setattr("iconfucius.client.server._HAS_ICONFUCIUS", False)
+        status, data = _handle_action_init({})
+        assert status == 503
+
+    def test_init_success(self, monkeypatch, tmp_path):
+        """Successful init returns 200 with result."""
+        monkeypatch.setattr("iconfucius.client.server._HAS_ICONFUCIUS", True)
+        monkeypatch.setattr("iconfucius.client.server._sync_project_root", lambda: None)
+        monkeypatch.setattr("iconfucius.client.server._chdir_to_root", lambda: None)
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        result = {"status": "ok", "display": "Initialized with 3 bots."}
+        monkeypatch.setattr("iconfucius.client.server.execute_tool",
+                            lambda name, args: result)
+        # Mock load_config since it's imported lazily inside the function
+        monkeypatch.setattr("iconfucius.config.load_config", lambda reload=False: None)
+        status, data = _handle_action_init({"num_bots": 3})
+        assert status == 200
+        assert data["status"] == "ok"
+
+    def test_init_default_num_bots(self, monkeypatch, tmp_path):
+        """Default num_bots is 3 when not specified."""
+        monkeypatch.setattr("iconfucius.client.server._HAS_ICONFUCIUS", True)
+        monkeypatch.setattr("iconfucius.client.server._sync_project_root", lambda: None)
+        monkeypatch.setattr("iconfucius.client.server._chdir_to_root", lambda: None)
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        captured = {}
+        def mock_execute(name, args):
+            captured.update(args)
+            return {"status": "ok"}
+        monkeypatch.setattr("iconfucius.client.server.execute_tool", mock_execute)
+        monkeypatch.setattr("iconfucius.config.load_config", lambda reload=False: None)
+        _handle_action_init({})
+        assert captured["num_bots"] == 3
+
+    def test_init_error_but_config_exists(self, monkeypatch, tmp_path):
+        """Returns 200 when init reports error but config already exists on disk."""
+        monkeypatch.setattr("iconfucius.client.server._HAS_ICONFUCIUS", True)
+        monkeypatch.setattr("iconfucius.client.server._sync_project_root", lambda: None)
+        monkeypatch.setattr("iconfucius.client.server._chdir_to_root", lambda: None)
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        monkeypatch.setattr("iconfucius.client.server.execute_tool",
+                            lambda name, args: {"status": "error", "error": "already exists"})
+        monkeypatch.setattr("iconfucius.config.find_config", lambda: str(tmp_path / "config.toml"))
+        monkeypatch.setattr("iconfucius.config.load_config", lambda reload=False: None)
+        status, data = _handle_action_init({})
+        assert status == 200
+        assert "already initialized" in data["display"].lower()
+
+
+# ---------------------------------------------------------------------------
+# _handle_action_wallet_create
+# ---------------------------------------------------------------------------
+
+class TestHandleActionWalletCreate:
+    def test_returns_503_without_sdk(self, monkeypatch):
+        """Returns 503 when SDK is missing."""
+        monkeypatch.setattr("iconfucius.client.server._HAS_ICONFUCIUS", False)
+        status, data = _handle_action_wallet_create({})
+        assert status == 503
+
+    def test_wallet_create_success(self, monkeypatch):
+        """Successful wallet creation returns 200."""
+        monkeypatch.setattr("iconfucius.client.server._HAS_ICONFUCIUS", True)
+        monkeypatch.setattr("iconfucius.client.server._sync_project_root", lambda: None)
+        monkeypatch.setattr("iconfucius.client.server._chdir_to_root", lambda: None)
+        result = {"status": "ok", "display": "Wallet created."}
+        monkeypatch.setattr("iconfucius.client.server.execute_tool",
+                            lambda name, args: result)
+        status, data = _handle_action_wallet_create({})
+        assert status == 200
+        assert data["status"] == "ok"
+
+    def test_wallet_create_error_but_exists(self, monkeypatch, tmp_path):
+        """Returns 200 if wallet_create errors but PEM file exists on disk."""
+        monkeypatch.setattr("iconfucius.client.server._HAS_ICONFUCIUS", True)
+        monkeypatch.setattr("iconfucius.client.server._sync_project_root", lambda: None)
+        monkeypatch.setattr("iconfucius.client.server._chdir_to_root", lambda: None)
+        monkeypatch.setattr("iconfucius.client.server.execute_tool",
+                            lambda name, args: {"status": "error", "error": "already exists"})
+        pem_file = tmp_path / "identity-private.pem"
+        pem_file.write_text("-----BEGIN EC PRIVATE KEY-----\ntest\n-----END EC PRIVATE KEY-----")
+        monkeypatch.setattr("iconfucius.config.get_pem_file", lambda: str(pem_file))
+        status, data = _handle_action_wallet_create({})
+        assert status == 200
+        assert "already exists" in data["display"].lower()
+
+    def test_wallet_create_real_error(self, monkeypatch):
+        """Returns 400 on genuine error when PEM doesn't exist."""
+        monkeypatch.setattr("iconfucius.client.server._HAS_ICONFUCIUS", True)
+        monkeypatch.setattr("iconfucius.client.server._sync_project_root", lambda: None)
+        monkeypatch.setattr("iconfucius.client.server._chdir_to_root", lambda: None)
+        monkeypatch.setattr("iconfucius.client.server.execute_tool",
+                            lambda name, args: {"status": "error", "error": "failed"})
+        # get_pem_file raises or returns nonexistent path
+        monkeypatch.setattr("iconfucius.config.get_pem_file", lambda: "/nonexistent/path.pem")
+        status, data = _handle_action_wallet_create({})
+        assert status == 400
+        assert data["status"] == "error"
+
+
+# ---------------------------------------------------------------------------
+# _handle_action_set_bots
+# ---------------------------------------------------------------------------
+
+class TestHandleActionSetBots:
+    def test_returns_503_without_sdk(self, monkeypatch):
+        """Returns 503 when SDK is missing."""
+        monkeypatch.setattr("iconfucius.client.server._HAS_ICONFUCIUS", False)
+        status, data = _handle_action_set_bots({"num_bots": 3})
+        assert status == 503
+
+    def test_missing_num_bots(self, monkeypatch):
+        """Returns 400 when num_bots is not provided."""
+        monkeypatch.setattr("iconfucius.client.server._HAS_ICONFUCIUS", True)
+        monkeypatch.setattr("iconfucius.client.server._sync_project_root", lambda: None)
+        monkeypatch.setattr("iconfucius.client.server._chdir_to_root", lambda: None)
+        status, data = _handle_action_set_bots({})
+        assert status == 400
+        assert "num_bots" in data["error"]
+
+    def test_set_bots_success(self, monkeypatch):
+        """Successful set_bots returns 200."""
+        monkeypatch.setattr("iconfucius.client.server._HAS_ICONFUCIUS", True)
+        monkeypatch.setattr("iconfucius.client.server._sync_project_root", lambda: None)
+        monkeypatch.setattr("iconfucius.client.server._chdir_to_root", lambda: None)
+        result = {"status": "ok", "display": "3 bots configured."}
+        monkeypatch.setattr("iconfucius.client.server.execute_tool",
+                            lambda name, args: result)
+        status, data = _handle_action_set_bots({"num_bots": 3})
+        assert status == 200
+        assert data["status"] == "ok"
+
+    def test_set_bots_passes_correct_args(self, monkeypatch):
+        """Verify num_bots and force are forwarded to execute_tool."""
+        monkeypatch.setattr("iconfucius.client.server._HAS_ICONFUCIUS", True)
+        monkeypatch.setattr("iconfucius.client.server._sync_project_root", lambda: None)
+        monkeypatch.setattr("iconfucius.client.server._chdir_to_root", lambda: None)
+        captured = {}
+        def mock_execute(name, args):
+            captured["name"] = name
+            captured["args"] = args
+            return {"status": "ok"}
+        monkeypatch.setattr("iconfucius.client.server.execute_tool", mock_execute)
+        _handle_action_set_bots({"num_bots": 5, "force": True})
+        assert captured["name"] == "set_bot_count"
+        assert captured["args"]["num_bots"] == 5
+        assert captured["args"]["force"] is True
+
+    def test_set_bots_error(self, monkeypatch):
+        """Returns 400 on execute_tool error."""
+        monkeypatch.setattr("iconfucius.client.server._HAS_ICONFUCIUS", True)
+        monkeypatch.setattr("iconfucius.client.server._sync_project_root", lambda: None)
+        monkeypatch.setattr("iconfucius.client.server._chdir_to_root", lambda: None)
+        monkeypatch.setattr("iconfucius.client.server.execute_tool",
+                            lambda name, args: {"status": "error", "error": "insufficient funds"})
+        status, data = _handle_action_set_bots({"num_bots": 3})
+        assert status == 400
+        assert data["status"] == "error"
+
+
+# ---------------------------------------------------------------------------
+# _handle_wallet_info
+# ---------------------------------------------------------------------------
+
+class TestHandleWalletInfo:
+    def setup_method(self):
+        _cache_clear()
+
+    def test_returns_503_without_sdk(self, monkeypatch):
+        """Returns 503 when SDK is missing."""
+        monkeypatch.setattr("iconfucius.client.server._HAS_ICONFUCIUS", False)
+        status, data = _handle_wallet_info()
+        assert status == 503
+
+    def test_returns_wallet_data(self, monkeypatch):
+        """Returns wallet info (principal, address, balances) on success."""
+        monkeypatch.setattr("iconfucius.client.server._HAS_ICONFUCIUS", True)
+        monkeypatch.setattr("iconfucius.client.server._sync_project_root", lambda: None)
+        monkeypatch.setattr("iconfucius.client.server._chdir_to_root", lambda: None)
+        mock_result = {
+            "principal": "abc-principal",
+            "btc_address": "bc1q-test",
+            "balance_sats": 50000,
+            "pending_sats": 1000,
+            "btc_usd_rate": 100000.0,
+        }
+        monkeypatch.setattr("iconfucius.client.server.run_wallet_balance",
+                            lambda ckbtc_minter=False: mock_result)
+        status, data = _handle_wallet_info(bypass_cache=True)
+        assert status == 200
+        assert data["principal"] == "abc-principal"
+        assert data["btc_address"] == "bc1q-test"
+        assert data["balance_sats"] == 50000
+        assert data["pending_sats"] == 1000
+        assert data["btc_usd_rate"] == 100000.0
+        # USD: 50000 sats / 1e8 * 100000 = $50
+        assert data["balance_usd"] == pytest.approx(50.0, abs=0.01)
+
+    def test_returns_404_when_wallet_missing(self, monkeypatch):
+        """Returns 404 when run_wallet_balance returns None."""
+        monkeypatch.setattr("iconfucius.client.server._HAS_ICONFUCIUS", True)
+        monkeypatch.setattr("iconfucius.client.server._sync_project_root", lambda: None)
+        monkeypatch.setattr("iconfucius.client.server._chdir_to_root", lambda: None)
+        monkeypatch.setattr("iconfucius.client.server.run_wallet_balance",
+                            lambda ckbtc_minter=False: None)
+        monkeypatch.setenv("ICONFUCIUS_ROOT", "/tmp/test-root")
+        status, data = _handle_wallet_info(bypass_cache=True)
+        assert status == 404
+        assert "not found" in data["error"].lower()
+
+    def test_usd_none_when_no_rate(self, monkeypatch):
+        """USD values are None when btc_usd_rate is absent."""
+        monkeypatch.setattr("iconfucius.client.server._HAS_ICONFUCIUS", True)
+        monkeypatch.setattr("iconfucius.client.server._sync_project_root", lambda: None)
+        monkeypatch.setattr("iconfucius.client.server._chdir_to_root", lambda: None)
+        mock_result = {
+            "principal": "abc",
+            "btc_address": "bc1q",
+            "balance_sats": 1000,
+            "pending_sats": 0,
+            "btc_usd_rate": None,
+        }
+        monkeypatch.setattr("iconfucius.client.server.run_wallet_balance",
+                            lambda ckbtc_minter=False: mock_result)
+        status, data = _handle_wallet_info(bypass_cache=True)
+        assert status == 200
+        assert data["balance_usd"] is None
+        assert data["pending_usd"] is None

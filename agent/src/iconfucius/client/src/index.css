@@ -13,6 +13,8 @@
   --color-green-dim: rgba(34, 197, 94, 0.15);
   --color-red: #ef4444;
   --color-red-dim: rgba(239, 68, 68, 0.15);
+  --color-warning: #eab308;
+  --color-warning-dim: rgba(234, 179, 8, 0.15);
 }
 
 *,
@@ -26,6 +28,7 @@ body,
 #root {
   height: 100%;
   margin: 0;
+  background: var(--color-bg);
 }
 
 body {

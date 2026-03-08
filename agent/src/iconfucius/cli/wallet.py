@@ -135,7 +135,7 @@ def _load_identity():
 
 @wallet_app.command()
 def create(
-    force: bool = typer.Option(False, "--force", "-f", help="Overwrite existing wallet"),
+    force: bool = typer.Option(False, "--force", help="Overwrite existing wallet"),
 ):
     """Generate a new Ed25519 wallet identity."""
     from icp_identity import Identity
@@ -179,8 +179,8 @@ def create(
 
 @wallet_app.command()
 def balance(
-    token_id: str = typer.Option("29m8", "--token", "-t", help="Token ID to check"),
-    bot: Optional[str] = typer.Option(None, "--bot", "-b", help="Bot name to use"),
+    token_id: str = typer.Option("29m8", "--token", help="Token ID to check"),
+    bot: Optional[str] = typer.Option(None, "--bot", help="Bot name to use"),
     all_bots: bool = typer.Option(False, "--all-bots", help="Show all bots"),
     ckbtc_minter: bool = typer.Option(
         False, "--ckbtc-minter",
