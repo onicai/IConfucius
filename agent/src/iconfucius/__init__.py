@@ -1,3 +1,3 @@
 """IConfucius | Wisdom for Bitcoin Markets"""
 
-__version__ = "0.9.0rc5"
+__version__ = "0.9.0rc6"
