@@ -117,16 +117,23 @@ def run_chat_rasa(persona_name: str, bot_name: str, verbose: bool = False) -> No
 
     sender_id = f"cli-{persona_name}"
 
-    # Startup greeting
-    import random
-    from iconfucius.cli.chat import _get_language_code
-    entry = random.choice(QUOTE_TOPICS)
-    lang = _get_language_code()
-    icon = entry["icon"]
-    topic = entry[lang]
+    # Startup greeting — use Anthropic API directly for the wisdom quote
+    from iconfucius.cli.chat import _generate_startup, _get_language_code
+    from iconfucius.ai import create_backend
 
-    # Generate greeting via Rasa (or fall back to a simple one)
-    print(f"\n{icon} {persona.name} — {topic}\n")
+    lang = _get_language_code()
+    try:
+        backend = create_backend(persona)
+        with _Spinner(f"{persona.name} is thinking..."):
+            greeting, goodbye = _generate_startup(backend, persona, lang)
+    except Exception:
+        # Fall back to a static greeting if API is unavailable
+        import random
+        entry = random.choice(QUOTE_TOPICS)
+        greeting = f"{entry['icon']} {persona.name} — {entry[lang]}"
+        goodbye = "May your path be wise."
+
+    print(f"\n{greeting}\n")
 
     # Show wallet balance at startup (same as non-rasa chat)
     setup = execute_tool("setup_and_operational_status", {})
@@ -143,7 +150,7 @@ def run_chat_rasa(persona_name: str, bot_name: str, verbose: bool = False) -> No
         except Exception:
             pass
 
-    print(f"\033[2miconfucius v{__version__} · Rasa CALM · exit to quit · Ctrl+C to interrupt\033[0m")
+    print(f"\033[2miconfucius v{__version__} · Rasa Pro CALM · exit to quit · Ctrl+C to interrupt\033[0m")
 
     # Check PyPI for newer version
     latest_version, _release_notes = _check_pypi_version()
@@ -171,7 +178,7 @@ def run_chat_rasa(persona_name: str, bot_name: str, verbose: bool = False) -> No
             _prompt_banner()
             user_input = input(f"\033[2mv{__version__}\033[0m > ").strip()
         except (KeyboardInterrupt, EOFError):
-            print("\n\nGoodbye.")
+            print(f"\n\n{goodbye}")
             break
 
         if user_input.lower() == "/upgrade":
@@ -179,7 +186,7 @@ def run_chat_rasa(persona_name: str, bot_name: str, verbose: bool = False) -> No
             continue
 
         if user_input.lower() in ("exit", "quit", "/exit", "/quit"):
-            print("\nGoodbye.")
+            print(f"\n{goodbye}")
             break
 
         if not user_input:
