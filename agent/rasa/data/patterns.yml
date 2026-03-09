@@ -1,5 +1,27 @@
 flows:
   pattern_chitchat:
-    description: Handle off-topic and chitchat messages with a free-form LLM response
+    description: Handle greetings, wisdom quote generation, off-topic and chitchat messages with a free-form LLM response
     steps:
       - action: utter_free_chitchat_response
+
+  pattern_search:
+    description: Handle knowledge queries with a free-form LLM response
+    steps:
+      - action: utter_free_chitchat_response
+
+  pattern_human_handoff:
+    description: No human agents available, respond in IConfucius voice
+    steps:
+      - action: utter_free_chitchat_response
+
+  pattern_completed:
+    description: Proactive follow-up in IConfucius voice after user flow completion
+    steps:
+      - noop: true
+        next:
+          - if: not (context.previous_flow_name matches "^pattern")
+            then: ask_follow_up
+          - else: END
+      - id: ask_follow_up
+        action: utter_flow_follow_up
+      - action: action_listen
