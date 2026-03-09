@@ -4,6 +4,7 @@ Each handler calls the underlying function, which returns a structured dict,
 and builds the response for the AI agent.
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -56,6 +57,11 @@ def execute_tool(name: str, args: dict, *, persona_name: str = "") -> dict:
         }
     except Exception as e:
         return {"status": "error", "error": str(e)}
+
+
+async def async_execute_tool(name: str, args: dict, *, persona_name: str = "") -> dict:
+    """Async wrapper — runs sync execute_tool in a thread pool."""
+    return await asyncio.to_thread(execute_tool, name, args, persona_name=persona_name)
 
 
 # ---------------------------------------------------------------------------

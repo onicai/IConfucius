@@ -4,7 +4,7 @@ from rasa_sdk import Action, Tracker
 from rasa_sdk.events import SlotSet
 from rasa_sdk.executor import CollectingDispatcher
 
-from iconfucius.skills.executor import execute_tool
+from iconfucius.skills.executor import async_execute_tool
 
 from .actions_utility import _send_result
 
@@ -45,7 +45,7 @@ class ActionFund(Action):
     def name(self) -> Text:
         return "action_fund"
 
-    def run(
+    async def run(
         self,
         dispatcher: CollectingDispatcher,
         tracker: Tracker,
@@ -55,7 +55,7 @@ class ActionFund(Action):
         args.update(_parse_amount(tracker.get_slot("fund_amount")))
         args.update(_parse_bot_target(tracker.get_slot("bot_target")))
 
-        _send_result(dispatcher, execute_tool("fund", args))
+        _send_result(dispatcher, await async_execute_tool("fund", args))
         return [
             SlotSet("fund_amount", None),
             SlotSet("bot_target", None),
@@ -67,7 +67,7 @@ class ActionWithdraw(Action):
     def name(self) -> Text:
         return "action_withdraw"
 
-    def run(
+    async def run(
         self,
         dispatcher: CollectingDispatcher,
         tracker: Tracker,
@@ -77,7 +77,7 @@ class ActionWithdraw(Action):
         args.update(_parse_amount(tracker.get_slot("withdraw_amount")))
         args.update(_parse_bot_target(tracker.get_slot("bot_target")))
 
-        _send_result(dispatcher, execute_tool("withdraw", args))
+        _send_result(dispatcher, await async_execute_tool("withdraw", args))
         return [
             SlotSet("withdraw_amount", None),
             SlotSet("bot_target", None),

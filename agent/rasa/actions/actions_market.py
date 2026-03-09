@@ -4,7 +4,7 @@ from rasa_sdk import Action, Tracker
 from rasa_sdk.events import SlotSet
 from rasa_sdk.executor import CollectingDispatcher
 
-from iconfucius.skills.executor import execute_tool
+from iconfucius.skills.executor import async_execute_tool
 
 from .actions_utility import _send_result
 
@@ -13,7 +13,7 @@ class ActionTokenLookup(Action):
     def name(self) -> Text:
         return "action_token_lookup"
 
-    def run(
+    async def run(
         self,
         dispatcher: CollectingDispatcher,
         tracker: Tracker,
@@ -25,7 +25,7 @@ class ActionTokenLookup(Action):
             return []
         _send_result(
             dispatcher,
-            execute_tool("token_lookup", {"query": query}),
+            await async_execute_tool("token_lookup", {"query": query}),
         )
         return [SlotSet("query", None)]
 
@@ -34,7 +34,7 @@ class ActionTokenPrice(Action):
     def name(self) -> Text:
         return "action_token_price"
 
-    def run(
+    async def run(
         self,
         dispatcher: CollectingDispatcher,
         tracker: Tracker,
@@ -46,7 +46,7 @@ class ActionTokenPrice(Action):
             return []
         _send_result(
             dispatcher,
-            execute_tool("token_price", {"query": query}),
+            await async_execute_tool("token_price", {"query": query}),
         )
         return [SlotSet("query", None)]
 
@@ -55,7 +55,7 @@ class ActionTokenDiscover(Action):
     def name(self) -> Text:
         return "action_token_discover"
 
-    def run(
+    async def run(
         self,
         dispatcher: CollectingDispatcher,
         tracker: Tracker,
@@ -69,7 +69,7 @@ class ActionTokenDiscover(Action):
         if limit is not None:
             args["limit"] = int(limit)
 
-        _send_result(dispatcher, execute_tool("token_discover", args))
+        _send_result(dispatcher, await async_execute_tool("token_discover", args))
         return [
             SlotSet("sort_order", None),
             SlotSet("discover_limit", None),
@@ -80,7 +80,7 @@ class ActionAccountLookup(Action):
     def name(self) -> Text:
         return "action_account_lookup"
 
-    def run(
+    async def run(
         self,
         dispatcher: CollectingDispatcher,
         tracker: Tracker,
@@ -92,6 +92,6 @@ class ActionAccountLookup(Action):
             return []
         _send_result(
             dispatcher,
-            execute_tool("account_lookup", {"address": address}),
+            await async_execute_tool("account_lookup", {"address": address}),
         )
         return [SlotSet("address", None)]

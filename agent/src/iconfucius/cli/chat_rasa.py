@@ -81,16 +81,25 @@ async def _handle_message(agent, text: str, sender_id: str) -> list[str]:
     return [r.get("text", "") for r in (responses or []) if r.get("text")]
 
 
-def _generate_goodbye(loop, agent, persona, sender_id: str) -> str:
-    """Generate a persona goodbye quote via Rasa chitchat at exit time."""
-    try:
-        with _Spinner(f"{persona.name} is thinking..."):
-            responses = loop.run_until_complete(
-                _handle_message(agent, persona.goodbye_prompt, sender_id)
-            )
-        return responses[0] if responses else "May your path be wise."
-    except Exception:
-        return "May your path be wise."
+async def _start_goodbye_task(agent, persona, sender_id: str):
+    """Schedule goodbye generation as a background asyncio task."""
+    async def _generate():
+        try:
+            responses = await _handle_message(agent, persona.goodbye_prompt, sender_id)
+            return responses[0] if responses else "May your path be wise."
+        except Exception:
+            return "May your path be wise."
+    return asyncio.create_task(_generate())
+
+
+def _get_goodbye(goodbye_task) -> str:
+    """Return goodbye if background task completed, else static fallback."""
+    if goodbye_task is not None and goodbye_task.done():
+        try:
+            return goodbye_task.result()
+        except Exception:
+            pass
+    return "May your path be wise."
 
 
 def run_chat_rasa(
@@ -161,6 +170,11 @@ def run_chat_rasa(
 
     print(f"\n{greeting}\n")
 
+    # Schedule goodbye generation in background (non-blocking)
+    goodbye_task = loop.run_until_complete(
+        _start_goodbye_task(agent, persona, sender_id)
+    )
+
     # Show wallet balance at startup (same as non-rasa chat)
     setup = execute_tool("setup_and_operational_status", {})
     if setup.get("wallet_exists"):
@@ -204,7 +218,7 @@ def run_chat_rasa(
             _prompt_banner()
             user_input = input(f"\033[2mv{__version__}\033[0m > ").strip()
         except (KeyboardInterrupt, EOFError):
-            goodbye = _generate_goodbye(loop, agent, persona, sender_id)
+            goodbye = _get_goodbye(goodbye_task)
             print(f"\n\n{goodbye}")
             break
 
@@ -213,7 +227,7 @@ def run_chat_rasa(
             continue
 
         if user_input.lower() in ("exit", "quit", "/exit", "/quit"):
-            goodbye = _generate_goodbye(loop, agent, persona, sender_id)
+            goodbye = _get_goodbye(goodbye_task)
             print(f"\n{goodbye}")
             break
 

@@ -4,7 +4,7 @@ from rasa_sdk import Action, Tracker
 from rasa_sdk.events import SlotSet
 from rasa_sdk.executor import CollectingDispatcher
 
-from iconfucius.skills.executor import execute_tool
+from iconfucius.skills.executor import async_execute_tool
 
 from .actions_funding import _parse_amount, _parse_bot_target
 from .actions_utility import _send_result
@@ -14,7 +14,7 @@ class ActionResolveToken(Action):
     def name(self) -> Text:
         return "action_resolve_token"
 
-    def run(
+    async def run(
         self,
         dispatcher: CollectingDispatcher,
         tracker: Tracker,
@@ -25,7 +25,7 @@ class ActionResolveToken(Action):
             dispatcher.utter_message(text="Please provide a token name or ID.")
             return []
 
-        result = execute_tool("token_lookup", {"query": query})
+        result = await async_execute_tool("token_lookup", {"query": query})
         if result.get("status") == "ok":
             match = result.get("known_match")
             if match:
@@ -61,7 +61,7 @@ class ActionTradeBuy(Action):
     def name(self) -> Text:
         return "action_trade_buy"
 
-    def run(
+    async def run(
         self,
         dispatcher: CollectingDispatcher,
         tracker: Tracker,
@@ -71,7 +71,7 @@ class ActionTradeBuy(Action):
         args.update(_parse_amount(tracker.get_slot("trade_amount")))
         args.update(_parse_bot_target(tracker.get_slot("bot_target")))
 
-        _send_result(dispatcher, execute_tool("trade_buy", args))
+        _send_result(dispatcher, await async_execute_tool("trade_buy", args))
         return [
             SlotSet("token_query", None),
             SlotSet("token_id", None),
@@ -85,7 +85,7 @@ class ActionTradeSell(Action):
     def name(self) -> Text:
         return "action_trade_sell"
 
-    def run(
+    async def run(
         self,
         dispatcher: CollectingDispatcher,
         tracker: Tracker,
@@ -95,7 +95,7 @@ class ActionTradeSell(Action):
         args.update(_parse_amount(tracker.get_slot("trade_amount")))
         args.update(_parse_bot_target(tracker.get_slot("bot_target")))
 
-        _send_result(dispatcher, execute_tool("trade_sell", args))
+        _send_result(dispatcher, await async_execute_tool("trade_sell", args))
         return [
             SlotSet("token_query", None),
             SlotSet("token_id", None),

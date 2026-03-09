@@ -4,7 +4,7 @@ from rasa_sdk import Action, Tracker
 from rasa_sdk.events import SlotSet
 from rasa_sdk.executor import CollectingDispatcher
 
-from iconfucius.skills.executor import execute_tool
+from iconfucius.skills.executor import async_execute_tool
 
 from .actions_utility import _send_result
 
@@ -19,7 +19,7 @@ class ActionMemoryReadStrategy(Action):
     def name(self) -> Text:
         return "action_memory_read_strategy"
 
-    def run(
+    async def run(
         self,
         dispatcher: CollectingDispatcher,
         tracker: Tracker,
@@ -27,7 +27,7 @@ class ActionMemoryReadStrategy(Action):
     ) -> List[Dict[Text, Any]]:
         _send_result(
             dispatcher,
-            execute_tool(
+            await async_execute_tool(
                 "memory_read_strategy", {}, persona_name=_persona(tracker)
             ),
         )
@@ -38,7 +38,7 @@ class ActionMemoryReadLearnings(Action):
     def name(self) -> Text:
         return "action_memory_read_learnings"
 
-    def run(
+    async def run(
         self,
         dispatcher: CollectingDispatcher,
         tracker: Tracker,
@@ -46,7 +46,7 @@ class ActionMemoryReadLearnings(Action):
     ) -> List[Dict[Text, Any]]:
         _send_result(
             dispatcher,
-            execute_tool(
+            await async_execute_tool(
                 "memory_read_learnings", {}, persona_name=_persona(tracker)
             ),
         )
@@ -57,7 +57,7 @@ class ActionMemoryReadTrades(Action):
     def name(self) -> Text:
         return "action_memory_read_trades"
 
-    def run(
+    async def run(
         self,
         dispatcher: CollectingDispatcher,
         tracker: Tracker,
@@ -70,7 +70,7 @@ class ActionMemoryReadTrades(Action):
 
         _send_result(
             dispatcher,
-            execute_tool(
+            await async_execute_tool(
                 "memory_read_trades", args, persona_name=_persona(tracker)
             ),
         )
@@ -81,7 +81,7 @@ class ActionMemoryReadBalances(Action):
     def name(self) -> Text:
         return "action_memory_read_balances"
 
-    def run(
+    async def run(
         self,
         dispatcher: CollectingDispatcher,
         tracker: Tracker,
@@ -94,7 +94,7 @@ class ActionMemoryReadBalances(Action):
 
         _send_result(
             dispatcher,
-            execute_tool(
+            await async_execute_tool(
                 "memory_read_balances", args, persona_name=_persona(tracker)
             ),
         )
@@ -105,7 +105,7 @@ class ActionMemoryUpdate(Action):
     def name(self) -> Text:
         return "action_memory_update"
 
-    def run(
+    async def run(
         self,
         dispatcher: CollectingDispatcher,
         tracker: Tracker,
@@ -117,7 +117,7 @@ class ActionMemoryUpdate(Action):
         }
         _send_result(
             dispatcher,
-            execute_tool("memory_update", args, persona_name=_persona(tracker)),
+            await async_execute_tool("memory_update", args, persona_name=_persona(tracker)),
         )
         return [
             SlotSet("memory_file", None),
@@ -130,7 +130,7 @@ class ActionMemoryArchive(Action):
     def name(self) -> Text:
         return "action_memory_archive"
 
-    def run(
+    async def run(
         self,
         dispatcher: CollectingDispatcher,
         tracker: Tracker,
@@ -143,7 +143,7 @@ class ActionMemoryArchive(Action):
 
         _send_result(
             dispatcher,
-            execute_tool(
+            await async_execute_tool(
                 "memory_archive_balances",
                 args,
                 persona_name=_persona(tracker),

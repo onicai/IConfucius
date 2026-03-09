@@ -4,7 +4,7 @@ from rasa_sdk import Action, Tracker
 from rasa_sdk.events import SlotSet
 from rasa_sdk.executor import CollectingDispatcher
 
-from iconfucius.skills.executor import execute_tool
+from iconfucius.skills.executor import async_execute_tool
 
 from .actions_utility import _send_result
 
@@ -13,7 +13,7 @@ class ActionInit(Action):
     def name(self) -> Text:
         return "action_init"
 
-    def run(
+    async def run(
         self,
         dispatcher: CollectingDispatcher,
         tracker: Tracker,
@@ -26,7 +26,7 @@ class ActionInit(Action):
         if tracker.get_slot("setup_force"):
             args["force"] = True
 
-        _send_result(dispatcher, execute_tool("init", args))
+        _send_result(dispatcher, await async_execute_tool("init", args))
         return [
             SlotSet("setup_num_bots", None),
             SlotSet("setup_force", None),
@@ -38,7 +38,7 @@ class ActionWalletCreate(Action):
     def name(self) -> Text:
         return "action_wallet_create"
 
-    def run(
+    async def run(
         self,
         dispatcher: CollectingDispatcher,
         tracker: Tracker,
@@ -48,7 +48,7 @@ class ActionWalletCreate(Action):
         if tracker.get_slot("setup_force"):
             args["force"] = True
 
-        _send_result(dispatcher, execute_tool("wallet_create", args))
+        _send_result(dispatcher, await async_execute_tool("wallet_create", args))
         return [
             SlotSet("setup_force", None),
             SlotSet("confirm_setup", None),
@@ -59,7 +59,7 @@ class ActionSetBotCount(Action):
     def name(self) -> Text:
         return "action_set_bot_count"
 
-    def run(
+    async def run(
         self,
         dispatcher: CollectingDispatcher,
         tracker: Tracker,
@@ -72,7 +72,7 @@ class ActionSetBotCount(Action):
         if tracker.get_slot("setup_force"):
             args["force"] = True
 
-        _send_result(dispatcher, execute_tool("set_bot_count", args))
+        _send_result(dispatcher, await async_execute_tool("set_bot_count", args))
         return [
             SlotSet("setup_num_bots", None),
             SlotSet("setup_force", None),
