@@ -50,8 +50,6 @@ class TestUiCommand:
         assert "--no-browser" in output
         assert "--network" in output
         assert "--verbose" in output
-        assert "--experimental" in output
-
     def test_ui_listed_in_main_help(self):
         """Verify 'ui' appears in the top-level help output."""
         result = runner.invoke(app, ["--help"])
@@ -94,12 +92,6 @@ class TestUiCommand:
     def test_ui_verbose_option(self, mock_run):
         """Verify --verbose/--quiet is accepted."""
         result = runner.invoke(app, ["ui", "--quiet"])
-        assert result.exit_code == 0
-
-    @patch("iconfucius.client.server.run_server")
-    def test_ui_experimental_option(self, mock_run):
-        """Verify --experimental is accepted."""
-        result = runner.invoke(app, ["ui", "--experimental"])
         assert result.exit_code == 0
 
 

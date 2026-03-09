@@ -43,6 +43,8 @@ dependencies = [
     "anthropic>=0.40",
     "python-dotenv>=1.0",
     "packaging>=21.0",
+    "rasa-pro==3.15.16",
+    "rasa-sdk>=3.15.1",
 ]
 
 [project.optional-dependencies]

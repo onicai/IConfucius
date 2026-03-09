@@ -200,9 +200,7 @@ class TestCreateDefaultConfig:
         """Verify header always present."""
         content = create_default_config(num_bots=1)
         assert "[settings]" in content
-        assert "cache_sessions = true" in content
-        assert 'default_persona = "iconfucius"' in content
-        assert "# [ai]" in content
+        assert "verify_certificates" in content
 
 
 class TestAddBotsToConfig:
@@ -362,9 +360,9 @@ class TestGetCacheSessions:
         assert get_cache_sessions() is True
 
     def test_included_in_default_config(self):
-        """Default config template includes cache_sessions = true."""
+        """Default config template includes [settings] section."""
         content = create_default_config()
-        assert "cache_sessions = true" in content
+        assert "[settings]" in content
 
 
 class TestGetAiTimeout:

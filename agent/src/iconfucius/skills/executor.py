@@ -12,22 +12,6 @@ from pathlib import Path
 _log = logging.getLogger(__name__)
 
 
-# Session-level flag for experimental features (set by enable_experimental tool)
-_experimental_enabled = False
-
-EXPERIMENTAL_ENABLED = (
-    "Experimental features have been enabled for this session. "
-    "Type /ai to configure your AI model and backend."
-)
-
-EXPERIMENTAL_RISK_WARNING = (
-    "WARNING: Changing the AI model is an experimental feature. "
-    "Alternative backends \u2014 such as local llama.cpp, Ollama, or other "
-    "OpenAI-compatible endpoints \u2014 may not support tool use or may "
-    "behave unexpectedly. Use at your own risk."
-)
-
-
 def execute_tool(name: str, args: dict, *, persona_name: str = "") -> dict:
     """Execute a tool by name with the given arguments.
 
@@ -163,22 +147,6 @@ def _handle_check_update(args: dict) -> dict:
 
 # Populated by chat.py at startup so the handler doesn't re-fetch
 _update_cache: dict = {}
-
-
-def _handle_enable_experimental(args: dict) -> dict:
-    """Handle the enable_experimental tool call."""
-    global _experimental_enabled
-    _experimental_enabled = True
-    return {
-        "status": "ok",
-        "display": f"\n{EXPERIMENTAL_ENABLED}\n\n{EXPERIMENTAL_RISK_WARNING}",
-        "instruction": (
-            "Explain to the user that changing the AI model is experimental. "
-            "Alternative backends may lack tool-use support, produce lower "
-            "quality responses, or behave unexpectedly. Ask if they want to "
-            "proceed, and if so, tell them to type /ai."
-        ),
-    }
 
 
 def _handle_init(args: dict) -> dict:
@@ -1975,7 +1943,6 @@ def _handle_memory_update(args: dict, *, persona_name: str = "") -> dict:
 _HANDLERS: dict[str, callable] = {
     "setup_and_operational_status": _handle_setup_and_operational_status,
     "check_update": _handle_check_update,
-    "enable_experimental": _handle_enable_experimental,
     "init": _handle_init,
     "set_bot_count": _handle_set_bot_count,
     "bot_list": _handle_bot_list,

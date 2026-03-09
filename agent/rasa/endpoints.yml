@@ -1,0 +1,8 @@
+action_endpoint:
+  actions_module: "actions"
+
+model_groups:
+  - id: command_generator
+    models:
+      - provider: anthropic
+        model: claude-sonnet-4-20250514

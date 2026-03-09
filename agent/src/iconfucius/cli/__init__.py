@@ -16,10 +16,8 @@ from iconfucius.config import (
     find_config,
     fmt_sats,
     get_bot_names,
-    get_bot_persona,
     get_btc_to_usd_rate,
     get_cksigner_canister_id,
-    get_default_persona,
     get_network,
     load_config,
     set_network,
@@ -43,19 +41,15 @@ HELP_TEXT = """\
 IConfucius | Wisdom for Bitcoin Markets
 
 \b
-Setup:
-  mkdir my-bots && cd my-bots
-  iconfucius
+Three modes:
+  iconfucius                    Launch the local Web UI (default)
+  iconfucius ui                 Same as above (explicit)
+  iconfucius chat               Chat via terminal with IConfucius
+  iconfucius chat --rasa        Chat via terminal using Rasa Pro CALM backend
+  iconfucius <command>          Execute individual commands directly
 \b
-  The onboarding wizard runs automatically on first launch.
-\b
-AI chat:
-  iconfucius                    Start chat with default persona
-  iconfucius chat               Same as above (explicit)
-  iconfucius --persona <name>   Chat with a specific persona
-  iconfucius persona list       List available personas
-\b
-How to use your bots:
+Direct commands:
+  (Use when AI backend is unavailable)
   All ckBTC amounts are in sats (1 BTC = 100,000,000 sats).
 \b
   Step 1. Fund your iconfucius wallet:
@@ -66,7 +60,7 @@ How to use your bots:
   Step 2. Check your wallet balance:
           iconfucius wallet balance [--monitor]
 \b
-  Step 3. Fund your bots (deposits ckBTC into Odin.Fun):
+  Step 3. Fund your bots (deposit ckBTC into Odin.Fun):
           iconfucius fund <amount> --bot <name>          # in sats
           iconfucius fund <amount> --all-bots
 \b
@@ -79,12 +73,7 @@ How to use your bots:
 \b
   Step 6. Sell Runes on Odin.Fun:
           iconfucius trade sell <token-id> <amount> --bot <name>
-          iconfucius trade sell <token-id> <amount> --all-bots
-          # to sell all holdings of a token
           iconfucius trade sell <token-id> all --bot <name>
-          iconfucius trade sell <token-id> all --all-bots
-          # to sell all holdings of all tokens
-          iconfucius trade sell all-tokens all --bot <name>
           iconfucius trade sell all-tokens all --all-bots
 \b
   Step 7. Withdraw ckBTC from Odin.Fun back to wallet:
@@ -95,9 +84,12 @@ How to use your bots:
           iconfucius sweep --bot <name>
           iconfucius sweep --all-bots
 \b
-  Step 8. Send ckBTC from wallet to an external ckBTC or BTC account:
+  Step 8. Transfer tokens between Odin.Fun accounts:
+          iconfucius transfer <token-id> <amount> <address> --bot <name>
+\b
+  Step 9. Send ckBTC/BTC from wallet to an external account:
           iconfucius wallet send <amount> <address>      # in sats
-          (supports both ICRC-1 and BTC addresses)
+          (<address> = ICRC-1 ckBTC address or native BTC address)
 """
 
 INSTRUCTIONS_TEXT = """\
@@ -115,7 +107,7 @@ All ckBTC amounts are in sats (1 BTC = 100,000,000 sats).
   Step 2. Check your wallet balance:
           iconfucius wallet balance [--monitor]
 
-  Step 3. Fund your bots (deposits ckBTC into Odin.Fun):
+  Step 3. Fund your bots (deposit ckBTC into Odin.Fun):
           iconfucius fund <amount> --bot <bot-name>          # in sats
           iconfucius fund <amount> --all-bots
 
@@ -128,12 +120,7 @@ All ckBTC amounts are in sats (1 BTC = 100,000,000 sats).
 
   Step 6. Sell Runes on Odin.Fun:
           iconfucius trade sell <token-id> <amount> --bot <bot-name>
-          iconfucius trade sell <token-id> <amount> --all-bots
-          # to sell all holdings of a token
           iconfucius trade sell <token-id> all --bot <bot-name>
-          iconfucius trade sell <token-id> all --all-bots
-          # to sell all holdings of all tokens
-          iconfucius trade sell all-tokens all --bot <bot-name>
           iconfucius trade sell all-tokens all --all-bots
 
   Step 7. Withdraw ckBTC from Odin.Fun back to wallet:
@@ -144,9 +131,12 @@ All ckBTC amounts are in sats (1 BTC = 100,000,000 sats).
           iconfucius sweep --bot <bot-name>
           iconfucius sweep --all-bots
 
-  Step 8. Send ckBTC from wallet to an external ckBTC or BTC account:
+  Step 8. Transfer tokens between Odin.Fun accounts:
+          iconfucius transfer <token-id> <amount> <address> --bot <bot-name>
+
+  Step 9. Send ckBTC/BTC from wallet to an external account:
           iconfucius wallet send <amount> <address>          # in sats
-          (supports both ICRC-1 and BTC addresses)
+          (<address> = ICRC-1 ckBTC address or native BTC address)
 """
 
 app = typer.Typer(
@@ -228,8 +218,7 @@ class State:
     all_bots: bool = False
     verbose: bool = True
     network: str = "prd"
-    persona: Optional[str] = None
-    experimental: bool = False
+    rasa: bool = False
 
 
 state = State()
@@ -292,11 +281,8 @@ def main_callback(
     network: str = typer.Option(
         "prd", "--network", help="PoAIW network of ckSigner: prd, testing, development"
     ),
-    persona: Optional[str] = typer.Option(
-        None, "--persona", help="Persona to use for chat"
-    ),
-    experimental: bool = typer.Option(
-        False, "--experimental", help="Enable experimental features (e.g. /ai command)"
+    rasa: bool = typer.Option(
+        False, "--rasa", help="Use Rasa Pro CALM backend instead of direct LLM tool use - faster, cheaper & avoids business logic hallucinations"
     ),
     port: int = typer.Option(55129, "--port", help="Port to serve on"),
     no_browser: bool = typer.Option(
@@ -314,8 +300,7 @@ def main_callback(
     state.all_bots = all_bots
     state.verbose = verbose
     state.network = network
-    state.persona = persona
-    state.experimental = experimental
+    state.rasa = rasa
     set_network(network)
     if ctx.invoked_subcommand is None:
         # Bare invocation: launch the web UI
@@ -331,50 +316,6 @@ def main_callback(
 from iconfucius.cli.wallet import wallet_app  # noqa: E402
 
 app.add_typer(wallet_app, name="wallet", help="Manage wallet identity and funds")
-
-
-# ---------------------------------------------------------------------------
-# Persona subcommand group
-# ---------------------------------------------------------------------------
-
-persona_app = typer.Typer(help="Manage trading personas")
-app.add_typer(persona_app, name="persona")
-
-
-@persona_app.command("list")
-def persona_list():
-    """List all available personas."""
-    from iconfucius.persona import list_personas
-
-    names = list_personas()
-    default = get_default_persona()
-    if not names:
-        print("No personas found.")
-        return
-    print("Available personas:")
-    for name in names:
-        marker = " (default)" if name == default else ""
-        print(f"  {name}{marker}")
-
-
-@persona_app.command("show")
-def persona_show(
-    name: str = typer.Argument(..., help="Persona name to show"),
-):
-    """Show persona details."""
-    from iconfucius.persona import PersonaNotFoundError, load_persona
-
-    try:
-        p = load_persona(name)
-    except PersonaNotFoundError as e:
-        print(f"Error: {e}")
-        raise typer.Exit(1)
-
-    print(f"Name:        {p.name}")
-    print(f"AI type:     {p.ai_api_type}")
-    print(f"AI model:    {p.ai_model}")
-    if p.ai_base_url:
-        print(f"AI base URL: {p.ai_base_url}")
 
 
 # ---------------------------------------------------------------------------
@@ -442,6 +383,27 @@ def _start_chat():
         print("Saved API key to .env")
         print()
 
+    # --- Step 2b: Rasa license (only for --rasa mode) ---
+    if getattr(state, "rasa", False):
+        import os
+        rasa_license = os.environ.get("RASA_LICENSE", "")
+        has_rasa_license = bool(rasa_license) and rasa_license != "your-rasa-license-here"
+        if not has_rasa_license:
+            print("A Rasa Pro license is needed for the CALM backend.")
+            print("Get your free Developer Edition license at:")
+            print("  https://rasa.com/rasa-pro-developer-edition-license-key-request\n")
+            try:
+                license_key = input("Paste your Rasa license (ey...): ").strip()
+            except (KeyboardInterrupt, EOFError):
+                print()
+                return
+            if not license_key:
+                print("\nNo license entered. Add RASA_LICENSE to .env and try again.")
+                return
+            _save_rasa_license(license_key)
+            print("Saved Rasa license to .env")
+            print()
+
     # --- Step 3: Wallet create ---
     if not setup.get("wallet_exists"):
         try:
@@ -460,12 +422,17 @@ def _start_chat():
         print()
         setup = execute_tool("setup_and_operational_status", {})
 
-    from iconfucius.cli.chat import run_chat
-
-    persona_name = state.persona or get_default_persona()
+    persona_name = "iconfucius"
     bot_name = state.bot_name or "bot-1"
-    run_chat(persona_name=persona_name, bot_name=bot_name, verbose=state.verbose,
-             experimental=state.experimental)
+
+    if getattr(state, "rasa", False):
+        from iconfucius.cli.chat_rasa import run_chat_rasa
+        run_chat_rasa(persona_name=persona_name, bot_name=bot_name,
+                      verbose=state.verbose)
+    else:
+        from iconfucius.cli.chat import run_chat
+        run_chat(persona_name=persona_name, bot_name=bot_name,
+                 verbose=state.verbose)
 
 
 def _save_api_key(api_key: str) -> None:
@@ -494,6 +461,32 @@ def _save_api_key(api_key: str) -> None:
     os.environ["ANTHROPIC_API_KEY"] = api_key
 
 
+def _save_rasa_license(license_key: str) -> None:
+    """Write a Rasa license to .env (replace placeholder, update existing, or append)."""
+    import os
+    import re
+
+    env_path = Path(".env")
+    if env_path.exists():
+        content = env_path.read_text()
+        if "your-rasa-license-here" in content:
+            content = content.replace("your-rasa-license-here", license_key)
+        elif "RASA_LICENSE" in content:
+            content = re.sub(
+                r"RASA_LICENSE=.*",
+                f"RASA_LICENSE={license_key}",
+                content,
+            )
+        else:
+            separator = "" if content.endswith("\n") else "\n"
+            content += f"{separator}RASA_LICENSE={license_key}\n"
+        env_path.write_text(content)
+    else:
+        env_path.write_text(f"RASA_LICENSE={license_key}\n")
+
+    os.environ["RASA_LICENSE"] = license_key
+
+
 # ---------------------------------------------------------------------------
 # Commands
 # ---------------------------------------------------------------------------
@@ -511,26 +504,29 @@ GITIGNORE_CONTENT = """\
 
 @app.command()
 def chat(
-    persona: Optional[str] = typer.Option(
-        None, "--persona", help="Persona to use"
-    ),
     bot: Optional[str] = typer.Option(None, "--bot", help="Bot name to use"),
     network: Optional[str] = typer.Option(
         None, "--network", help="PoAIW network of ckSigner: prd, testing, development"
     ),
+    rasa: bool = typer.Option(
+        False, "--rasa", help="Use Rasa Pro CALM backend instead of direct LLM tool use - faster, cheaper & avoids business logic hallucinations"
+    ),
 ):
-    """Start interactive chat with a trading persona."""
+    """Chat from terminal with IConfucius."""
     _resolve_network(network)
-    if persona:
-        state.persona = persona
     if bot:
         state.bot_name = bot
+    if rasa:
+        state.rasa = True
     _start_chat()
 
 
 ENV_TEMPLATE = (
     "# Get your API key at: https://console.anthropic.com/settings/keys\n"
     "ANTHROPIC_API_KEY=your-api-key-here\n"
+    "\n"
+    "# Get your free Rasa Developer Edition license at: https://rasa.com/rasa-pro-developer-edition-license-key-request\n"
+    "RASA_LICENSE=your-rasa-license-here\n"
 )
 
 
@@ -539,20 +535,37 @@ GITIGNORE_ENTRIES = [".env", ".wallet/", ".cache/", ".memory/", ".logs/"]
 
 
 def _ensure_env_file() -> None:
-    """Create .env if missing, or add ANTHROPIC_API_KEY if not present."""
+    """Create .env if missing, or add ANTHROPIC_API_KEY/RASA_LICENSE if not present."""
     env_path = Path(".env")
     if not env_path.exists():
         env_path.write_text(ENV_TEMPLATE)
-        print("Created .env with ANTHROPIC_API_KEY placeholder")
+        print("Created .env with ANTHROPIC_API_KEY and RASA_LICENSE placeholders")
         return
 
     content = env_path.read_text()
+    changed = False
     if "ANTHROPIC_API_KEY" not in content:
         separator = "" if content.endswith("\n") else "\n"
-        env_path.write_text(content + separator + ENV_TEMPLATE)
+        content += (
+            f"{separator}"
+            "# Get your API key at: https://console.anthropic.com/settings/keys\n"
+            "ANTHROPIC_API_KEY=your-api-key-here\n"
+        )
+        changed = True
         print("Added ANTHROPIC_API_KEY to .env")
+    if "RASA_LICENSE" not in content:
+        separator = "" if content.endswith("\n") else "\n"
+        content += (
+            f"{separator}"
+            "# Get your free Rasa Developer Edition license at: https://rasa.com/rasa-pro-developer-edition-license-key-request\n"
+            "RASA_LICENSE=your-rasa-license-here\n"
+        )
+        changed = True
+        print("Added RASA_LICENSE to .env")
+    if changed:
+        env_path.write_text(content)
     else:
-        print(".env already contains ANTHROPIC_API_KEY")
+        print(".env already contains ANTHROPIC_API_KEY and RASA_LICENSE")
 
 
 def _ensure_gitignore() -> None:
@@ -1001,16 +1014,11 @@ def ui(
     verbose: Optional[bool] = typer.Option(
         None, "--verbose/--quiet", help="Show verbose output"
     ),
-    experimental: Optional[bool] = typer.Option(
-        None, "--experimental", help="Enable experimental features"
-    ),
 ):
     """Launch the web UI."""
     _resolve_network(network)
     if verbose is not None:
         state.verbose = verbose
-    if experimental is not None:
-        state.experimental = experimental
     from iconfucius.client.server import run_server
 
     run_server(port=port, open_browser=not no_browser)

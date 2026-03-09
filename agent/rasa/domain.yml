@@ -1,0 +1,285 @@
+version: "3.1"
+
+slots:
+  # Balance
+  bot_name:
+    type: text
+    mappings:
+      - type: from_llm
+  ckbtc_minter:
+    type: bool
+    mappings:
+      - type: from_llm
+  principal:
+    type: text
+    mappings:
+      - type: from_llm
+
+  # Market data
+  query:
+    type: text
+    mappings:
+      - type: from_llm
+  sort_order:
+    type: text
+    mappings:
+      - type: from_llm
+  discover_limit:
+    type: float
+    mappings:
+      - type: from_llm
+  address:
+    type: text
+    mappings:
+      - type: from_llm
+
+  # Memory (read)
+  last_n:
+    type: float
+    mappings:
+      - type: from_llm
+
+  # Memory (write)
+  memory_file:
+    type: text
+    mappings:
+      - type: from_llm
+  memory_content:
+    type: text
+    mappings:
+      - type: from_llm
+  confirm_memory_update:
+    type: bool
+    mappings:
+      - type: from_llm
+  keep_days:
+    type: float
+    mappings:
+      - type: from_llm
+  confirm_memory_archive:
+    type: bool
+    mappings:
+      - type: from_llm
+
+  # Funding / Withdraw
+  fund_amount:
+    type: text
+    mappings:
+      - type: from_llm
+  withdraw_amount:
+    type: text
+    mappings:
+      - type: from_llm
+  bot_target:
+    type: text
+    mappings:
+      - type: from_llm
+  confirm_fund:
+    type: bool
+    mappings:
+      - type: from_llm
+  confirm_withdraw:
+    type: bool
+    mappings:
+      - type: from_llm
+
+  # Trading
+  token_query:
+    type: text
+    mappings:
+      - type: from_llm
+  token_id:
+    type: text
+    mappings:
+      - type: controlled
+  trade_amount:
+    type: text
+    mappings:
+      - type: from_llm
+  confirm_trade:
+    type: bool
+    mappings:
+      - type: from_llm
+
+  # Transfers
+  transfer_amount:
+    type: text
+    mappings:
+      - type: from_llm
+  transfer_to_address:
+    type: text
+    mappings:
+      - type: from_llm
+  confirm_transfer:
+    type: bool
+    mappings:
+      - type: from_llm
+  send_amount:
+    type: text
+    mappings:
+      - type: from_llm
+  send_address:
+    type: text
+    mappings:
+      - type: from_llm
+  confirm_send:
+    type: bool
+    mappings:
+      - type: from_llm
+
+  # Setup
+  setup_num_bots:
+    type: float
+    initial_value: 1
+    mappings:
+      - type: from_llm
+  setup_force:
+    type: bool
+    initial_value: false
+    mappings:
+      - type: from_llm
+  confirm_setup:
+    type: bool
+    mappings:
+      - type: from_llm
+
+  # Persona (set programmatically, not by LLM)
+  persona_key:
+    type: text
+    mappings:
+      - type: controlled
+
+actions:
+  # Utility
+  - action_bot_list
+  - action_check_status
+  - action_check_update
+  - action_security_status
+  - action_install_blst
+  # Balance
+  - action_wallet_balance
+  - action_wallet_monitor
+  - action_public_balance
+  - action_how_to_fund
+  # Market data
+  - action_token_lookup
+  - action_token_price
+  - action_token_discover
+  - action_account_lookup
+  # Memory
+  - action_memory_read_strategy
+  - action_memory_read_learnings
+  - action_memory_read_trades
+  - action_memory_read_balances
+  - action_memory_update
+  - action_memory_archive
+  # Funding
+  - action_fund
+  - action_withdraw
+  # Trading
+  - action_resolve_token
+  - action_trade_buy
+  - action_trade_sell
+  # Transfers
+  - action_token_transfer
+  - action_wallet_send
+  # Setup
+  - action_init
+  - action_wallet_create
+  - action_set_bot_count
+
+responses:
+  utter_ask_bot_name:
+    - text: "Which bot would you like to check? (e.g. 'bot-1', or leave empty for all)"
+  utter_ask_ckbtc_minter:
+    - text: "Would you like to also check the ckBTC minter for pending deposits and withdrawals?"
+  utter_ask_principal:
+    - text: "Which IC principal would you like to check?"
+  utter_ask_query:
+    - text: "Which token would you like to look up?"
+  utter_ask_sort_order:
+    - text: "How would you like to sort? 'volume' for trending or 'newest' for recent."
+  utter_ask_discover_limit:
+    - text: "How many tokens would you like to see? (default 20, max 50)"
+  utter_ask_address:
+    - text: "Which address would you like to look up?"
+  utter_ask_last_n:
+    - text: "How many recent entries would you like to see?"
+  utter_ask_memory_file:
+    - text: "Which memory file would you like to update? ('strategy' or 'learnings')"
+  utter_ask_memory_content:
+    - text: "What content should be written to the file? (This replaces the entire file.)"
+  utter_ask_keep_days:
+    - text: "How many days of snapshots should be kept? (default 90)"
+
+  utter_ask_fund_amount:
+    - text: "How much to deposit per bot? (sats, $USD, or 'all' — minimum 5,000 sats)"
+  utter_ask_bot_target:
+    - text: "Which bot(s)? (e.g. 'bot-1', 'bot-1,bot-2', or 'all')"
+  utter_ask_withdraw_amount:
+    - text: "How much to withdraw per bot? (sats, $USD, or 'all')"
+
+  utter_ask_token_query:
+    - text: "Which token? (name, ticker, or ID)"
+  utter_ask_trade_amount:
+    - text: "How much? (sats, $USD, token count, or 'all')"
+
+  utter_confirm_trade_buy:
+    - text: "Buy {token_id} for {trade_amount} per bot ({bot_target})? [Y/n]"
+  utter_confirm_trade_sell:
+    - text: "Sell {trade_amount} of {token_id} per bot ({bot_target})? [Y/n]"
+  utter_trade_cancelled:
+    - text: "Trade cancelled."
+
+  utter_ask_transfer_amount:
+    - text: "How many tokens to transfer? (token count or 'all')"
+  utter_ask_transfer_to_address:
+    - text: "Destination address? (IC principal, BTC deposit, or BTC wallet address)"
+  utter_ask_send_amount:
+    - text: "How much to send? (sats, $USD, or 'all' — minimum 50,000 sats for BTC addresses)"
+  utter_ask_send_address:
+    - text: "Where to send? (IC principal for ckBTC, or bc1... for BTC)"
+  utter_ask_setup_num_bots:
+    - text: "How many bots? (1-1000, default 3)"
+  utter_ask_setup_force:
+    - text: "Overwrite existing configuration?"
+
+  utter_confirm_token_transfer:
+    - text: "Transfer {transfer_amount} of {token_id} to {transfer_to_address} from {bot_target}? WARNING: Irreversible. [Y/n]"
+  utter_transfer_cancelled:
+    - text: "Transfer cancelled."
+  utter_confirm_wallet_send:
+    - text: "Send {send_amount} to {send_address}? [Y/n]"
+  utter_send_cancelled:
+    - text: "Send cancelled."
+  utter_confirm_init:
+    - text: "Initialize iconfucius project with {setup_num_bots} bot(s)? [Y/n]"
+  utter_confirm_wallet_create:
+    - text: "Create new wallet identity? [Y/n]"
+  utter_confirm_set_bots:
+    - text: "Change bot count to {setup_num_bots}? [Y/n]"
+  utter_setup_cancelled:
+    - text: "Setup cancelled."
+
+  utter_confirm_fund:
+    - text: "Deposit {fund_amount} sats to {bot_target}? [Y/n]"
+  utter_fund_cancelled:
+    - text: "Deposit cancelled."
+  utter_confirm_withdraw:
+    - text: "Withdraw {withdraw_amount} from {bot_target}? [Y/n]"
+  utter_withdraw_cancelled:
+    - text: "Withdrawal cancelled."
+
+  utter_confirm_memory_update:
+    - text: "Update {memory_file} memory file? [Y/n]"
+  utter_memory_update_cancelled:
+    - text: "Memory update cancelled."
+  utter_confirm_memory_archive:
+    - text: "Archive balance snapshots older than {keep_days} days? [Y/n]"
+  utter_memory_archive_cancelled:
+    - text: "Archive cancelled."
+
+  utter_free_chitchat_response:
+    - text: "placeholder"
+      metadata:
+        rephrase: true

@@ -420,36 +420,13 @@ def create_default_config(num_bots: int = 3) -> str:
 # See: https://github.com/onicai/IConfucius
 
 [settings]
-# See README-security.md for details
+# See https://github.com/onicai/IConfucius/blob/main/agent/README-security.md
+# It is recommended to install bls and set verify_certicifactes to `true`
+# for additional protection against man-in-the-middle attacks at the network level
 verify_certificates = false
-cache_sessions = true
-default_persona = "iconfucius"
-
-# AI configuration (overrides persona defaults)
-# Default: Claude with claude-opus-4-6 (API key via ANTHROPIC_API_KEY env var)
-#
-# Claude with a different model:
-# [ai]
-# model = "claude-sonnet-4-6"
-# provider = "Anthropic"    # auto-detected from api_type; override if needed
-#
-# Any OpenAI-compatible endpoint (llama.cpp, Ollama, vLLM, LM Studio, etc.):
-# [ai]
-# api_type = "openai"
-# base_url = "http://localhost:55128"
-# # API key via OPENAI_API_KEY env var (optional for local servers)
-#
-# Start llama.cpp server:
-#   llama-server --jinja --port 55128 -hf bartowski/Mistral-Nemo-Instruct-2407-GGUF:Q4_K_M
-#
-# Recommended local models for tool calling (Q4_K_M quantization):
-#   ~7.5GB  Mistral-NeMo-12B    bartowski/Mistral-Nemo-Instruct-2407-GGUF:Q4_K_M
-#   ~9 GB   Qwen2.5-14B         bartowski/Qwen2.5-14B-Instruct-GGUF:Q4_K_M
-#   ~15GB   Mistral-Small-24B   bartowski/Mistral-Small-24B-Instruct-2501-GGUF:Q4_K_M
 
 # Bot definitions
-# Each bot gets its own trading identity on Odin.Fun.
-# Optional: persona = "<name>" assigns a trading persona to the bot.
+# Each bot registers an account for trading on Odin.Fun
 '''
     bots = "\n".join(
         f'[bots.bot-{i}]\ndescription = "Bot {i}"\n'

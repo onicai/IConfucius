@@ -42,22 +42,6 @@ TOOLS: list[dict] = [
         "category": "read",
     },
     {
-        "name": "enable_experimental",
-        "description": (
-            "Enable experimental features for this session. "
-            "Call this when the user asks to change the AI model, "
-            "API type, or backend configuration. "
-            "After enabling, tell the user to type /ai to configure."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {},
-            "required": [],
-        },
-        "requires_confirmation": False,
-        "category": "read",
-    },
-    {
         "name": "bot_list",
         "description": (
             "List all configured bots with names and IC principals. "

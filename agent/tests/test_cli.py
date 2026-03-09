@@ -37,8 +37,8 @@ class TestHelpOutput:
         """Verify --help prints help text with section headers."""
         result = runner.invoke(app, ["--help"])
         assert result.exit_code == 0
-        assert "Setup:" in result.output
-        assert "How to use your bots:" in result.output
+        assert "Three modes:" in result.output
+        assert "Direct commands:" in result.output
 
     def test_version_flag(self):
         """Verify --version prints the version matching pyproject.toml."""
@@ -66,7 +66,7 @@ class TestHelpOutput:
         assert "trade" in result.output
         assert "wallet" in result.output
         assert "chat" in result.output
-        assert "persona" in result.output
+        assert "persona" not in result.output
 
     def test_no_deposit_command(self):
         """Verify the deprecated deposit command is not listed in help."""

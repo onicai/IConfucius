@@ -55,18 +55,6 @@ class TestChatCommand:
         "status": "ok", "config_exists": True, "wallet_exists": True,
         "env_exists": True, "has_api_key": True, "ready": True,
     })
-    def test_chat_with_persona_flag(self, mock_execute, mock_run_chat):
-        """Verify chat with persona flag."""
-        result = runner.invoke(app, ["chat", "--persona", "iconfucius"])
-        assert result.exit_code == 0
-        args = mock_run_chat.call_args
-        assert args.kwargs["persona_name"] == "iconfucius"
-
-    @patch("iconfucius.cli.chat.run_chat")
-    @patch("iconfucius.skills.executor.execute_tool", return_value={
-        "status": "ok", "config_exists": True, "wallet_exists": True,
-        "env_exists": True, "has_api_key": True, "ready": True,
-    })
     def test_chat_with_bot_flag(self, mock_execute, mock_run_chat):
         """Verify chat with bot flag."""
         result = runner.invoke(app, ["chat", "--bot", "bot-2"])
@@ -76,25 +64,16 @@ class TestChatCommand:
 
 
 
-class TestPersonaCommands:
-    def test_persona_list(self):
-        """Verify persona list."""
+class TestPersonaCommandsRemoved:
+    def test_persona_subcommand_removed(self):
+        """Verify persona subcommand is no longer available."""
         result = runner.invoke(app, ["persona", "list"])
-        assert result.exit_code == 0
-        assert "iconfucius" in result.output
+        assert result.exit_code != 0
 
-    def test_persona_show(self):
-        """Verify persona show."""
-        result = runner.invoke(app, ["persona", "show", "iconfucius"])
-        assert result.exit_code == 0
-        assert "IConfucius" in result.output
-        assert "claude" in result.output  # ai_api_type
-
-    def test_persona_show_not_found(self):
-        """Verify persona show not found."""
-        result = runner.invoke(app, ["persona", "show", "nonexistent"])
-        assert result.exit_code == 1
-        assert "not found" in result.output.lower()
+    def test_persona_flag_removed_from_chat(self):
+        """Verify --persona flag is no longer accepted by chat."""
+        result = runner.invoke(app, ["chat", "--persona", "iconfucius"])
+        assert result.exit_code != 0
 
 
 # ---------------------------------------------------------------------------
@@ -1224,120 +1203,6 @@ class TestChatHintsPlacement:
 
 
 # ---------------------------------------------------------------------------
-# Experimental warning at startup
-# ---------------------------------------------------------------------------
-
-
-class TestExperimentalWarning:
-    """--experimental flag prints warning underneath the AI config line."""
-
-    @patch("iconfucius.cli.chat._generate_startup",
-           return_value=("Hello!", "Goodbye!"))
-    @patch("iconfucius.cli.chat.create_backend")
-    @patch("iconfucius.cli.chat.load_persona")
-    def test_experimental_flag_shows_warning(self, mock_load,
-                                              mock_backend_factory,
-                                              _mock_startup,
-                                              tmp_path, monkeypatch, capsys):
-        """--experimental prints the experimental warning after AI config."""
-        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
-        (tmp_path / "iconfucius.toml").write_text(
-            '[settings]\n[bots.bot-1]\ndescription = "Bot 1"\n'
-        )
-        cfg._cached_config = None
-        cfg._cached_config_path = None
-
-        persona = _make_persona(name="IConfucius")
-        mock_load.return_value = persona
-        backend = MagicMock()
-        backend.model = "claude-opus-4-6"
-        mock_backend_factory.return_value = backend
-
-        with patch("builtins.input", side_effect=EOFError):
-            from iconfucius.cli.chat import run_chat
-            run_chat("iconfucius", "bot-1", experimental=True)
-
-        captured = capsys.readouterr().out
-        assert "/ai to change" in captured
-        assert "Experimental features have been enabled" in captured
-        assert "Use at your own risk" in captured
-        # Enabled message after AI line, risk warning after enabled message
-        ai_pos = captured.index("AI:")
-        enabled_pos = captured.index("Experimental features have been enabled")
-        risk_pos = captured.index("Use at your own risk")
-        assert enabled_pos > ai_pos
-        assert risk_pos > enabled_pos
-
-    @patch("iconfucius.cli.chat._generate_startup",
-           return_value=("Hello!", "Goodbye!"))
-    @patch("iconfucius.cli.chat.create_backend")
-    @patch("iconfucius.cli.chat.load_persona")
-    def test_no_experimental_flag_no_warning(self, mock_load,
-                                              mock_backend_factory,
-                                              mock_startup,
-                                              tmp_path, monkeypatch, capsys):
-        """Without --experimental, no experimental warning is shown."""
-        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
-        (tmp_path / "iconfucius.toml").write_text(
-            '[settings]\n[bots.bot-1]\ndescription = "Bot 1"\n'
-        )
-        cfg._cached_config = None
-        cfg._cached_config_path = None
-
-        persona = _make_persona(name="IConfucius")
-        mock_load.return_value = persona
-        backend = MagicMock()
-        backend.model = "claude-opus-4-6"
-        mock_backend_factory.return_value = backend
-
-        with patch("builtins.input", side_effect=EOFError):
-            from iconfucius.cli.chat import run_chat
-            run_chat("iconfucius", "bot-1")
-
-        captured = capsys.readouterr().out
-        assert "Experimental features" not in captured
-        assert "Use at your own risk" not in captured
-        assert "/ai to change" not in captured
-
-    @patch("iconfucius.cli.chat._generate_startup",
-           return_value=("Hello!", "Goodbye!"))
-    @patch("iconfucius.cli.chat.create_backend")
-    @patch("iconfucius.cli.chat.load_persona")
-    def test_experimental_shows_ai_config_with_base_url(self, mock_load,
-                                                         mock_backend_factory,
-                                                         mock_startup,
-                                                         tmp_path, monkeypatch,
-                                                         capsys):
-        """AI config line includes base_url when set."""
-        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
-        (tmp_path / "iconfucius.toml").write_text(
-            '[settings]\n[bots.bot-1]\ndescription = "Bot 1"\n'
-        )
-        cfg._cached_config = None
-        cfg._cached_config_path = None
-
-        persona = _make_persona(
-            name="IConfucius",
-            ai_api_type="openai",
-            ai_model="llama-3",
-            ai_base_url="http://localhost:55128",
-        )
-        mock_load.return_value = persona
-        backend = MagicMock()
-        backend.model = "llama-3"
-        mock_backend_factory.return_value = backend
-
-        with patch("builtins.input", side_effect=["Y", EOFError]):
-            from iconfucius.cli.chat import run_chat
-            run_chat("iconfucius", "bot-1", experimental=True)
-
-        captured = capsys.readouterr().out
-        assert "openai" in captured
-        assert "llama-3" in captured
-        assert "http://localhost:55128" in captured
-
-
-# ---------------------------------------------------------------------------
 # /ai hot-swap backend
 # ---------------------------------------------------------------------------
 
@@ -1374,7 +1239,7 @@ class TestAiHotSwap:
         with patch("builtins.input",
                    side_effect=["/ai", "1", "", "", EOFError]):
             from iconfucius.cli.chat import run_chat
-            run_chat("iconfucius", "bot-1", experimental=True)
+            run_chat("iconfucius", "bot-1")
 
         # create_backend called twice: startup + hot-swap
         assert mock_backend_factory.call_count == 2
@@ -1416,7 +1281,7 @@ class TestAiHotSwap:
         with patch("builtins.input",
                    side_effect=["Y", "/ai reset", EOFError]):
             from iconfucius.cli.chat import run_chat
-            run_chat("iconfucius", "bot-1", experimental=True)
+            run_chat("iconfucius", "bot-1")
 
         assert mock_backend_factory.call_count == 2
         swap_call_persona = mock_backend_factory.call_args_list[1][0][0]
@@ -1458,7 +1323,7 @@ class TestAiHotSwap:
         with patch("builtins.input",
                    side_effect=["Y", "/ai", "3", EOFError]):
             from iconfucius.cli.chat import run_chat
-            run_chat("iconfucius", "bot-1", experimental=True)
+            run_chat("iconfucius", "bot-1")
 
         assert mock_backend_factory.call_count == 2
         swap_call_persona = mock_backend_factory.call_args_list[1][0][0]
@@ -1491,7 +1356,7 @@ class TestAiHotSwap:
         with patch("builtins.input",
                    side_effect=["/ai", "1", "http://my-server:8080", "mymodel", EOFError]):
             from iconfucius.cli.chat import run_chat
-            run_chat("iconfucius", "bot-1", experimental=True)
+            run_chat("iconfucius", "bot-1")
 
         captured = capsys.readouterr().out
         assert "Restart" not in captured
