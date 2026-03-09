@@ -34,22 +34,27 @@ def _find_rasa_dir() -> Path:
     )
 
 
-async def _load_rasa_agent(rasa_dir: Path):
+async def _load_rasa_agent(rasa_dir: Path, debug: bool = False):
     """Load the Rasa agent in-process with actions_module support."""
     import os
 
-    # Suppress verbose Rasa debug/info logging
-    os.environ["LOG_LEVEL"] = "ERROR"
-    os.environ.setdefault("LLM_API_HEALTH_CHECK", "false")
-    logging.getLogger("rasa").setLevel(logging.ERROR)
-    logging.getLogger("matplotlib").setLevel(logging.ERROR)
-    logging.getLogger().setLevel(logging.ERROR)
+    if debug:
+        os.environ["LOG_LEVEL"] = "DEBUG"
+        os.environ.setdefault("LLM_API_HEALTH_CHECK", "false")
+    else:
+        # Suppress verbose Rasa debug/info logging
+        os.environ["LOG_LEVEL"] = "ERROR"
+        os.environ.setdefault("LLM_API_HEALTH_CHECK", "false")
+        logging.getLogger("rasa").setLevel(logging.ERROR)
+        logging.getLogger("matplotlib").setLevel(logging.ERROR)
+        logging.getLogger().setLevel(logging.ERROR)
 
-    # Configure structlog to filter debug/info messages
+        # Configure structlog to filter debug/info messages
+        import structlog
+        from rasa.utils.log_utils import configure_structlog
+        configure_structlog(logging.ERROR)
+
     import warnings
-    import structlog
-    from rasa.utils.log_utils import configure_structlog
-    configure_structlog(logging.ERROR)
     warnings.filterwarnings("ignore", category=UserWarning, module="pydantic")
 
     # Make the actions package importable
@@ -76,13 +81,28 @@ async def _handle_message(agent, text: str, sender_id: str) -> list[str]:
     return [r.get("text", "") for r in (responses or []) if r.get("text")]
 
 
-def run_chat_rasa(persona_name: str, bot_name: str, verbose: bool = False) -> None:
+def _generate_goodbye(loop, agent, persona, sender_id: str) -> str:
+    """Generate a persona goodbye quote via Rasa chitchat at exit time."""
+    try:
+        with _Spinner(f"{persona.name} is thinking..."):
+            responses = loop.run_until_complete(
+                _handle_message(agent, persona.goodbye_prompt, sender_id)
+            )
+        return responses[0] if responses else "May your path be wise."
+    except Exception:
+        return "May your path be wise."
+
+
+def run_chat_rasa(
+    persona_name: str, bot_name: str, verbose: bool = False, debug: bool = False,
+) -> None:
     """Run interactive chat using the Rasa CALM backend.
 
     Args:
         persona_name: Name of the persona to load.
         bot_name: Default bot for trading context.
         verbose: Show verbose output.
+        debug: Show Rasa debug logs on screen.
     """
     from iconfucius.config import set_verbose
     set_verbose(verbose)
@@ -106,7 +126,7 @@ def run_chat_rasa(persona_name: str, bot_name: str, verbose: bool = False) -> No
 
     try:
         with _Spinner("Loading Rasa agent..."):
-            agent = loop.run_until_complete(_load_rasa_agent(rasa_dir))
+            agent = loop.run_until_complete(_load_rasa_agent(rasa_dir, debug=debug))
     except Exception as e:
         print(f"\nError loading Rasa agent: {e}")
         return
@@ -117,44 +137,27 @@ def run_chat_rasa(persona_name: str, bot_name: str, verbose: bool = False) -> No
 
     sender_id = f"cli-{persona_name}"
 
-    # Startup greeting — route through Rasa agent (model configured in endpoints.yml)
+    # Startup greeting & goodbye — route through Rasa chitchat (model from endpoints.yml)
     from iconfucius.cli.chat import _get_language_code
     import random
 
     lang = _get_language_code()
     entry = random.choice(QUOTE_TOPICS)
 
-    # Set slots for the greeting action, then trigger the greeting flow
     try:
         with _Spinner(f"{persona.name} is thinking..."):
-            # Set controlled slots via /SetSlots command
-            slot_msg = (
-                f'/SetSlots(greeting_topic="{entry[lang]}",'
-                f' greeting_icon="{entry["icon"]}",'
-                f' persona_key="{persona_name}")'
+            greeting_prompt = persona.greeting_prompt.format(
+                icon=entry["icon"], topic=entry[lang],
             )
-            loop.run_until_complete(
-                agent.handle_text(slot_msg, sender_id=sender_id)
-            )
-            # Trigger the greeting flow
-            responses = loop.run_until_complete(
-                _handle_message(agent, "generate startup greeting", sender_id)
+            greeting_responses = loop.run_until_complete(
+                _handle_message(agent, greeting_prompt, sender_id)
             )
 
-        greeting = ""
-        goodbye = "May your path be wise."
-        for r in responses:
-            if r.startswith("GREETING:"):
-                greeting = r[len("GREETING:"):]
-            elif r.startswith("GOODBYE:"):
-                goodbye = r[len("GOODBYE:"):]
-
+        greeting = greeting_responses[0] if greeting_responses else ""
         if not greeting:
             greeting = f"{entry['icon']} {persona.name} — {entry[lang]}"
     except Exception:
-        # Fall back to a static greeting if Rasa agent fails
         greeting = f"{entry['icon']} {persona.name} — {entry[lang]}"
-        goodbye = "May your path be wise."
 
     print(f"\n{greeting}\n")
 
@@ -201,6 +204,7 @@ def run_chat_rasa(persona_name: str, bot_name: str, verbose: bool = False) -> No
             _prompt_banner()
             user_input = input(f"\033[2mv{__version__}\033[0m > ").strip()
         except (KeyboardInterrupt, EOFError):
+            goodbye = _generate_goodbye(loop, agent, persona, sender_id)
             print(f"\n\n{goodbye}")
             break
 
@@ -209,6 +213,7 @@ def run_chat_rasa(persona_name: str, bot_name: str, verbose: bool = False) -> No
             continue
 
         if user_input.lower() in ("exit", "quit", "/exit", "/quit"):
+            goodbye = _generate_goodbye(loop, agent, persona, sender_id)
             print(f"\n{goodbye}")
             break
 

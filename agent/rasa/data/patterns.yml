@@ -1,0 +1,5 @@
+flows:
+  pattern_chitchat:
+    description: Handle off-topic and chitchat messages with a free-form LLM response
+    steps:
+      - action: utter_free_chitchat_response

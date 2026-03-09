@@ -284,6 +284,9 @@ def main_callback(
     rasa: bool = typer.Option(
         False, "--rasa", help="Use Rasa Pro CALM backend instead of direct LLM tool use - faster, cheaper & avoids business logic hallucinations"
     ),
+    debug: bool = typer.Option(
+        False, "--debug", help="Show Rasa debug logs on screen (only with --rasa)"
+    ),
     port: int = typer.Option(55129, "--port", help="Port to serve on"),
     no_browser: bool = typer.Option(
         False, "--no-browser", help="Don't open browser automatically"
@@ -301,6 +304,7 @@ def main_callback(
     state.verbose = verbose
     state.network = network
     state.rasa = rasa
+    state.debug = debug
     set_network(network)
     if ctx.invoked_subcommand is None:
         # Bare invocation: launch the web UI
@@ -428,7 +432,8 @@ def _start_chat():
     if getattr(state, "rasa", False):
         from iconfucius.cli.chat_rasa import run_chat_rasa
         run_chat_rasa(persona_name=persona_name, bot_name=bot_name,
-                      verbose=state.verbose)
+                      verbose=state.verbose,
+                      debug=getattr(state, "debug", False))
     else:
         from iconfucius.cli.chat import run_chat
         run_chat(persona_name=persona_name, bot_name=bot_name,
@@ -511,6 +516,9 @@ def chat(
     rasa: bool = typer.Option(
         False, "--rasa", help="Use Rasa Pro CALM backend instead of direct LLM tool use - faster, cheaper & avoids business logic hallucinations"
     ),
+    debug: bool = typer.Option(
+        False, "--debug", help="Show Rasa debug logs on screen (only with --rasa)"
+    ),
 ):
     """Chat from terminal with IConfucius."""
     _resolve_network(network)
@@ -518,6 +526,8 @@ def chat(
         state.bot_name = bot
     if rasa:
         state.rasa = True
+    if debug:
+        state.debug = True
     _start_chat()
 
 
@@ -639,8 +649,11 @@ def init(
         False, "--upgrade", "-u", help="Upgrade existing project (add new files/settings)"
     ),
     bots: int = typer.Option(0, "--bots", help="Number of bots to create (0-1000)"),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug logging"),
 ):
     """Initialize or upgrade an iconfucius project."""
+    if debug:
+        state.debug = True
     config_path = Path(CONFIG_FILENAME)
 
     if upgrade:
@@ -689,8 +702,11 @@ def config(
     network: Optional[str] = typer.Option(
         None, "--network", help="PoAIW network of ckSigner: prd, testing, development"
     ),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug logging"),
 ):
     """Show current configuration."""
+    if debug:
+        state.debug = True
     _resolve_network(network)
     cfg = load_config()
     config_path = find_config()
@@ -715,8 +731,11 @@ def instructions(
     network: Optional[str] = typer.Option(
         None, "--network", help="PoAIW network of ckSigner: prd, testing, development"
     ),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug logging"),
 ):
     """Show balance and usage instructions."""
+    if debug:
+        state.debug = True
     from iconfucius.cli.balance import run_all_balances
 
     _resolve_network(network)
@@ -735,8 +754,11 @@ def fund(
     network: Optional[str] = typer.Option(
         None, "--network", help="PoAIW network of ckSigner: prd, testing, development"
     ),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug logging"),
 ):
     """Fund bot(s) and deposit into Odin.Fun trading accounts."""
+    if debug:
+        state.debug = True
     _resolve_network(network)
     from iconfucius.cli.fund import run_fund
 
@@ -766,8 +788,11 @@ def withdraw(
     network: Optional[str] = typer.Option(
         None, "--network", help="PoAIW network of ckSigner: prd, testing, development"
     ),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug logging"),
 ):
     """Withdraw from Odin.Fun back to the iconfucius wallet."""
+    if debug:
+        state.debug = True
     _resolve_network(network)
     from iconfucius.cli.concurrent import run_per_bot
     from iconfucius.cli.withdraw import run_withdraw
@@ -830,8 +855,11 @@ def trade(
     network: Optional[str] = typer.Option(
         None, "--network", help="PoAIW network of ckSigner: prd, testing, development"
     ),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug logging"),
 ):
     """Buy or sell tokens on Odin.Fun."""
+    if debug:
+        state.debug = True
     _resolve_network(network)
     from iconfucius.cli.concurrent import run_per_bot
     from iconfucius.cli.trade import run_trade
@@ -895,8 +923,11 @@ def transfer(
     network: Optional[str] = typer.Option(
         None, "--network", help="PoAIW network of ckSigner: prd, testing, development"
     ),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug logging"),
 ):
     """Transfer tokens to another Odin.Fun account (irreversible)."""
+    if debug:
+        state.debug = True
     _resolve_network(network)
     from iconfucius.cli.concurrent import run_per_bot
     from iconfucius.cli.transfer import run_transfer
@@ -949,8 +980,11 @@ def sweep(
     network: Optional[str] = typer.Option(
         None, "--network", help="PoAIW network of ckSigner: prd, testing, development"
     ),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug logging"),
 ):
     """Sell all tokens and withdraw all ckBTC back to the wallet."""
+    if debug:
+        state.debug = True
     _resolve_network(network)
     from iconfucius.cli.balance import collect_balances
     from iconfucius.cli.concurrent import run_per_bot
@@ -1014,8 +1048,11 @@ def ui(
     verbose: Optional[bool] = typer.Option(
         None, "--verbose/--quiet", help="Show verbose output"
     ),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug logging"),
 ):
     """Launch the web UI."""
+    if debug:
+        state.debug = True
     _resolve_network(network)
     if verbose is not None:
         state.verbose = verbose

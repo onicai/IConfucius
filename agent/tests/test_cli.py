@@ -963,6 +963,54 @@ class TestOptionPlacement:
 
 
 # ---------------------------------------------------------------------------
+# --debug flag
+# ---------------------------------------------------------------------------
+
+class TestDebugFlag:
+    """Verify --debug flag is accepted by all subcommands."""
+
+    def test_debug_before_config(self, odin_project):
+        """Verify --debug before config sets state.debug."""
+        result = runner.invoke(app, ["--debug", "config"])
+        assert result.exit_code == 0
+        assert state.debug is True
+        state.debug = False
+
+    def test_debug_after_config(self, odin_project):
+        """Verify --debug after config sets state.debug."""
+        result = runner.invoke(app, ["config", "--debug"])
+        assert result.exit_code == 0
+        assert state.debug is True
+        state.debug = False
+
+    def test_debug_default_is_false(self, odin_project):
+        """Verify --debug defaults to False."""
+        result = runner.invoke(app, ["config"])
+        assert result.exit_code == 0
+        assert getattr(state, "debug", False) is False
+
+    @patch("iconfucius.cli.balance.run_all_balances")
+    def test_debug_with_wallet_balance(self, mock_run, odin_project):
+        """Verify --debug accepted by wallet balance."""
+        result = runner.invoke(app, [
+            "wallet", "balance", "--bot", "bot-1", "--debug",
+        ])
+        assert result.exit_code == 0
+
+    @patch("iconfucius.cli.balance.run_all_balances")
+    def test_debug_with_instructions(self, mock_run, odin_project):
+        """Verify --debug accepted by instructions."""
+        result = runner.invoke(app, ["instructions", "--bot", "bot-1", "--debug"])
+        assert result.exit_code == 0
+
+    def test_debug_with_init(self, tmp_path, monkeypatch):
+        """Verify --debug accepted by init."""
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(app, ["init", "--debug"])
+        assert result.exit_code == 0
+
+
+# ---------------------------------------------------------------------------
 # Onboarding wizard (_start_chat)
 # ---------------------------------------------------------------------------
 

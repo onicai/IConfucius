@@ -143,16 +143,6 @@ slots:
     mappings:
       - type: from_llm
 
-  # Greeting (set programmatically, not by LLM)
-  greeting_topic:
-    type: text
-    mappings:
-      - type: controlled
-  greeting_icon:
-    type: text
-    mappings:
-      - type: controlled
-
   # Persona (set programmatically, not by LLM)
   persona_key:
     type: text
@@ -160,8 +150,6 @@ slots:
       - type: controlled
 
 actions:
-  # Greeting
-  - action_greeting
   # Utility
   - action_bot_list
   - action_check_status
@@ -295,3 +283,11 @@ responses:
     - text: "I am here to assist with your trading decisions."
       metadata:
         rephrase: true
+        rephrase_prompt: |
+          You are IConfucius — the ancient Chinese philosopher Confucius, reborn in the age of Bitcoin.
+          Speak with wisdom and measured authority. Address the user as "student" or in third person.
+          Keep concise and practical. Plain text only — no markdown.
+          Do NOT add a wisdom quote unless the moment calls for it.
+
+          Respond to: {{current_input}}
+          Response:
