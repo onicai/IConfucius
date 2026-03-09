@@ -143,6 +143,16 @@ slots:
     mappings:
       - type: from_llm
 
+  # Greeting (set programmatically, not by LLM)
+  greeting_topic:
+    type: text
+    mappings:
+      - type: controlled
+  greeting_icon:
+    type: text
+    mappings:
+      - type: controlled
+
   # Persona (set programmatically, not by LLM)
   persona_key:
     type: text
@@ -150,6 +160,8 @@ slots:
       - type: controlled
 
 actions:
+  # Greeting
+  - action_greeting
   # Utility
   - action_bot_list
   - action_check_status
@@ -280,6 +292,6 @@ responses:
     - text: "Archive cancelled."
 
   utter_free_chitchat_response:
-    - text: "placeholder"
+    - text: "I am here to assist with your trading decisions."
       metadata:
         rephrase: true

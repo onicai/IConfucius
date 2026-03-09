@@ -1,6 +1,11 @@
 action_endpoint:
   actions_module: "actions"
 
+nlg:
+  type: rephrase
+  llm:
+    model_group: command_generator
+
 model_groups:
   - id: command_generator
     models:

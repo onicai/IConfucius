@@ -1,5 +1,13 @@
 flows:
   # ---------------------------------------------------------------------------
+  # Greeting
+  # ---------------------------------------------------------------------------
+  greeting:
+    description: Generate a startup wisdom quote about a given topic
+    steps:
+      - action: action_greeting
+
+  # ---------------------------------------------------------------------------
   # Utility
   # ---------------------------------------------------------------------------
   bot_list:
@@ -31,16 +39,8 @@ flows:
   # Balance
   # ---------------------------------------------------------------------------
   wallet_balance:
-    description: Show wallet ckBTC balance and bot holdings from Odin.fun
+    description: Show wallet ckBTC balance and bot holdings from Odin.fun. Optionally set bot_name slot to check a specific bot, or ckbtc_minter to true when user asks about pending deposits.
     steps:
-      - collect: bot_name
-        description: Specific bot to check, e.g. 'bot-1'. Leave empty to check all bots.
-        ask_before_filling: false
-        rejections: []
-      - collect: ckbtc_minter
-        description: Whether to also show ckBTC minter status for pending deposits and withdrawals. Set true when user asks about deposits or pending BTC.
-        ask_before_filling: false
-        rejections: []
       - action: action_wallet_balance
 
   wallet_monitor:
@@ -78,16 +78,8 @@ flows:
       - action: action_token_price
 
   token_discover:
-    description: Discover tokens on Odin.fun sorted by volume (trending) or newest
+    description: "Discover tokens on Odin.fun. Optionally set sort_order slot to 'volume' (trending) or 'newest', and discover_limit for count (default 20)."
     steps:
-      - collect: sort_order
-        description: "Sort order: 'volume' for trending tokens, 'newest' for recently created"
-        ask_before_filling: false
-        rejections: []
-      - collect: discover_limit
-        description: Number of tokens to return (default 20, max 50)
-        ask_before_filling: false
-        rejections: []
       - action: action_token_discover
 
   account_lookup:
@@ -111,21 +103,13 @@ flows:
       - action: action_memory_read_learnings
 
   memory_read_trades:
-    description: Read recent trade history from memory
+    description: Read recent trade history from memory. Optionally set last_n slot for number of trades (default 5).
     steps:
-      - collect: last_n
-        description: Number of recent trades to return (default 5)
-        ask_before_filling: false
-        rejections: []
       - action: action_memory_read_trades
 
   memory_read_balances:
-    description: Read recent portfolio balance snapshots from memory
+    description: Read recent portfolio balance snapshots from memory. Optionally set last_n slot for number of snapshots (default 50).
     steps:
-      - collect: last_n
-        description: Number of recent snapshots to return (default 50)
-        ask_before_filling: false
-        rejections: []
       - action: action_memory_read_balances
 
   memory_update:
@@ -149,12 +133,8 @@ flows:
         action: action_memory_update
 
   memory_archive:
-    description: Archive old balance snapshots older than N days. Data is preserved, not deleted.
+    description: Archive old balance snapshots older than N days (default 90). Data is preserved, not deleted. Optionally set keep_days slot.
     steps:
-      - collect: keep_days
-        description: Keep snapshots from the last N days (default 90). Older entries are archived.
-        ask_before_filling: false
-        rejections: []
       - collect: confirm_memory_archive
         ask_before_filling: true
         utter: utter_confirm_memory_archive
@@ -312,16 +292,8 @@ flows:
   # Setup
   # ---------------------------------------------------------------------------
   setup_init:
-    description: Initialize an iconfucius project in the current directory. Creates config, .env, and .gitignore.
+    description: Initialize an iconfucius project. Optionally set setup_num_bots (default 3) and setup_force slots.
     steps:
-      - collect: setup_num_bots
-        description: Number of bots to create (1-1000, default 3)
-        ask_before_filling: false
-        rejections: []
-      - collect: setup_force
-        description: Overwrite existing config if present
-        ask_before_filling: false
-        rejections: []
       - collect: confirm_setup
         ask_before_filling: true
         utter: utter_confirm_init
@@ -336,12 +308,8 @@ flows:
         action: action_init
 
   setup_wallet:
-    description: Create a new Ed25519 wallet identity for iconfucius
+    description: Create a new Ed25519 wallet identity for iconfucius. Optionally set setup_force slot to overwrite.
     steps:
-      - collect: setup_force
-        description: Overwrite existing wallet (WARNING — changes your wallet address)
-        ask_before_filling: false
-        rejections: []
       - collect: confirm_setup
         ask_before_filling: true
         utter: utter_confirm_wallet_create
@@ -360,10 +328,6 @@ flows:
     steps:
       - collect: setup_num_bots
         description: Desired total number of bots (1-1000)
-      - collect: setup_force
-        description: Skip holdings check when removing bots
-        ask_before_filling: false
-        rejections: []
       - collect: confirm_setup
         ask_before_filling: true
         utter: utter_confirm_set_bots

@@ -117,19 +117,42 @@ def run_chat_rasa(persona_name: str, bot_name: str, verbose: bool = False) -> No
 
     sender_id = f"cli-{persona_name}"
 
-    # Startup greeting — use Anthropic API directly for the wisdom quote
-    from iconfucius.cli.chat import _generate_startup, _get_language_code
-    from iconfucius.ai import create_backend
+    # Startup greeting — route through Rasa agent (model configured in endpoints.yml)
+    from iconfucius.cli.chat import _get_language_code
+    import random
 
     lang = _get_language_code()
+    entry = random.choice(QUOTE_TOPICS)
+
+    # Set slots for the greeting action, then trigger the greeting flow
     try:
-        backend = create_backend(persona)
         with _Spinner(f"{persona.name} is thinking..."):
-            greeting, goodbye = _generate_startup(backend, persona, lang)
+            # Set controlled slots via /SetSlots command
+            slot_msg = (
+                f'/SetSlots(greeting_topic="{entry[lang]}",'
+                f' greeting_icon="{entry["icon"]}",'
+                f' persona_key="{persona_name}")'
+            )
+            loop.run_until_complete(
+                agent.handle_text(slot_msg, sender_id=sender_id)
+            )
+            # Trigger the greeting flow
+            responses = loop.run_until_complete(
+                _handle_message(agent, "generate startup greeting", sender_id)
+            )
+
+        greeting = ""
+        goodbye = "May your path be wise."
+        for r in responses:
+            if r.startswith("GREETING:"):
+                greeting = r[len("GREETING:"):]
+            elif r.startswith("GOODBYE:"):
+                goodbye = r[len("GOODBYE:"):]
+
+        if not greeting:
+            greeting = f"{entry['icon']} {persona.name} — {entry[lang]}"
     except Exception:
-        # Fall back to a static greeting if API is unavailable
-        import random
-        entry = random.choice(QUOTE_TOPICS)
+        # Fall back to a static greeting if Rasa agent fails
         greeting = f"{entry['icon']} {persona.name} — {entry[lang]}"
         goodbye = "May your path be wise."
 

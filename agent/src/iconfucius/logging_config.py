@@ -107,6 +107,7 @@ def _get_global_logger() -> logging.Logger:
             return logger
 
         logger.setLevel(logging.DEBUG)
+        logger.propagate = False
 
         conv_dir = _get_log_dir()
         log_path = conv_dir / f"{get_session_stamp()}-iconfucius.log"
