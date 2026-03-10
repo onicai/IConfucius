@@ -5,6 +5,7 @@ One file per session:
                              unchanged, for quick reading & cache review
 """
 
+import asyncio
 import json
 import os
 from datetime import datetime, timezone
@@ -111,6 +112,10 @@ class ConversationLogger:
         line = _JWT_PATTERN.sub("[JWT-REDACTED]", line)
         self._file_cached.write(line + "\n")
         self._file_cached.flush()
+
+    async def alog_interaction(self, **kwargs) -> None:
+        """Async wrapper — runs log_interaction in a thread to avoid blocking."""
+        await asyncio.to_thread(self.log_interaction, **kwargs)
 
     @staticmethod
     def _cleanup(conv_dir: Path) -> None:

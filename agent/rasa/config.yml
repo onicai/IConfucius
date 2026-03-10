@@ -6,8 +6,6 @@ pipeline:
   - name: CompactLLMCommandGenerator
     llm:
       model_group: command_generator
-    flow_retrieval:
-      active: false
 
 policies:
   - name: FlowPolicy

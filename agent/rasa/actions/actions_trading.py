@@ -30,10 +30,6 @@ class ActionResolveToken(Action):
             match = result.get("known_match")
             if match:
                 token_id = match["id"]
-                name = match.get("name", token_id)
-                dispatcher.utter_message(
-                    text=f"Resolved '{query}' to {name} ({token_id})"
-                )
                 return [SlotSet("token_id", token_id)]
 
             # Multiple results — show them and clear token_query for re-collection

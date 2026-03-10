@@ -4,10 +4,14 @@ action_endpoint:
 nlg:
   type: rephrase
   llm:
-    model_group: command_generator
+    model_group: response_rephraser
 
 model_groups:
   - id: command_generator
     models:
-      - provider: anthropic
-        model: claude-sonnet-4-20250514
+      - provider: ${RASA_LLM_PROVIDER}
+        model: ${RASA_LLM_MODEL}
+  - id: response_rephraser
+    models:
+      - provider: ${RASA_REPHRASER_PROVIDER}
+        model: ${RASA_REPHRASER_MODEL}

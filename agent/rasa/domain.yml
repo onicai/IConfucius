@@ -225,9 +225,9 @@ responses:
     - text: "How much? (sats, $USD, token count, or 'all')"
 
   utter_confirm_trade_buy:
-    - text: "Buy {token_id} for {trade_amount} per bot ({bot_target})? [Y/n]"
+    - text: "Buy {token_id} for {trade_amount} per bot ({bot_target})? (yes/no)"
   utter_confirm_trade_sell:
-    - text: "Sell {trade_amount} of {token_id} per bot ({bot_target})? [Y/n]"
+    - text: "Sell {trade_amount} of {token_id} per bot ({bot_target})? (yes/no)"
   utter_trade_cancelled:
     - text: "Trade cancelled."
 
@@ -245,39 +245,57 @@ responses:
     - text: "Overwrite existing configuration?"
 
   utter_confirm_token_transfer:
-    - text: "Transfer {transfer_amount} of {token_id} to {transfer_to_address} from {bot_target}? WARNING: Irreversible. [Y/n]"
+    - text: "Transfer {transfer_amount} of {token_id} to {transfer_to_address} from {bot_target}? WARNING: Irreversible. (yes/no)"
   utter_transfer_cancelled:
     - text: "Transfer cancelled."
   utter_confirm_wallet_send:
-    - text: "Send {send_amount} to {send_address}? [Y/n]"
+    - text: "Send {send_amount} to {send_address}? (yes/no)"
   utter_send_cancelled:
     - text: "Send cancelled."
   utter_confirm_init:
-    - text: "Initialize iconfucius project with {setup_num_bots} bot(s)? [Y/n]"
+    - text: "Initialize iconfucius project with {setup_num_bots} bot(s)? (yes/no)"
   utter_confirm_wallet_create:
-    - text: "Create new wallet identity? [Y/n]"
+    - text: "Create new wallet identity? (yes/no)"
   utter_confirm_set_bots:
-    - text: "Change bot count to {setup_num_bots}? [Y/n]"
+    - text: "Change bot count to {setup_num_bots}? (yes/no)"
   utter_setup_cancelled:
     - text: "Setup cancelled."
 
   utter_confirm_fund:
-    - text: "Deposit {fund_amount} sats to {bot_target}? [Y/n]"
+    - text: "Deposit {fund_amount} sats to {bot_target}? (yes/no)"
   utter_fund_cancelled:
     - text: "Deposit cancelled."
   utter_confirm_withdraw:
-    - text: "Withdraw {withdraw_amount} from {bot_target}? [Y/n]"
+    - text: "Withdraw {withdraw_amount} from {bot_target}? (yes/no)"
   utter_withdraw_cancelled:
     - text: "Withdrawal cancelled."
 
   utter_confirm_memory_update:
-    - text: "Update {memory_file} memory file? [Y/n]"
+    - text: "Update {memory_file} memory file? (yes/no)"
   utter_memory_update_cancelled:
     - text: "Memory update cancelled."
   utter_confirm_memory_archive:
-    - text: "Archive balance snapshots older than {keep_days} days? [Y/n]"
+    - text: "Archive balance snapshots older than {keep_days} days? (yes/no)"
   utter_memory_archive_cancelled:
     - text: "Archive cancelled."
+
+  utter_clarification_no_options_rasa:
+    - text: "I can help, but I need more information. Please tell me a bit more about what you would like to do."
+      metadata:
+        rephrase: true
+        rephrase_prompt: |
+          You are IConfucius — the ancient Chinese philosopher Confucius, reborn in the age of Bitcoin.
+          Speak with wisdom and measured authority. Address the user as "you".
+          Keep concise and practical. Plain text only — no markdown.
+          Do NOT add a wisdom quote unless the moment calls for it.
+          Start the response with a single appropriate emoji.
+
+          Conversation history:
+          {{history}}
+
+          The student's message was unclear. Ask for clarification in your voice.
+          Respond to: {{current_input}}
+          Response:
 
   utter_flow_follow_up:
     - text: "What would you like to do next?"

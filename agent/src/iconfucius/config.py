@@ -379,6 +379,18 @@ def get_ai_config() -> dict:
     return config.get("ai", {})
 
 
+def get_rasa_model_group(
+    group: str, default_provider: str, default_model: str,
+) -> tuple[str, str]:
+    """Return (provider, model) for a Rasa model group, or defaults."""
+    config = load_config()
+    mg = (config.get("ai", {}).get("rasa", {})
+          .get("endpoints", {}).get("model_groups", {}).get(group, {}))
+    provider = mg.get("provider", default_provider)
+    model = mg.get("model", default_model)
+    return provider, model
+
+
 def get_ai_timeout() -> int:
     """Return AI request timeout in seconds from config or default.
 
@@ -421,7 +433,7 @@ def create_default_config(num_bots: int = 3) -> str:
 
 [settings]
 # See https://github.com/onicai/IConfucius/blob/main/agent/README-security.md
-# It is recommended to install bls and set verify_certicifactes to `true`
+# It is recommended to install blst and set verify_certicifactes to `true`
 # for additional protection against man-in-the-middle attacks at the network level
 verify_certificates = false
 

@@ -123,11 +123,41 @@ def run_chat_rasa(
         print(f"Error: {e}")
         return
 
+    # Expose Rasa model group config as env vars for endpoints.yml
+    import os
+    from iconfucius.config import get_rasa_model_group
+
+    # Command generator (flow routing) — default anthropic / claude-opus-4-6
+    llm_provider, llm_model = get_rasa_model_group(
+        "command_generator", "anthropic", "claude-opus-4-6",
+    )
+    os.environ.setdefault("RASA_LLM_PROVIDER", llm_provider)
+    os.environ.setdefault("RASA_LLM_MODEL", llm_model)
+
+    # NLG rephraser (persona voice) — default anthropic / claude-opus-4-6
+    reph_provider, reph_model = get_rasa_model_group(
+        "response_rephraser", "anthropic", "claude-opus-4-6",
+    )
+    os.environ.setdefault("RASA_REPHRASER_PROVIDER", reph_provider)
+    os.environ.setdefault("RASA_REPHRASER_MODEL", reph_model)
+
+    # Set up conversation logger + litellm callback for LLM call logging
+    from iconfucius.conversation_log import ConversationLogger
+    from iconfucius.logging_config import get_session_stamp
+    from iconfucius.rasa_llm_logger import RasaLLMLogger
+
+    conv_logger = ConversationLogger(stamp=get_session_stamp())
+    rasa_logger = RasaLLMLogger(conv_logger)
+
+    import litellm
+    litellm.callbacks.append(rasa_logger)
+
     # Load Rasa agent
     try:
         rasa_dir = _find_rasa_dir()
     except FileNotFoundError as e:
         print(f"Error: {e}")
+        conv_logger.close()
         return
 
     loop = asyncio.new_event_loop()
@@ -138,10 +168,12 @@ def run_chat_rasa(
             agent = loop.run_until_complete(_load_rasa_agent(rasa_dir, debug=debug))
     except Exception as e:
         print(f"\nError loading Rasa agent: {e}")
+        conv_logger.close()
         return
 
     if not agent.is_ready():
         print("Error: Rasa agent failed to load. Run 'rasa train' first.")
+        conv_logger.close()
         return
 
     sender_id = f"cli-{persona_name}"
@@ -191,6 +223,7 @@ def run_chat_rasa(
             pass
 
     print(f"\033[2miconfucius v{__version__} · Rasa Pro CALM · exit to quit · Ctrl+C to interrupt\033[0m")
+    print(f"\033[2mLLM: {llm_provider}/{llm_model} · rephraser: {reph_provider}/{reph_model}\033[0m")
 
     # Check PyPI for newer version
     latest_version, _release_notes = _check_pypi_version()
@@ -250,4 +283,13 @@ def run_chat_rasa(
             print(f"\nError: {e}\n")
             continue
 
+    # Cancel any pending background tasks before closing the loop
+    if goodbye_task is not None and not goodbye_task.done():
+        goodbye_task.cancel()
+        try:
+            loop.run_until_complete(goodbye_task)
+        except (asyncio.CancelledError, Exception):
+            pass
+
     loop.close()
+    conv_logger.close()

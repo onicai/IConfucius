@@ -63,7 +63,7 @@ flows:
       - action: action_token_lookup
 
   token_price:
-    description: Get current price, price changes, market cap, volume, and holder count for a token
+    description: Get current price, price changes, market cap, volume, and holder count for a token. Use when the user mentions, asks about, or discusses a specific token.
     steps:
       - collect: query
         description: Token name, ticker, or ID to look up
@@ -187,7 +187,9 @@ flows:
   # Trading
   # ---------------------------------------------------------------------------
   trade_buy:
-    description: Buy tokens on Odin.fun using BTC from a bot's trading account. Minimum 500 sats.
+    description: >
+      Buy tokens on Odin.fun using BTC from a bot's trading account. Minimum 500 sats.
+      If the user recently discussed a specific token, use that token name as the token_query.
     steps:
       - collect: token_query
         description: Token name, ticker, or ID to buy (e.g. 'ICONFUCIUS', 'ODINDOG', '29m8')
@@ -210,7 +212,9 @@ flows:
         action: action_trade_buy
 
   trade_sell:
-    description: Sell tokens on Odin.fun. Minimum trade value 500 sats.
+    description: >
+      Sell tokens on Odin.fun. Minimum trade value 500 sats.
+      If the user recently discussed a specific token, use that token name as the token_query.
     steps:
       - collect: token_query
         description: Token name, ticker, or ID to sell (e.g. 'ICONFUCIUS', 'ODINDOG', '29m8')

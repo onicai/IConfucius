@@ -46,6 +46,7 @@ class Persona:
 
 _API_TYPE_TO_PROVIDER = {
     "claude": "Anthropic",
+    "openai": "OpenAI",
 }
 
 
