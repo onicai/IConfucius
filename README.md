@@ -155,6 +155,30 @@ In a second terminal:
 iconfucius --experimental   # enables /ai command to switch models at runtime
 ```
 
+## How to run with Rasa Pro backend (experimental)
+
+The Rasa Pro backend uses [CALM](https://rasa.com/docs/rasa-pro/) for
+deterministic conversational flow management instead of free-form tool calling.
+
+### 1. Install the Rasa extra
+
+```bash
+uv pip install "iconfucius[rasa]"
+```
+
+### 2. Get a Rasa Pro license
+
+Request a free developer license at:
+https://rasa.com/rasa-pro-developer-edition-license-key-request
+
+The onboarding wizard will prompt for the license key on first `--rasa` run.
+
+### 3. Chat
+
+```bash
+iconfucius chat --rasa
+```
+
 ## Project Layout
 
 ```
