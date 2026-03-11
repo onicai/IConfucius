@@ -21,7 +21,26 @@ which action runs next.
 
 ## Prerequisites
 
-- Python environment with Rasa Pro installed (`conda activate IConfucius`)
+### Conda environment
+
+Regular users install from PyPI:
+
+```bash
+pip install "iconfucius[rasa]"
+```
+
+For development, create a conda environment and install in editable mode:
+
+```bash
+conda create -n IConfucius python=3.11 -y
+conda activate IConfucius
+cd agent
+pip install -e ".[rasa]"
+```
+
+### API keys and licenses
+
+- Active conda environment (`conda activate IConfucius`)
 - API keys and licenses in `agent/rasa/.env` (auto-loaded by Rasa):
 
 ```
@@ -40,12 +59,12 @@ are missing and save them to `.env` automatically.
 ## Quick Start
 
 ```bash
+# Train the Rasa model (from agent/rasa/)
 cd agent/rasa
-
-# Train the model (requires OPENAI_API_KEY for flow retrieval embeddings)
 make rasa-train
 
-# Run the chat
+# Run the chat (from your iconfucius project folder, where iconfucius.toml lives)
+cd /path/to/my-project
 iconfucius chat --rasa --network testing
 ```
 
