@@ -425,8 +425,10 @@ class TestCollectBalances:
     @patch("iconfucius.cli.balance.Client")
     @patch("iconfucius.cli.balance.Identity")
     @patch("iconfucius.cli.balance.siwb_login")
+    @patch("iconfucius.cli.balance.wallet_has_siwb_funds", return_value=True)
     @patch("iconfucius.cli.balance.read_cached_principal", return_value=None)
     def test_falls_back_to_siwb_login(self, _mock_read_principal,
+                                       _mock_has_funds,
                                        mock_login,
                                        _MockId, _MockClient, _MockAgent,
                                        MockCanister, mock_cffi):
@@ -492,7 +494,7 @@ class TestCollectBalances:
     @patch("iconfucius.cli.balance.read_cached_principal", return_value="principal-abc")
     def test_decimals_zero_no_correction(self, _mock_read_principal, _MockId, _MockClient,
                                           _MockAgent, MockCanister, mock_cffi):
-        """When decimals=0 (or absent), balance is stored unchanged."""
+        """When decimals=0, balance is stored unchanged."""
         mock_odin = MagicMock()
         mock_odin.getBalance.return_value = [{"value": 0}]
         MockCanister.return_value = mock_odin
@@ -503,7 +505,7 @@ class TestCollectBalances:
             "data": [
                 {"type": "token", "ticker": "TEST", "id": "t1",
                  "balance": 50_000_000_000, "divisibility": 8,
-                 "price": 1000}
+                 "decimals": 0, "price": 1000}
             ]
         }
         mock_resp.text = '{"data": []}'
@@ -511,7 +513,7 @@ class TestCollectBalances:
 
         with patch("iconfucius.accounts.resolve_odin_account", return_value="principal-abc"):
             result = collect_balances("bot-1", verbose=False)
-        # No decimals field → no correction
+        # decimals=0 → no correction
         assert result.token_holdings[0]["balance"] == 50_000_000_000
 
     @patch("iconfucius.cli.balance.read_cached_principal", return_value="principal-abc")
@@ -541,8 +543,10 @@ class TestCollectBalances:
         assert "not yet initialized" in result.note
 
     @patch("iconfucius.cli.balance.siwb_login")
+    @patch("iconfucius.cli.balance.wallet_has_siwb_funds", return_value=True)
     @patch("iconfucius.cli.balance.read_cached_principal", return_value=None)
     def test_other_runtime_errors_propagate(self, _mock_read_principal,
+                                             _mock_has_funds,
                                              mock_login):
         """RuntimeErrors from siwb_login propagate."""
         mock_login.side_effect = RuntimeError("signBip322 failed: timeout")

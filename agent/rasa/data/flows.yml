@@ -1,0 +1,340 @@
+flows:
+  # ---------------------------------------------------------------------------
+  # Utility
+  # ---------------------------------------------------------------------------
+  bot_list:
+    description: List all configured bots and their principals
+    steps:
+      - action: action_bot_list
+
+  check_status:
+    description: Check project setup and AI service operational status
+    steps:
+      - action: action_check_status
+
+  check_update:
+    description: Check if a newer version of iconfucius is available
+    steps:
+      - action: action_check_update
+
+  security_status:
+    description: Check the security posture including blst and certificate verification
+    steps:
+      - action: action_security_status
+
+  install_blst:
+    description: Install the blst library for IC certificate verification
+    steps:
+      - action: action_install_blst
+
+  # ---------------------------------------------------------------------------
+  # Balance
+  # ---------------------------------------------------------------------------
+  wallet_balance:
+    description: Show wallet ckBTC balance and bot holdings from Odin.fun. Optionally set bot_name slot to check a specific bot, or ckbtc_minter to true when user asks about pending deposits.
+    steps:
+      - action: action_wallet_balance
+
+  wallet_monitor:
+    description: Check ckBTC minter for incoming BTC deposit status and outgoing withdrawal progress
+    steps:
+      - action: action_wallet_monitor
+
+  public_balance:
+    description: Check ckBTC balance and Odin.fun holdings for any IC principal
+    steps:
+      - collect: principal
+        description: The IC principal to check balances for
+      - action: action_public_balance
+
+  how_to_fund:
+    description: Show instructions for funding the wallet with BTC deposit address
+    steps:
+      - action: action_how_to_fund
+
+  # ---------------------------------------------------------------------------
+  # Market data
+  # ---------------------------------------------------------------------------
+  token_lookup:
+    description: Resolve a token name or ticker to its token ID. Use when user mentions a token by name like 'ICONFUCIUS' or 'ODINDOG'.
+    steps:
+      - collect: query
+        description: Token name, ticker, or ID to search for
+      - action: action_token_lookup
+
+  token_price:
+    description: Get current price, price changes, market cap, volume, and holder count for a token. Use when the user mentions, asks about, or discusses a specific token.
+    steps:
+      - collect: query
+        description: Token name, ticker, or ID to look up
+      - action: action_token_price
+
+  token_discover:
+    description: "Discover tokens on Odin.fun. Optionally set sort_order slot to 'volume' (trending) or 'newest', and discover_limit for count (default 20)."
+    steps:
+      - action: action_token_discover
+
+  account_lookup:
+    description: Look up an Odin.fun account by IC principal, BTC deposit address, or BTC wallet address
+    steps:
+      - collect: address
+        description: Address to look up — IC principal, BTC deposit address, or BTC wallet address
+      - action: action_account_lookup
+
+  # ---------------------------------------------------------------------------
+  # Memory
+  # ---------------------------------------------------------------------------
+  memory_read_strategy:
+    description: Read current trading strategy notes from memory
+    steps:
+      - action: action_memory_read_strategy
+
+  memory_read_learnings:
+    description: Read accumulated trading learnings and insights from memory
+    steps:
+      - action: action_memory_read_learnings
+
+  memory_read_trades:
+    description: Read recent trade history from memory. Optionally set last_n slot for number of trades (default 5).
+    steps:
+      - action: action_memory_read_trades
+
+  memory_read_balances:
+    description: Read recent portfolio balance snapshots from memory. Optionally set last_n slot for number of snapshots (default 50).
+    steps:
+      - action: action_memory_read_balances
+
+  memory_update:
+    description: Update trading strategy or learnings in memory. Content replaces the entire file.
+    steps:
+      - collect: memory_file
+        description: "Which memory file to update: 'strategy' or 'learnings'"
+      - collect: memory_content
+        description: The full updated content for the file
+      - collect: confirm_memory_update
+        ask_before_filling: true
+        utter: utter_confirm_memory_update
+      - noop: true
+        next:
+          - if: not slots.confirm_memory_update
+            then:
+              - action: utter_memory_update_cancelled
+                next: END
+          - else: action_memory_update
+      - id: action_memory_update
+        action: action_memory_update
+
+  memory_archive:
+    description: Archive old balance snapshots older than N days (default 90). Data is preserved, not deleted. Optionally set keep_days slot.
+    steps:
+      - collect: confirm_memory_archive
+        ask_before_filling: true
+        utter: utter_confirm_memory_archive
+      - noop: true
+        next:
+          - if: not slots.confirm_memory_archive
+            then:
+              - action: utter_memory_archive_cancelled
+                next: END
+          - else: action_memory_archive
+      - id: action_memory_archive
+        action: action_memory_archive
+
+  # ---------------------------------------------------------------------------
+  # Funding
+  # ---------------------------------------------------------------------------
+  fund_bot:
+    description: Deposit ckBTC from wallet into bot Odin.fun trading accounts. Minimum 5,000 sats per bot.
+    steps:
+      - collect: fund_amount
+        description: "Amount to deposit per bot: sats (e.g. '10000'), USD with $ prefix (e.g. '$5'), or 'all'"
+      - collect: bot_target
+        description: "Bot name (e.g. 'bot-1'), comma-separated list, or 'all'"
+      - collect: confirm_fund
+        ask_before_filling: true
+        utter: utter_confirm_fund
+      - noop: true
+        next:
+          - if: not slots.confirm_fund
+            then:
+              - action: utter_fund_cancelled
+                next: END
+          - else: do_fund
+      - id: do_fund
+        action: action_fund
+
+  withdraw:
+    description: Withdraw BTC from bot Odin.fun accounts back to the iconfucius wallet
+    steps:
+      - collect: withdraw_amount
+        description: "Amount to withdraw per bot: sats (e.g. '10000'), USD with $ prefix (e.g. '$5'), or 'all'"
+      - collect: bot_target
+        description: "Bot name (e.g. 'bot-1'), comma-separated list, or 'all'"
+      - collect: confirm_withdraw
+        ask_before_filling: true
+        utter: utter_confirm_withdraw
+      - noop: true
+        next:
+          - if: not slots.confirm_withdraw
+            then:
+              - action: utter_withdraw_cancelled
+                next: END
+          - else: do_withdraw
+      - id: do_withdraw
+        action: action_withdraw
+
+  # ---------------------------------------------------------------------------
+  # Trading
+  # ---------------------------------------------------------------------------
+  trade_buy:
+    description: >
+      Buy tokens on Odin.fun using BTC from a bot's trading account. Minimum 500 sats.
+      If the user recently discussed a specific token, use that token name as the token_query.
+    steps:
+      - collect: token_query
+        description: Token name, ticker, or ID to buy (e.g. 'ICONFUCIUS', 'ODINDOG', '29m8')
+      - action: action_resolve_token
+      - collect: trade_amount
+        description: "Amount to spend per bot: sats (e.g. '5000'), USD with $ prefix (e.g. '$5'), or 'all'"
+      - collect: bot_target
+        description: "Bot name (e.g. 'bot-1'), comma-separated list, or 'all'"
+      - action: action_format_trade_confirm
+      - collect: confirm_trade
+        ask_before_filling: true
+        utter: utter_confirm_trade_buy
+      - noop: true
+        next:
+          - if: not slots.confirm_trade
+            then:
+              - action: utter_trade_cancelled
+                next: END
+          - else: do_trade_buy
+      - id: do_trade_buy
+        action: action_trade_buy
+
+  trade_sell:
+    description: >
+      Sell tokens on Odin.fun. Minimum trade value 500 sats.
+      If the user recently discussed a specific token, use that token name as the token_query.
+    steps:
+      - collect: token_query
+        description: Token name, ticker, or ID to sell (e.g. 'ICONFUCIUS', 'ODINDOG', '29m8')
+      - action: action_resolve_token
+      - collect: trade_amount
+        description: "Amount of tokens to sell per bot: token count (e.g. '1000'), USD with $ prefix (e.g. '$5'), or 'all'"
+      - collect: bot_target
+        description: "Bot name (e.g. 'bot-1'), comma-separated list, or 'all'"
+      - action: action_format_trade_confirm
+      - collect: confirm_trade
+        ask_before_filling: true
+        utter: utter_confirm_trade_sell
+      - noop: true
+        next:
+          - if: not slots.confirm_trade
+            then:
+              - action: utter_trade_cancelled
+                next: END
+          - else: do_trade_sell
+      - id: do_trade_sell
+        action: action_trade_sell
+
+  # ---------------------------------------------------------------------------
+  # Transfers
+  # ---------------------------------------------------------------------------
+  token_transfer:
+    description: Transfer tokens from a bot's Odin.fun account to another Odin.fun account. Irreversible.
+    steps:
+      - collect: token_query
+        description: Token name, ticker, or ID to transfer
+      - action: action_resolve_token
+      - collect: transfer_amount
+        description: "Number of tokens to transfer (e.g. '1000') or 'all'"
+      - collect: transfer_to_address
+        description: Destination address — IC principal, BTC deposit address, or BTC wallet address
+      - collect: bot_target
+        description: "Source bot (e.g. 'bot-1'), comma-separated list, or 'all'"
+      - collect: confirm_transfer
+        ask_before_filling: true
+        utter: utter_confirm_token_transfer
+      - noop: true
+        next:
+          - if: not slots.confirm_transfer
+            then:
+              - action: utter_transfer_cancelled
+                next: END
+          - else: do_token_transfer
+      - id: do_token_transfer
+        action: action_token_transfer
+
+  wallet_send:
+    description: Send ckBTC from wallet to an IC principal or BTC to a Bitcoin address (bc1...). Minimum 50,000 sats for BTC addresses.
+    steps:
+      - collect: send_amount
+        description: "Amount to send: sats (e.g. '50000'), USD with $ prefix (e.g. '$35'), or 'all'"
+      - collect: send_address
+        description: "Destination: IC principal (ckBTC) or Bitcoin address (bc1... for BTC)"
+      - collect: confirm_send
+        ask_before_filling: true
+        utter: utter_confirm_wallet_send
+      - noop: true
+        next:
+          - if: not slots.confirm_send
+            then:
+              - action: utter_send_cancelled
+                next: END
+          - else: do_wallet_send
+      - id: do_wallet_send
+        action: action_wallet_send
+
+  # ---------------------------------------------------------------------------
+  # Setup
+  # ---------------------------------------------------------------------------
+  setup_init:
+    description: Initialize an iconfucius project. Optionally set setup_num_bots (default 3) and setup_force slots.
+    steps:
+      - collect: confirm_setup
+        ask_before_filling: true
+        utter: utter_confirm_init
+      - noop: true
+        next:
+          - if: not slots.confirm_setup
+            then:
+              - action: utter_setup_cancelled
+                next: END
+          - else: do_init
+      - id: do_init
+        action: action_init
+
+  setup_wallet:
+    description: Create a new Ed25519 wallet identity for iconfucius. Optionally set setup_force slot to overwrite.
+    steps:
+      - collect: confirm_setup
+        ask_before_filling: true
+        utter: utter_confirm_wallet_create
+      - noop: true
+        next:
+          - if: not slots.confirm_setup
+            then:
+              - action: utter_setup_cancelled
+                next: END
+          - else: do_wallet_create
+      - id: do_wallet_create
+        action: action_wallet_create
+
+  setup_bots:
+    description: Change the number of bots in the project configuration
+    steps:
+      - collect: setup_num_bots
+        description: Desired total number of bots (1-1000)
+      - collect: confirm_setup
+        ask_before_filling: true
+        utter: utter_confirm_set_bots
+      - noop: true
+        next:
+          - if: not slots.confirm_setup
+            then:
+              - action: utter_setup_cancelled
+                next: END
+          - else: do_set_bots
+      - id: do_set_bots
+        action: action_set_bot_count

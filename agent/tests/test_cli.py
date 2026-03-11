@@ -26,23 +26,19 @@ TR = "iconfucius.transfers"
 # ---------------------------------------------------------------------------
 
 class TestHelpOutput:
-    @patch("iconfucius.cli.chat.run_chat")
-    @patch("iconfucius.skills.executor.execute_tool", return_value={
-        "status": "ok", "config_exists": True, "wallet_exists": True,
-        "env_exists": True, "has_api_key": True, "ready": True,
-    })
-    def test_no_args_starts_chat(self, mock_exec, mock_run_chat):
-        """Verify invoking CLI with no arguments launches the chat."""
+    @patch("iconfucius.client.server.run_server")
+    def test_no_args_launches_ui(self, mock_run_server):
+        """Verify invoking CLI with no arguments launches the web UI."""
         result = runner.invoke(app, [])
         assert result.exit_code == 0
-        mock_run_chat.assert_called_once()
+        mock_run_server.assert_called_once_with(port=55129, open_browser=True)
 
     def test_help_flag(self):
         """Verify --help prints help text with section headers."""
         result = runner.invoke(app, ["--help"])
         assert result.exit_code == 0
-        assert "Setup:" in result.output
-        assert "How to use your bots:" in result.output
+        assert "Three modes:" in result.output
+        assert "Direct commands:" in result.output
 
     def test_version_flag(self):
         """Verify --version prints the version matching pyproject.toml."""
@@ -59,12 +55,6 @@ class TestHelpOutput:
         assert "iconfucius" in result.output
         assert version in result.output
 
-    def test_version_short_flag(self):
-        """Verify -V short flag prints the version string."""
-        result = runner.invoke(app, ["-V"])
-        assert result.exit_code == 0
-        assert "iconfucius" in result.output
-
     def test_help_lists_all_commands(self):
         """Verify --help output lists every registered CLI command."""
         result = runner.invoke(app, ["--help"])
@@ -76,7 +66,7 @@ class TestHelpOutput:
         assert "trade" in result.output
         assert "wallet" in result.output
         assert "chat" in result.output
-        assert "persona" in result.output
+        assert "persona" not in result.output
 
     def test_no_deposit_command(self):
         """Verify the deprecated deposit command is not listed in help."""
@@ -239,18 +229,17 @@ class TestInitCommand:
         result = runner.invoke(app, ["init", "--force"])
         assert result.exit_code == 0
         content = (tmp_path / "iconfucius.toml").read_text()
-        assert "[bots.bot-1]" in content
+        assert "iconfucius configuration" in content
 
-    def test_creates_three_default_bots(self, tmp_path, monkeypatch):
-        """Verify init creates three bots by default."""
+    def test_creates_zero_bots_by_default(self, tmp_path, monkeypatch):
+        """Verify init creates zero bots by default (bots added after funding)."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         result = runner.invoke(app, ["init"])
         assert result.exit_code == 0
         content = (tmp_path / "iconfucius.toml").read_text()
-        assert "[bots.bot-1]" in content
-        assert "[bots.bot-2]" in content
-        assert "[bots.bot-3]" in content
+        assert "[bots.bot-1]" not in content
+        assert "no bots" in result.output
 
     def test_bots_flag_one(self, tmp_path, monkeypatch):
         """Verify bots flag one."""
@@ -275,16 +264,6 @@ class TestInitCommand:
         assert "[bots.bot-6]" not in content
         assert "bot-5" in result.output
 
-    def test_bots_short_flag(self, tmp_path, monkeypatch):
-        """Verify bots short flag."""
-        monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
-        result = runner.invoke(app, ["init", "-n", "2"])
-        assert result.exit_code == 0
-        content = (tmp_path / "iconfucius.toml").read_text()
-        assert "[bots.bot-1]" in content
-        assert "[bots.bot-2]" in content
-        assert "[bots.bot-3]" not in content
 
 
 # ---------------------------------------------------------------------------
@@ -984,6 +963,54 @@ class TestOptionPlacement:
 
 
 # ---------------------------------------------------------------------------
+# --debug flag
+# ---------------------------------------------------------------------------
+
+class TestDebugFlag:
+    """Verify --debug flag is accepted by all subcommands."""
+
+    def test_debug_before_config(self, odin_project):
+        """Verify --debug before config sets state.debug."""
+        result = runner.invoke(app, ["--debug", "config"])
+        assert result.exit_code == 0
+        assert state.debug is True
+        state.debug = False
+
+    def test_debug_after_config(self, odin_project):
+        """Verify --debug after config sets state.debug."""
+        result = runner.invoke(app, ["config", "--debug"])
+        assert result.exit_code == 0
+        assert state.debug is True
+        state.debug = False
+
+    def test_debug_default_is_false(self, odin_project):
+        """Verify --debug defaults to False."""
+        result = runner.invoke(app, ["config"])
+        assert result.exit_code == 0
+        assert getattr(state, "debug", False) is False
+
+    @patch("iconfucius.cli.balance.run_all_balances")
+    def test_debug_with_wallet_balance(self, mock_run, odin_project):
+        """Verify --debug accepted by wallet balance."""
+        result = runner.invoke(app, [
+            "wallet", "balance", "--bot", "bot-1", "--debug",
+        ])
+        assert result.exit_code == 0
+
+    @patch("iconfucius.cli.balance.run_all_balances")
+    def test_debug_with_instructions(self, mock_run, odin_project):
+        """Verify --debug accepted by instructions."""
+        result = runner.invoke(app, ["instructions", "--bot", "bot-1", "--debug"])
+        assert result.exit_code == 0
+
+    def test_debug_with_init(self, tmp_path, monkeypatch):
+        """Verify --debug accepted by init."""
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(app, ["init", "--debug"])
+        assert result.exit_code == 0
+
+
+# ---------------------------------------------------------------------------
 # Onboarding wizard (_start_chat)
 # ---------------------------------------------------------------------------
 
@@ -991,6 +1018,7 @@ class TestStartChatWizard:
     """Tests for the interactive setup wizard in _start_chat().
 
     Wizard order: init → API key → wallet create → show address → chat.
+    Bare invocation now launches the web UI; the wizard runs via 'chat' subcommand.
     """
 
     def _ready_status(self):
@@ -1046,7 +1074,7 @@ class TestStartChatWizard:
     def test_decline_init_exits(self, mock_input, mock_exec, mock_chat):
         """Verify decline init exits."""
         mock_exec.return_value = self._no_config_status()
-        result = runner.invoke(app, [])
+        result = runner.invoke(app, ["chat"])
         assert result.exit_code == 0
         assert "iconfucius init" in result.output
         mock_chat.assert_not_called()
@@ -1057,7 +1085,7 @@ class TestStartChatWizard:
     def test_ctrl_c_during_init_prompt(self, mock_input, mock_exec, mock_chat):
         """Verify ctrl c during init prompt."""
         mock_exec.return_value = self._no_config_status()
-        result = runner.invoke(app, [])
+        result = runner.invoke(app, ["chat"])
         mock_chat.assert_not_called()
 
     # --- Bot count prompt ---
@@ -1072,14 +1100,14 @@ class TestStartChatWizard:
         def track_exec(name, args):
             """Track execute_tool calls for assertion."""
             calls.append((name, args))
-            if name == "setup_status" and not _calls_with(calls, "init"):
+            if name == "setup_and_operational_status" and not _calls_with(calls, "init"):
                 return self._no_config_status()
             if name == "init":
                 return {"status": "ok", "display": "Created iconfucius.toml"}
             return self._ready_status()
 
         mock_exec.side_effect = track_exec
-        result = runner.invoke(app, [])
+        result = runner.invoke(app, ["chat"])
         init_calls = [(n, a) for n, a in calls if n == "init"]
         assert len(init_calls) == 1
         assert init_calls[0][1] == {"num_bots": 5}
@@ -1094,14 +1122,14 @@ class TestStartChatWizard:
         def track_exec(name, args):
             """Track execute_tool calls for assertion."""
             calls.append((name, args))
-            if name == "setup_status" and not _calls_with(calls, "init"):
+            if name == "setup_and_operational_status" and not _calls_with(calls, "init"):
                 return self._no_config_status()
             if name == "init":
                 return {"status": "ok", "display": "Created iconfucius.toml"}
             return self._ready_status()
 
         mock_exec.side_effect = track_exec
-        result = runner.invoke(app, [])
+        result = runner.invoke(app, ["chat"])
         init_calls = [(n, a) for n, a in calls if n == "init"]
         assert init_calls[0][1] == {"num_bots": 3}
 
@@ -1115,14 +1143,14 @@ class TestStartChatWizard:
         def track_exec(name, args):
             """Track execute_tool calls for assertion."""
             calls.append((name, args))
-            if name == "setup_status" and not _calls_with(calls, "init"):
+            if name == "setup_and_operational_status" and not _calls_with(calls, "init"):
                 return self._no_config_status()
             if name == "init":
                 return {"status": "ok", "display": "Created iconfucius.toml"}
             return self._ready_status()
 
         mock_exec.side_effect = track_exec
-        result = runner.invoke(app, [])
+        result = runner.invoke(app, ["chat"])
         assert "Invalid number" in result.output
         init_calls = [(n, a) for n, a in calls if n == "init"]
         assert init_calls[0][1] == {"num_bots": 3}
@@ -1133,7 +1161,7 @@ class TestStartChatWizard:
     def test_ctrl_c_during_bot_count(self, mock_input, mock_exec, mock_chat):
         """Verify ctrl c during bot count."""
         mock_exec.return_value = self._no_config_status()
-        result = runner.invoke(app, [])
+        result = runner.invoke(app, ["chat"])
         mock_chat.assert_not_called()
 
     # --- Init output ---
@@ -1148,14 +1176,14 @@ class TestStartChatWizard:
         def track_exec(name, args):
             """Track execute_tool calls for assertion."""
             calls.append((name, args))
-            if name == "setup_status" and not _calls_with(calls, "init"):
+            if name == "setup_and_operational_status" and not _calls_with(calls, "init"):
                 return self._no_config_status()
             if name == "init":
                 return {"status": "ok", "display": "lots of CLI output"}
             return self._ready_status()
 
         mock_exec.side_effect = track_exec
-        result = runner.invoke(app, [])
+        result = runner.invoke(app, ["chat"])
         assert "Created project with 3 bot(s): bot-1, bot-2, bot-3" in result.output
         # Raw CLI output should NOT appear
         assert "lots of CLI output" not in result.output
@@ -1174,7 +1202,7 @@ class TestStartChatWizard:
         env_path = tmp_path / ".env"
         env_path.write_text("ANTHROPIC_API_KEY=your-api-key-here\n")
 
-        result = runner.invoke(app, [])
+        result = runner.invoke(app, ["chat"])
         content = env_path.read_text()
         assert "sk-ant-test-key-123" in content
         assert "your-api-key-here" not in content
@@ -1192,7 +1220,7 @@ class TestStartChatWizard:
         env_path = tmp_path / ".env"
         assert not env_path.exists()
 
-        result = runner.invoke(app, [])
+        result = runner.invoke(app, ["chat"])
         assert env_path.exists()
         assert env_path.read_text() == "ANTHROPIC_API_KEY=sk-ant-my-key\n"
 
@@ -1208,7 +1236,7 @@ class TestStartChatWizard:
         env_path = tmp_path / ".env"
         env_path.write_text("OTHER_VAR=hello\nANTHROPIC_API_KEY=old-key\n")
 
-        result = runner.invoke(app, [])
+        result = runner.invoke(app, ["chat"])
         content = env_path.read_text()
         assert "ANTHROPIC_API_KEY=sk-ant-new-key" in content
         assert "OTHER_VAR=hello" in content
@@ -1226,7 +1254,7 @@ class TestStartChatWizard:
         env_path = tmp_path / ".env"
         env_path.write_text("OTHER_VAR=hello\n")
 
-        result = runner.invoke(app, [])
+        result = runner.invoke(app, ["chat"])
         content = env_path.read_text()
         assert "OTHER_VAR=hello" in content
         assert "ANTHROPIC_API_KEY=sk-ant-appended" in content
@@ -1237,7 +1265,7 @@ class TestStartChatWizard:
     def test_empty_api_key_exits(self, mock_input, mock_exec, mock_chat):
         """Verify empty api key exits."""
         mock_exec.return_value = self._no_api_key_status()
-        result = runner.invoke(app, [])
+        result = runner.invoke(app, ["chat"])
         assert "No key entered" in result.output
         mock_chat.assert_not_called()
 
@@ -1247,7 +1275,7 @@ class TestStartChatWizard:
     def test_ctrl_c_during_api_key_prompt(self, mock_input, mock_exec, mock_chat):
         """Verify ctrl c during api key prompt."""
         mock_exec.return_value = self._no_api_key_status()
-        result = runner.invoke(app, [])
+        result = runner.invoke(app, ["chat"])
         mock_chat.assert_not_called()
 
     @patch("iconfucius.cli.chat.run_chat")
@@ -1260,7 +1288,7 @@ class TestStartChatWizard:
         mock_exec.return_value = self._no_api_key_status()
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
 
-        result = runner.invoke(app, [])
+        result = runner.invoke(app, ["chat"])
         assert os.environ.get("ANTHROPIC_API_KEY") == "sk-ant-key"
 
     # --- Wallet create prompts (asked AFTER API key) ---
@@ -1271,7 +1299,7 @@ class TestStartChatWizard:
     def test_decline_wallet_create_exits(self, mock_input, mock_exec, mock_chat):
         """Verify decline wallet create exits."""
         mock_exec.return_value = self._no_wallet_status()
-        result = runner.invoke(app, [])
+        result = runner.invoke(app, ["chat"])
         assert "iconfucius wallet create" in result.output
         mock_chat.assert_not_called()
 
@@ -1281,7 +1309,7 @@ class TestStartChatWizard:
     def test_ctrl_c_during_wallet_prompt(self, mock_input, mock_exec, mock_chat):
         """Verify ctrl c during wallet prompt."""
         mock_exec.return_value = self._no_wallet_status()
-        result = runner.invoke(app, [])
+        result = runner.invoke(app, ["chat"])
         mock_chat.assert_not_called()
 
     @patch("iconfucius.cli.chat.run_chat")
@@ -1294,14 +1322,14 @@ class TestStartChatWizard:
         def track_exec(name, args):
             """Track execute_tool calls for assertion."""
             calls.append((name, args))
-            if name == "setup_status" and not _calls_with(calls, "wallet_create"):
+            if name == "setup_and_operational_status" and not _calls_with(calls, "wallet_create"):
                 return self._no_wallet_status()
             if name == "wallet_create":
                 return {"status": "ok", "display": "Wallet created"}
             return self._ready_status()
 
         mock_exec.side_effect = track_exec
-        result = runner.invoke(app, [])
+        result = runner.invoke(app, ["chat"])
         assert "Wallet created." in result.output
         # Funding instructions are NOT shown — the AI handles it via next_step
         assert "Option 1" not in result.output
@@ -1320,7 +1348,7 @@ class TestStartChatWizard:
 
         def track_exec(name, args):
             """Track execute_tool calls for assertion."""
-            if name == "setup_status":
+            if name == "setup_and_operational_status":
                 if step["n"] == 0:
                     return self._no_config_status()
                 if step["n"] == 1:
@@ -1337,7 +1365,7 @@ class TestStartChatWizard:
             return {"status": "ok"}
 
         mock_exec.side_effect = track_exec
-        result = runner.invoke(app, [])
+        result = runner.invoke(app, ["chat"])
         # Verify wizard reached chat
         mock_chat.assert_called_once()
         # Verify all prompts were consumed
@@ -1357,7 +1385,7 @@ class TestStartChatWizard:
         def track_exec(name, args):
             """Track execute_tool calls for assertion."""
             calls.append(name)
-            if name == "setup_status" and "wallet_create" not in calls:
+            if name == "setup_and_operational_status" and "wallet_create" not in calls:
                 # Config exists, but no API key and no wallet
                 return {
                     "status": "ok", "config_exists": True, "wallet_exists": False,
@@ -1370,7 +1398,7 @@ class TestStartChatWizard:
             return self._ready_status()
 
         mock_exec.side_effect = track_exec
-        result = runner.invoke(app, [])
+        result = runner.invoke(app, ["chat"])
         # API key prompt comes first (consumed "sk-ant-key"),
         # then wallet prompt (consumed "y")
         assert "Saved API key" in result.output

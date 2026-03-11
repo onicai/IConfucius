@@ -73,7 +73,7 @@ class TestLoadConfig:
         cfg._cached_config = None
         cfg._cached_config_path = None
         config = load_config(reload=True)
-        assert "bot-1" in config["bots"]
+        assert config["bots"] == {}
 
     def test_caching(self, odin_project):
         """Verify caching."""
@@ -180,17 +180,15 @@ class TestCreateDefaultConfig:
             assert f"[bots.bot-{i}]" in content
         assert "[bots.bot-11]" not in content
 
-    def test_zero_clamped_to_one(self):
-        """Verify zero clamped to one."""
+    def test_zero_creates_no_bots(self):
+        """Verify zero creates no bot sections."""
         content = create_default_config(num_bots=0)
-        assert "[bots.bot-1]" in content
-        assert "[bots.bot-2]" not in content
+        assert "[bots.bot-1]" not in content
 
-    def test_negative_clamped_to_one(self):
-        """Verify negative clamped to one."""
+    def test_negative_clamped_to_zero(self):
+        """Verify negative clamped to zero."""
         content = create_default_config(num_bots=-5)
-        assert "[bots.bot-1]" in content
-        assert "[bots.bot-2]" not in content
+        assert "[bots.bot-1]" not in content
 
     def test_over_thousand_clamped(self):
         """Verify over thousand clamped."""
@@ -202,9 +200,7 @@ class TestCreateDefaultConfig:
         """Verify header always present."""
         content = create_default_config(num_bots=1)
         assert "[settings]" in content
-        assert "cache_sessions = true" in content
-        assert 'default_persona = "iconfucius"' in content
-        assert "# [ai]" in content
+        assert "verify_certificates" in content
 
 
 class TestAddBotsToConfig:
@@ -364,9 +360,9 @@ class TestGetCacheSessions:
         assert get_cache_sessions() is True
 
     def test_included_in_default_config(self):
-        """Default config template includes cache_sessions = true."""
+        """Default config template includes [settings] section."""
         content = create_default_config()
-        assert "cache_sessions = true" in content
+        assert "[settings]" in content
 
 
 class TestGetAiTimeout:

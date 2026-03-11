@@ -38,7 +38,11 @@ runner = CliRunner()
 
 class TestChatCommand:
     @patch("iconfucius.cli.chat.run_chat")
-    def test_explicit_chat_command(self, mock_run_chat):
+    @patch("iconfucius.skills.executor.execute_tool", return_value={
+        "status": "ok", "config_exists": True, "wallet_exists": True,
+        "env_exists": True, "has_api_key": True, "ready": True,
+    })
+    def test_explicit_chat_command(self, mock_execute, mock_run_chat):
         """Verify explicit chat command."""
         result = runner.invoke(app, ["chat"])
         assert result.exit_code == 0
@@ -47,64 +51,29 @@ class TestChatCommand:
         assert args.kwargs["persona_name"] == "iconfucius"
 
     @patch("iconfucius.cli.chat.run_chat")
-    def test_chat_with_persona_flag(self, mock_run_chat):
-        """Verify chat with persona flag."""
-        result = runner.invoke(app, ["chat", "--persona", "iconfucius"])
-        assert result.exit_code == 0
-        args = mock_run_chat.call_args
-        assert args.kwargs["persona_name"] == "iconfucius"
-
-    @patch("iconfucius.cli.chat.run_chat")
-    def test_chat_with_bot_flag(self, mock_run_chat):
+    @patch("iconfucius.skills.executor.execute_tool", return_value={
+        "status": "ok", "config_exists": True, "wallet_exists": True,
+        "env_exists": True, "has_api_key": True, "ready": True,
+    })
+    def test_chat_with_bot_flag(self, mock_execute, mock_run_chat):
         """Verify chat with bot flag."""
         result = runner.invoke(app, ["chat", "--bot", "bot-2"])
         assert result.exit_code == 0
         args = mock_run_chat.call_args
         assert args.kwargs["bot_name"] == "bot-2"
 
-    @patch("iconfucius.cli.chat.run_chat")
-    @patch("iconfucius.skills.executor.execute_tool", return_value={
-        "status": "ok", "config_exists": True, "wallet_exists": True,
-        "env_exists": True, "has_api_key": True, "ready": True,
-    })
-    def test_bare_invocation_starts_chat(self, mock_exec, mock_run_chat):
-        """Verify bare invocation starts chat."""
-        result = runner.invoke(app, [])
-        assert result.exit_code == 0
-        mock_run_chat.assert_called_once()
-
-    @patch("iconfucius.cli.chat.run_chat")
-    @patch("iconfucius.skills.executor.execute_tool", return_value={
-        "status": "ok", "config_exists": True, "wallet_exists": True,
-        "env_exists": True, "has_api_key": True, "ready": True,
-    })
-    def test_bare_with_persona_option(self, mock_exec, mock_run_chat):
-        """Verify bare with persona option."""
-        result = runner.invoke(app, ["--persona", "iconfucius"])
-        assert result.exit_code == 0
-        args = mock_run_chat.call_args
-        assert args.kwargs["persona_name"] == "iconfucius"
 
 
-class TestPersonaCommands:
-    def test_persona_list(self):
-        """Verify persona list."""
+class TestPersonaCommandsRemoved:
+    def test_persona_subcommand_removed(self):
+        """Verify persona subcommand is no longer available."""
         result = runner.invoke(app, ["persona", "list"])
-        assert result.exit_code == 0
-        assert "iconfucius" in result.output
+        assert result.exit_code != 0
 
-    def test_persona_show(self):
-        """Verify persona show."""
-        result = runner.invoke(app, ["persona", "show", "iconfucius"])
-        assert result.exit_code == 0
-        assert "IConfucius" in result.output
-        assert "claude" in result.output  # ai_api_type
-
-    def test_persona_show_not_found(self):
-        """Verify persona show not found."""
-        result = runner.invoke(app, ["persona", "show", "nonexistent"])
-        assert result.exit_code == 1
-        assert "not found" in result.output.lower()
+    def test_persona_flag_removed_from_chat(self):
+        """Verify --persona flag is no longer accepted by chat."""
+        result = runner.invoke(app, ["chat", "--persona", "iconfucius"])
+        assert result.exit_code != 0
 
 
 # ---------------------------------------------------------------------------
@@ -118,6 +87,7 @@ def _make_persona(**overrides) -> Persona:
         ai_api_type="claude",
         ai_model=DEFAULT_MODEL,
         ai_base_url="",
+        ai_provider="Anthropic",
         system_prompt="You are a test bot.",
         greeting_prompt=(
             "Reply with exactly three lines (separate each with a blank line):\n"
@@ -198,13 +168,25 @@ class TestLanguageDetection:
         assert _get_language_code() == "en"
 
 
+class _FakeAnthropicError(Exception):
+    """Exception with __module__ starting with 'anthropic' for testing."""
+    __module__ = "anthropic.error"
+
+
 class TestFormatApiError:
     def test_credit_balance_error(self):
-        """Verify credit balance error."""
-        e = Exception("Your credit balance is too low")
+        """Verify credit balance error with Anthropic exception."""
+        e = _FakeAnthropicError("Your credit balance is too low")
         msg = _format_api_error(e)
         assert "credit" in msg.lower()
         assert "console.anthropic.com" in msg
+
+    def test_credit_balance_generic(self):
+        """Verify credit balance error with generic exception."""
+        e = Exception("Your credit balance is too low")
+        msg = _format_api_error(e)
+        assert "credit" in msg.lower()
+        assert "check your account billing" in msg.lower()
 
     def test_auth_error(self):
         """Verify auth error."""
@@ -214,15 +196,23 @@ class TestFormatApiError:
 
     def test_rate_limit_error(self):
         """Verify rate limit error."""
-        e = Exception("rate limit exceeded")
+        e = _FakeAnthropicError("rate limit exceeded")
         msg = _format_api_error(e)
-        assert "Rate limited" in msg
+        assert "rate limited" in msg.lower()
 
     def test_overloaded_error(self):
         """Verify overloaded error."""
         e = Exception("API is overloaded")
         msg = _format_api_error(e)
         assert "overloaded" in msg.lower()
+
+    def test_timeout_includes_prompt(self):
+        """Verify timeout error triggers CLI-specific timeout prompt."""
+        e = Exception("Request timed out")
+        with patch("iconfucius.cli.chat._prompt_increase_timeout", return_value="Timeout updated."):
+            msg = _format_api_error(e)
+        assert "timed out" in msg.lower()
+        assert "Timeout updated." in msg
 
     def test_generic_error_passthrough(self):
         """Verify generic error passthrough."""
@@ -763,7 +753,7 @@ class TestRunToolLoop:
         tool_block = MagicMock()
         tool_block.type = "tool_use"
         tool_block.id = "id_1"
-        tool_block.name = "setup_status"
+        tool_block.name = "setup_and_operational_status"
         tool_block.input = {}
         resp1 = MagicMock()
         resp1.content = [tool_block]
@@ -936,7 +926,7 @@ class TestRunToolLoop:
         tool_block = MagicMock()
         tool_block.type = "tool_use"
         tool_block.id = "id_loop"
-        tool_block.name = "setup_status"
+        tool_block.name = "setup_and_operational_status"
         tool_block.input = {}
         response = MagicMock()
         response.content = [tool_block]
@@ -1003,7 +993,7 @@ class TestRunToolLoop:
         tool_block = MagicMock()
         tool_block.type = "tool_use"
         tool_block.id = "id_1"
-        tool_block.name = "setup_status"
+        tool_block.name = "setup_and_operational_status"
         tool_block.input = {}
         resp1 = MagicMock()
         resp1.content = [tool_block]
@@ -1019,7 +1009,7 @@ class TestRunToolLoop:
         _run_tool_loop(backend, messages, "system", [], "TestBot",
                        persona_key="iconfucius")
 
-        mock_exec.assert_called_once_with("setup_status", {},
+        mock_exec.assert_called_once_with("setup_and_operational_status", {},
                                           persona_name="iconfucius")
 
     @patch("iconfucius.cli.chat.execute_tool", return_value={"status": "ok"})
@@ -1184,7 +1174,7 @@ class TestChatHintsPlacement:
 
         def _mock_exec(name, _args=None, **_kwargs):
             """Dispatch execute_tool by tool name."""
-            if name == "setup_status":
+            if name == "setup_and_operational_status":
                 return {
                     "status": "ok", "config_exists": True, "wallet_exists": True,
                     "env_exists": True, "has_api_key": True, "ready": True,
@@ -1210,120 +1200,6 @@ class TestChatHintsPlacement:
         ai_pos = captured.index("AI:")
         wallet_pos = captured.index("Wallet: 50,000 sats")
         assert ai_pos < wallet_pos
-
-
-# ---------------------------------------------------------------------------
-# Experimental warning at startup
-# ---------------------------------------------------------------------------
-
-
-class TestExperimentalWarning:
-    """--experimental flag prints warning underneath the AI config line."""
-
-    @patch("iconfucius.cli.chat._generate_startup",
-           return_value=("Hello!", "Goodbye!"))
-    @patch("iconfucius.cli.chat.create_backend")
-    @patch("iconfucius.cli.chat.load_persona")
-    def test_experimental_flag_shows_warning(self, mock_load,
-                                              mock_backend_factory,
-                                              _mock_startup,
-                                              tmp_path, monkeypatch, capsys):
-        """--experimental prints the experimental warning after AI config."""
-        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
-        (tmp_path / "iconfucius.toml").write_text(
-            '[settings]\n[bots.bot-1]\ndescription = "Bot 1"\n'
-        )
-        cfg._cached_config = None
-        cfg._cached_config_path = None
-
-        persona = _make_persona(name="IConfucius")
-        mock_load.return_value = persona
-        backend = MagicMock()
-        backend.model = "claude-opus-4-6"
-        mock_backend_factory.return_value = backend
-
-        with patch("builtins.input", side_effect=EOFError):
-            from iconfucius.cli.chat import run_chat
-            run_chat("iconfucius", "bot-1", experimental=True)
-
-        captured = capsys.readouterr().out
-        assert "/ai to change" in captured
-        assert "Experimental features have been enabled" in captured
-        assert "Use at your own risk" in captured
-        # Enabled message after AI line, risk warning after enabled message
-        ai_pos = captured.index("AI:")
-        enabled_pos = captured.index("Experimental features have been enabled")
-        risk_pos = captured.index("Use at your own risk")
-        assert enabled_pos > ai_pos
-        assert risk_pos > enabled_pos
-
-    @patch("iconfucius.cli.chat._generate_startup",
-           return_value=("Hello!", "Goodbye!"))
-    @patch("iconfucius.cli.chat.create_backend")
-    @patch("iconfucius.cli.chat.load_persona")
-    def test_no_experimental_flag_no_warning(self, mock_load,
-                                              mock_backend_factory,
-                                              mock_startup,
-                                              tmp_path, monkeypatch, capsys):
-        """Without --experimental, no experimental warning is shown."""
-        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
-        (tmp_path / "iconfucius.toml").write_text(
-            '[settings]\n[bots.bot-1]\ndescription = "Bot 1"\n'
-        )
-        cfg._cached_config = None
-        cfg._cached_config_path = None
-
-        persona = _make_persona(name="IConfucius")
-        mock_load.return_value = persona
-        backend = MagicMock()
-        backend.model = "claude-opus-4-6"
-        mock_backend_factory.return_value = backend
-
-        with patch("builtins.input", side_effect=EOFError):
-            from iconfucius.cli.chat import run_chat
-            run_chat("iconfucius", "bot-1")
-
-        captured = capsys.readouterr().out
-        assert "Experimental features" not in captured
-        assert "Use at your own risk" not in captured
-        assert "/ai to change" not in captured
-
-    @patch("iconfucius.cli.chat._generate_startup",
-           return_value=("Hello!", "Goodbye!"))
-    @patch("iconfucius.cli.chat.create_backend")
-    @patch("iconfucius.cli.chat.load_persona")
-    def test_experimental_shows_ai_config_with_base_url(self, mock_load,
-                                                         mock_backend_factory,
-                                                         mock_startup,
-                                                         tmp_path, monkeypatch,
-                                                         capsys):
-        """AI config line includes base_url when set."""
-        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
-        (tmp_path / "iconfucius.toml").write_text(
-            '[settings]\n[bots.bot-1]\ndescription = "Bot 1"\n'
-        )
-        cfg._cached_config = None
-        cfg._cached_config_path = None
-
-        persona = _make_persona(
-            name="IConfucius",
-            ai_api_type="openai",
-            ai_model="llama-3",
-            ai_base_url="http://localhost:55128",
-        )
-        mock_load.return_value = persona
-        backend = MagicMock()
-        backend.model = "llama-3"
-        mock_backend_factory.return_value = backend
-
-        with patch("builtins.input", side_effect=["Y", EOFError]):
-            from iconfucius.cli.chat import run_chat
-            run_chat("iconfucius", "bot-1", experimental=True)
-
-        captured = capsys.readouterr().out
-        assert "openai" in captured
-        assert "llama-3" in captured
-        assert "http://localhost:55128" in captured
 
 
 # ---------------------------------------------------------------------------
@@ -1363,7 +1239,7 @@ class TestAiHotSwap:
         with patch("builtins.input",
                    side_effect=["/ai", "1", "", "", EOFError]):
             from iconfucius.cli.chat import run_chat
-            run_chat("iconfucius", "bot-1", experimental=True)
+            run_chat("iconfucius", "bot-1")
 
         # create_backend called twice: startup + hot-swap
         assert mock_backend_factory.call_count == 2
@@ -1405,7 +1281,7 @@ class TestAiHotSwap:
         with patch("builtins.input",
                    side_effect=["Y", "/ai reset", EOFError]):
             from iconfucius.cli.chat import run_chat
-            run_chat("iconfucius", "bot-1", experimental=True)
+            run_chat("iconfucius", "bot-1")
 
         assert mock_backend_factory.call_count == 2
         swap_call_persona = mock_backend_factory.call_args_list[1][0][0]
@@ -1447,7 +1323,7 @@ class TestAiHotSwap:
         with patch("builtins.input",
                    side_effect=["Y", "/ai", "3", EOFError]):
             from iconfucius.cli.chat import run_chat
-            run_chat("iconfucius", "bot-1", experimental=True)
+            run_chat("iconfucius", "bot-1")
 
         assert mock_backend_factory.call_count == 2
         swap_call_persona = mock_backend_factory.call_args_list[1][0][0]
@@ -1480,7 +1356,7 @@ class TestAiHotSwap:
         with patch("builtins.input",
                    side_effect=["/ai", "1", "http://my-server:8080", "mymodel", EOFError]):
             from iconfucius.cli.chat import run_chat
-            run_chat("iconfucius", "bot-1", experimental=True)
+            run_chat("iconfucius", "bot-1")
 
         captured = capsys.readouterr().out
         assert "Restart" not in captured
@@ -1639,7 +1515,7 @@ class TestVerboseFlag:
 
         def _mock_exec(name, _args=None, **_kwargs):
             """Dispatch execute_tool by tool name."""
-            if name == "setup_status":
+            if name == "setup_and_operational_status":
                 return {
                     "status": "ok", "config_exists": True, "wallet_exists": True,
                     "env_exists": True, "has_api_key": True, "ready": True,
@@ -1744,7 +1620,7 @@ class TestStartupBalanceWizard:
         _setup_wizard_test(mock_load, mock_backend_factory, tmp_path, monkeypatch)
 
         def _mock_exec(name, _args=None, **_kw):
-            if name == "setup_status":
+            if name == "setup_and_operational_status":
                 return {
                     "status": "ok", "config_exists": True, "wallet_exists": True,
                     "env_exists": True, "has_api_key": True, "ready": True,
@@ -1778,7 +1654,7 @@ class TestStartupBalanceWizard:
 
         def _mock_exec(name, args=None, **kw):
             exec_log.append((name, args))
-            if name == "setup_status":
+            if name == "setup_and_operational_status":
                 return {
                     "status": "ok", "config_exists": True, "wallet_exists": True,
                     "env_exists": True, "has_api_key": True, "ready": True,
@@ -1825,7 +1701,7 @@ class TestStartupBalanceWizard:
             mock_exec.side_effect = lambda name, *a, **kw: {
                 "status": "ok", "config_exists": True, "wallet_exists": True,
                 "env_exists": True, "has_api_key": True, "ready": True,
-            } if name == "setup_status" else {}
+            } if name == "setup_and_operational_status" else {}
 
             from iconfucius.cli.chat import run_chat
             run_chat("iconfucius", "bot-1")
@@ -1852,7 +1728,7 @@ class TestStartupBalanceWizard:
 
         def _mock_exec(name, args=None, **kw):
             exec_log.append((name, args))
-            if name == "setup_status":
+            if name == "setup_and_operational_status":
                 return {
                     "status": "ok", "config_exists": True, "wallet_exists": True,
                     "env_exists": True, "has_api_key": True, "ready": True,
@@ -1885,7 +1761,7 @@ class TestStartupBalanceWizard:
         _setup_wizard_test(mock_load, mock_backend_factory, tmp_path, monkeypatch)
 
         def _mock_exec(name, _args=None, **_kw):
-            if name == "setup_status":
+            if name == "setup_and_operational_status":
                 return {
                     "status": "ok", "config_exists": True, "wallet_exists": True,
                     "env_exists": True, "has_api_key": True, "ready": True,
@@ -1937,7 +1813,7 @@ class TestBotHoldingsDisplay:
 
         def _mock_exec(name, _args=None, **_kwargs):
             """Dispatch execute_tool by tool name."""
-            if name == "setup_status":
+            if name == "setup_and_operational_status":
                 return {
                     "status": "ok", "config_exists": True, "wallet_exists": True,
                     "env_exists": True, "has_api_key": True, "ready": True,
@@ -2029,7 +1905,7 @@ class TestStartupNextStepAutoLoop:
 
         def _mock_exec(name, _args=None, **_kwargs):
             """Dispatch execute_tool by tool name."""
-            if name == "setup_status":
+            if name == "setup_and_operational_status":
                 return {
                     "status": "ok", "config_exists": True, "wallet_exists": True,
                     "env_exists": True, "has_api_key": True, "ready": True,

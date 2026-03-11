@@ -40,6 +40,7 @@ class TestBuiltinPersonas:
         assert isinstance(p, Persona)
         assert p.name == "IConfucius"
         assert p.ai_api_type == "claude"
+        assert p.ai_provider == "Anthropic"
         assert len(p.system_prompt) > 0
 
     def test_builtin_greeting_prompt_has_placeholders(self):
@@ -195,31 +196,34 @@ class TestResolveAiConfig:
 
     def test_empty_config(self):
         """Verify empty config."""
-        api_type, model, base_url = resolve_ai_config({})
+        api_type, model, base_url, provider = resolve_ai_config({})
         assert api_type == "claude"
         assert model == DEFAULT_MODEL
         assert base_url == ""
+        assert provider == "Anthropic"
 
     def test_model_only_claude(self):
         """Verify model only claude."""
-        api_type, model, base_url = resolve_ai_config({"model": "claude-sonnet-4-6"})
+        api_type, model, base_url, provider = resolve_ai_config({"model": "claude-sonnet-4-6"})
         assert api_type == "claude"
         assert model == "claude-sonnet-4-6"
         assert base_url == ""
+        assert provider == "Anthropic"
 
     def test_openai_with_base_url(self):
         """Verify openai with base url."""
-        api_type, model, base_url = resolve_ai_config({
+        api_type, model, base_url, provider = resolve_ai_config({
             "api_type": "openai",
             "base_url": "http://localhost:55128",
         })
         assert api_type == "openai"
         assert model == "default"
         assert base_url == "http://localhost:55128"
+        assert provider == "Unknown"
 
     def test_openai_with_model_and_url(self):
         """Verify openai with model and url."""
-        api_type, model, base_url = resolve_ai_config({
+        api_type, model, base_url, provider = resolve_ai_config({
             "api_type": "openai",
             "model": "meta-llama/Llama-3-70b",
             "base_url": "https://api.together.xyz/v1",
@@ -227,37 +231,41 @@ class TestResolveAiConfig:
         assert api_type == "openai"
         assert model == "meta-llama/Llama-3-70b"
         assert base_url == "https://api.together.xyz/v1"
+        assert provider == "Unknown"
 
     def test_auto_detect_openai_from_base_url(self):
         """base_url set without api_type → auto-detect openai."""
-        api_type, model, base_url = resolve_ai_config({
+        api_type, model, base_url, provider = resolve_ai_config({
             "base_url": "http://localhost:8080",
         })
         assert api_type == "openai"
         assert model == "default"
         assert base_url == "http://localhost:8080"
+        assert provider == "Unknown"
 
     def test_auto_detect_claude_from_model(self):
         """model starts with 'claude-' without api_type → auto-detect claude."""
-        api_type, model, base_url = resolve_ai_config({
+        api_type, model, base_url, provider = resolve_ai_config({
             "model": "claude-haiku-4-5-20251001",
         })
         assert api_type == "claude"
         assert model == "claude-haiku-4-5-20251001"
         assert base_url == ""
+        assert provider == "Anthropic"
 
     def test_legacy_backend_key(self):
         """Legacy 'backend' key is still supported."""
-        api_type, model, _base_url = resolve_ai_config({
+        api_type, model, _base_url, provider = resolve_ai_config({
             "backend": "claude",
             "model": "claude-sonnet-4-6",
         })
         assert api_type == "claude"
         assert model == "claude-sonnet-4-6"
+        assert provider == "Anthropic"
 
     def test_openai_resets_inherited_claude_model(self):
         """DEFAULT_MODEL inherited from persona is reset to 'default' for openai."""
-        api_type, model, base_url = resolve_ai_config({
+        api_type, model, base_url, provider = resolve_ai_config({
             "api_type": "openai",
             "model": DEFAULT_MODEL,
             "base_url": "http://localhost:55128",
@@ -265,15 +273,26 @@ class TestResolveAiConfig:
         assert api_type == "openai"
         assert model == "default"
         assert base_url == "http://localhost:55128"
+        assert provider == "Unknown"
 
     def test_claude_keeps_default_model(self):
         """DEFAULT_MODEL is preserved for claude api_type."""
-        api_type, model, _base_url = resolve_ai_config({
+        api_type, model, _base_url, provider = resolve_ai_config({
             "api_type": "claude",
             "model": DEFAULT_MODEL,
         })
         assert api_type == "claude"
         assert model == DEFAULT_MODEL
+        assert provider == "Anthropic"
+
+    def test_explicit_provider_overrides_auto(self):
+        """Explicit provider in [ai] overrides auto-detection."""
+        _api_type, _model, _base_url, provider = resolve_ai_config({
+            "api_type": "openai",
+            "base_url": "https://api.together.xyz/v1",
+            "provider": "Together",
+        })
+        assert provider == "Together"
 
 
 class TestAIConfigOverride:

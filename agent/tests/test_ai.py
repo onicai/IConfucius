@@ -7,6 +7,7 @@ import pytest
 import iconfucius.config as cfg
 from iconfucius.ai import (
     LlamaCppBackend, OpenAICompatBackend, cached_messages, create_backend,
+    format_api_error,
 )
 from iconfucius.openai_compat import OpenAICompatResponse
 
@@ -381,3 +382,77 @@ class TestCachedMessages:
         assert first["content"][0]["cache_control"] == {"type": "ephemeral"}
         # Second unchanged
         assert result[1] == msgs[1]
+
+
+# ---------------------------------------------------------------------------
+# format_api_error()
+# ---------------------------------------------------------------------------
+
+class _FakeAnthropicError(Exception):
+    """Exception with __module__ starting with 'anthropic' for testing."""
+    __module__ = "anthropic.error"
+
+
+class TestFormatApiError:
+
+    def test_anthropic_credit_balance(self):
+        """Anthropic credit error shows Anthropic-specific URL."""
+        e = _FakeAnthropicError("Your credit balance is too low")
+        msg = format_api_error(e)
+        assert "credit" in msg.lower()
+        assert "console.anthropic.com" in msg
+        assert "Anthropic" in msg
+
+    def test_generic_credit_balance(self):
+        """Generic credit error shows generic billing message."""
+        e = Exception("Your credit balance is too low")
+        msg = format_api_error(e)
+        assert "credit" in msg.lower()
+        assert "check your account billing" in msg.lower()
+
+    def test_auth_error(self):
+        """Auth/api_key error returns friendly message."""
+        e = Exception("Invalid api_key provided")
+        msg = format_api_error(e)
+        assert "Authentication failed" in msg
+        assert ".env" in msg
+
+    def test_anthropic_rate_limit(self):
+        """Anthropic rate limit shows provider name."""
+        e = _FakeAnthropicError("rate limit exceeded")
+        msg = format_api_error(e)
+        assert "Anthropic" in msg
+        assert "rate limited" in msg.lower()
+
+    def test_generic_rate_limit(self):
+        """Generic rate limit shows generic provider name."""
+        e = Exception("rate limit exceeded")
+        msg = format_api_error(e)
+        assert "The AI provider" in msg
+
+    def test_overloaded(self):
+        """Overloaded error returns friendly message."""
+        e = _FakeAnthropicError("API is overloaded")
+        msg = format_api_error(e)
+        assert "overloaded" in msg.lower()
+        assert "Anthropic" in msg
+
+    def test_timeout(self):
+        """Timeout error returns friendly message."""
+        e = Exception("Request timed out")
+        msg = format_api_error(e)
+        assert "timed out" in msg.lower()
+        assert "try again" in msg.lower()
+
+    def test_anthropic_generic_error(self):
+        """Anthropic unknown error includes provider prefix."""
+        e = _FakeAnthropicError("Something unexpected")
+        msg = format_api_error(e)
+        assert "Anthropic error:" in msg
+        assert "Something unexpected" in msg
+
+    def test_generic_passthrough(self):
+        """Non-Anthropic unknown error passes through str(e)."""
+        e = Exception("Something weird happened")
+        msg = format_api_error(e)
+        assert msg == "Something weird happened"

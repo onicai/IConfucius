@@ -11,7 +11,11 @@
 ## Install
 
 ```bash
-pip install iconfucius
+# Install uv (fast Python package manager)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install iconfucius
+uv pip install iconfucius
 
 mkdir my-iconfucius
 cd my-iconfucius
@@ -30,6 +34,32 @@ That's it. The onboarding wizard runs automatically on first launch:
 
 Everything is stored in the current directory — run `iconfucius`
 from the same folder next time.
+
+## Web UI
+
+Prefer a browser interface? Run:
+
+```bash
+iconfucius ui
+```
+
+This opens a local web page where you can chat with IConfucius about trading
+and have him do trades for you, and see your trades and balances in a nice
+dashboard — all from your browser. Everything runs on your machine
+(except the AI backend for chat, which uses Anthropic Claude by default —
+you can configure other options as explained in
+[How to run with llama.cpp server](#how-to-run-with-llamacpp-server-experimental)).
+
+Options:
+
+| Flag            | Description                       |
+| --------------- | --------------------------------- |
+| `--port 55130`  | Use a custom port (default 55129) |
+| `--no-browser`  | Don't auto-open the browser       |
+
+The port can be any number from 1024 to 65535. If you run multiple iconfucius
+projects at the same time, each one needs its own port (e.g. `--port 55130`,
+`--port 55131`, etc.).
 
 ## How to run with llama.cpp server (experimental)
 
@@ -125,6 +155,30 @@ In a second terminal:
 iconfucius --experimental   # enables /ai command to switch models at runtime
 ```
 
+## How to run with Rasa Pro backend (experimental)
+
+The Rasa Pro backend uses [CALM](https://rasa.com/docs/rasa-pro/) for
+deterministic conversational flow management instead of free-form tool calling.
+
+### 1. Install the Rasa extra
+
+```bash
+uv pip install "iconfucius[rasa]"
+```
+
+### 2. Get a Rasa Pro license
+
+Request a free developer license at:
+https://rasa.com/rasa-pro-developer-edition-license-key-request
+
+The onboarding wizard will prompt for the license key on first `--rasa` run.
+
+### 3. Chat
+
+```bash
+iconfucius chat --rasa
+```
+
 ## Project Layout
 
 ```
@@ -175,6 +229,7 @@ The software and hosted services are provided "as is", without warranty of any k
 - ✅ Prompt caching: system prompt, tools, and messages cached with Anthropic's ephemeral cache for lower latency and cost (Claude backend only)
 - ✅ Default AI model: Claude opus-4-6 with `/ai` command to switch at runtime (experimental)
 - ✅ OpenAI-compatible API backend: llama.cpp, Ollama, vLLM, LM Studio, Together AI, etc.
+- ✅ Web UI: `iconfucius ui` opens a local browser-based interface for chat, trading, and portfolio overview
 
 ## Coming Next
 

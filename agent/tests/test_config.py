@@ -56,11 +56,17 @@ class TestLog:
         assert capsys.readouterr().out == ""  # no stdout output
 
     def test_log_calls_debug(self, caplog):
-        """Verify log calls debug."""
+        """Verify log calls debug (propagate=False, so attach handler directly)."""
         import logging
-        with caplog.at_level(logging.DEBUG, logger="iconfucius"):
-            log("test message")
-        assert "test message" in caplog.text
+        logger = logging.getLogger("iconfucius")
+        handler = caplog.handler
+        logger.addHandler(handler)
+        try:
+            with caplog.at_level(logging.DEBUG, logger="iconfucius"):
+                log("test message")
+            assert "test message" in caplog.text
+        finally:
+            logger.removeHandler(handler)
 
 
 class TestNetworkSelection:

@@ -36,7 +36,10 @@ from iconfucius.config import (
     require_wallet,
     set_verbose,
 )
-from iconfucius.siwb import siwb_login, save_session, read_cached_principal
+from iconfucius.siwb import (
+    siwb_login, save_session, read_cached_principal,
+    wallet_has_siwb_funds, siwb_canister_reachable, SIWB_LOGIN_COST_SATS,
+)
 
 from iconfucius.candid import ODIN_TRADING_CANDID
 
@@ -93,48 +96,87 @@ def collect_balances(bot_name: str, token_id: str = "29m8",
     # Only do SIWB login when principal is unknown (first time for this bot).
     bot_principal_text = read_cached_principal(bot_name)
     if not bot_principal_text:
+        # Pre-check: skip SIWB login if wallet can't afford fees
+        if not wallet_has_siwb_funds():
+            log("Wallet has insufficient funds for SIWB login, skipping...")
+            return BotBalances(
+                bot_name=bot_name,
+                bot_principal="",
+                note=f"Bot not yet initialized — wallet needs at least {SIWB_LOGIN_COST_SATS} sats for first-time registration.",
+            )
+        # Pre-check: skip SIWB login if canister is unreachable
+        if not siwb_canister_reachable():
+            log("SIWB canister unreachable, skipping login...")
+            return BotBalances(
+                bot_name=bot_name,
+                bot_principal="",
+                note="SIWB temporarily unavailable — will retry automatically.",
+            )
         log("No cached principal, performing SIWB login to discover it...")
         try:
             auth = siwb_login(bot_name=bot_name, verbose=verbose)
             bot_principal_text = auth["bot_principal_text"]
         except RuntimeError as exc:
-            if "InsufficientFunds" in str(exc):
+            err_str = str(exc)
+            if "InsufficientFunds" in err_str:
                 log(f"SIWB login failed (insufficient funds): {exc}")
                 return BotBalances(
                     bot_name=bot_name,
                     bot_principal="",
                     note="Bot not yet initialized (no cached principal and wallet lacks funds for first login).",
                 )
+            if "unreachable" in err_str.lower():
+                log(f"SIWB canister unreachable: {exc}")
+                return BotBalances(
+                    bot_name=bot_name,
+                    bot_principal="",
+                    note="SIWB temporarily unavailable — will retry automatically.",
+                )
             raise
 
     # Check if bot has a registered Odin.fun account
     from iconfucius.accounts import resolve_odin_account
-    if resolve_odin_account(bot_principal_text) is None:
-        return BotBalances(
-            bot_name=bot_name,
-            bot_principal=bot_principal_text,
-            has_odin_account=False,
+
+    # ------------------------------------------------------------------
+    # Steps 1-3 run concurrently: account check, canister, REST API
+    # ------------------------------------------------------------------
+    from concurrent.futures import ThreadPoolExecutor
+
+    def _canister_balance(principal_text):
+        """Step 2: Odin.Fun trading canister balance."""
+        client = Client(url=IC_HOST)
+        anon_agent = Agent(Identity(anonymous=True), client)
+        odin = Canister(
+            agent=anon_agent,
+            canister_id=ODIN_TRADING_CANISTER_ID,
+            candid_str=ODIN_TRADING_CANDID,
         )
+        return odin.getBalance(principal_text, "btc",
+                               verify_certificate=get_verify_certificates())
 
-    # Create anonymous agent for query calls
-    client = Client(url=IC_HOST)
-    anon_agent = Agent(Identity(anonymous=True), client)
+    def _rest_balances(principal_text):
+        """Step 3: REST API balances."""
+        url = f"{ODIN_API_URL}/user/{principal_text}/balances"
+        log(f"GET {url}")
+        from iconfucius.http_utils import cffi_get_with_retry
+        return cffi_get_with_retry(url)
 
-    # -------------------------------------------------------------------
-    # Step 2: Odin.Fun trading balance
-    # -------------------------------------------------------------------
-    log("\n" + "=" * 60)
-    log("Step 2: Odin.Fun Trading Balance")
-    log("=" * 60)
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        account_future = pool.submit(resolve_odin_account, bot_principal_text)
+        canister_future = pool.submit(_canister_balance, bot_principal_text)
+        rest_future = pool.submit(_rest_balances, bot_principal_text)
 
-    odin = Canister(
-        agent=anon_agent,
-        canister_id=ODIN_TRADING_CANISTER_ID,
-        candid_str=ODIN_TRADING_CANDID,
-    )
+        has_account = account_future.result()
+        if has_account is None:
+            return BotBalances(
+                bot_name=bot_name,
+                bot_principal=bot_principal_text,
+                has_odin_account=False,
+            )
 
-    odin_balance_raw = odin.getBalance(bot_principal_text, "btc",
-                                       verify_certificate=get_verify_certificates())
+        # Step 2: parse canister result
+        odin_balance_raw = canister_future.result()
+
     if isinstance(odin_balance_raw, list) and len(odin_balance_raw) > 0:
         item = odin_balance_raw[0]
         odin_balance = item["value"] if isinstance(item, dict) and "value" in item else item
@@ -146,17 +188,8 @@ def collect_balances(bot_name: str, token_id: str = "29m8",
     log(f"Odin.Fun trading canister ({ODIN_TRADING_CANISTER_ID}):")
     log(f"  Odin.Fun Balance: {fmt_sats(int(odin_sats), btc_usd_rate)}")
 
-    # -------------------------------------------------------------------
-    # Step 3: REST API balances -> token holdings
-    # -------------------------------------------------------------------
-    log("\n" + "=" * 60)
-    log("Step 3: REST API Balances")
-    log("=" * 60)
-
-    url = f"{ODIN_API_URL}/user/{bot_principal_text}/balances"
-    log(f"GET {url}")
-    from iconfucius.http_utils import cffi_get_with_retry
-    resp = cffi_get_with_retry(url)
+    # Step 3: parse REST result
+    resp = rest_future.result()
     log(f"Status: {resp.status_code}")
     log(f"Response: {resp.text[:1000]}")
 
@@ -169,10 +202,12 @@ def collect_balances(bot_name: str, token_id: str = "29m8",
         for t in tokens:
             ticker = t.get("ticker", t.get("id", "?"))
             token_id = t.get("id", "?")
-            raw_balance = t.get("balance", 0)
-            divisibility = t.get("divisibility", 8)
-            decimals = t.get("decimals", 0)
-            price = t.get("price", 0)
+            raw_balance = t.get("balance") or 0
+            divisibility = t.get("divisibility")
+            divisibility = 8 if divisibility is None else divisibility
+            decimals = t.get("decimals")
+            decimals = decimals if decimals is not None else 3
+            price = t.get("price") or 0
             # Strip extra API decimals; result is still milli-subunits
             from iconfucius.units import adjust_api_decimals, millisubunit_value_sats
             balance = adjust_api_decimals(raw_balance, decimals)
@@ -780,6 +815,15 @@ def _format_holdings_table(all_data: list, btc_usd_rate: float | None,
     lines.append("")
     lines.extend(_format_padded_table(headers, rows))
 
+    # Bot holdings summary (matches dashboard cards)
+    if not all_unknown:
+        token_total_sats = round(sum(total_token_value_sats.values()))
+        bots_total_sats = total_odin_sats + token_total_sats
+        lines.append("")
+        lines.append(f"Bots total: {fmt_sats(bots_total_sats, btc_usd_rate)}")
+        lines.append(f"  ODIN BTC: {fmt_sats(total_odin_sats, btc_usd_rate)}")
+        lines.append(f"  ODIN TOKENS: {fmt_sats(token_total_sats, btc_usd_rate)}")
+
     if btc_usd_rate:
         wallet_total_sats = wallet_balance_sats + wallet_pending_sats + wallet_withdrawal_sats
         if all_unknown and wallet_total_sats == 0:
@@ -841,19 +885,23 @@ def run_all_balances(bot_names: list, token_id: str = "29m8",
     if not require_wallet():
         return None
 
+    import threading as _threading
     from iconfucius.cli.concurrent import report_status, run_per_bot
 
-    report_status("collecting wallet info...")
+    report_status("collecting balances...")
     btc_usd_rate = _fetch_btc_usd_rate()
-    wallet_data, wallet_lines = _collect_wallet_info(
-        btc_usd_rate, ckbtc_minter=ckbtc_minter,
-    )
 
-    wallet_balance = wallet_data["balance_sats"]
-    wallet_pending = wallet_data["pending_sats"]
-    wallet_withdrawal = wallet_data["withdrawal_balance_sats"]
+    # Run wallet info and bot balances in parallel
+    wallet_box: dict = {}
 
-    report_status(f"checking {len(bot_names)} bot(s)...")
+    def _fetch_wallet():
+        wallet_box["data"], wallet_box["lines"] = _collect_wallet_info(
+            btc_usd_rate, ckbtc_minter=ckbtc_minter,
+        )
+
+    wallet_thread = _threading.Thread(target=_fetch_wallet, daemon=True)
+    wallet_thread.start()
+
     logger.info("Gathering data for %d bot(s)...", len(bot_names))
 
     all_data = []
@@ -869,6 +917,33 @@ def run_all_balances(bot_names: list, token_id: str = "29m8",
             failed_bots[bot_name] = str(result)
         else:
             all_data.append(result)
+
+    wallet_thread.join()
+    wallet_data = wallet_box["data"]
+    wallet_lines = wallet_box["lines"]
+
+    wallet_balance = wallet_data["balance_sats"]
+    wallet_pending = wallet_data["pending_sats"]
+    wallet_withdrawal = wallet_data["withdrawal_balance_sats"]
+
+    if not all_data and not bot_names:
+        # No bots configured — return wallet-only data
+        wallet_total_sats = wallet_balance + wallet_pending + wallet_withdrawal
+        return {
+            "wallet_ckbtc_sats": wallet_balance,
+            "wallet_pending_sats": wallet_pending,
+            "wallet_withdrawal_sats": wallet_withdrawal,
+            "wallet_principal": wallet_data["principal"],
+            "wallet_btc_address": wallet_data["btc_address"],
+            "bots": [],
+            "totals": {
+                "odin_sats": 0, "tokens": {}, "token_value_sats": 0,
+                "bots_value_sats": 0, "wallet_sats": wallet_total_sats,
+                "portfolio_sats": wallet_total_sats,
+            },
+            "_display": "\n".join(wallet_lines),
+        }
+
     if not all_data:
         return None
 

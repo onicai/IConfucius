@@ -11,7 +11,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from urllib.request import urlopen
 
 from iconfucius import __version__
-from iconfucius.ai import APIKeyMissingError, create_backend
+from iconfucius.ai import APIKeyMissingError, create_backend, format_api_error
 from iconfucius.persona import DEFAULT_MODEL, Persona, PersonaNotFoundError, load_persona
 from iconfucius.skills.definitions import get_tool_metadata, get_tools_for_anthropic
 from iconfucius.skills.executor import execute_tool
@@ -295,22 +295,15 @@ def _persist_ai_timeout(timeout: int) -> None:
 
 
 def _format_api_error(e: Exception) -> str:
-    """Return a user-friendly error message for API errors."""
+    """Return a user-friendly error message for API errors (CLI version).
+
+    Delegates to the shared ``format_api_error`` in ``ai.py`` and adds the
+    CLI-only interactive timeout prompt when applicable.
+    """
     msg = str(e).lower()
-    if "credit balance" in msg or "purchase credits" in msg:
-        return (
-            "Your Anthropic API credit balance is too low.\n"
-            "Add credits at: https://console.anthropic.com/settings/plans"
-        )
-    if "api_key" in msg or "auth" in msg:
-        return "Authentication failed. Check your ANTHROPIC_API_KEY in .env"
-    if "rate" in msg and "limit" in msg:
-        return "Rate limited. Please wait a moment and try again."
-    if "overloaded" in msg:
-        return "The API is temporarily overloaded. Please try again."
     if "timed out" in msg or "timeout" in msg:
-        return f"{e}\n" + _prompt_increase_timeout()
-    return str(e)
+        return format_api_error(e) + "\n" + _prompt_increase_timeout()
+    return format_api_error(e)
 
 
 def _generate_startup(backend, persona, lang: str) -> tuple[str, str]:
@@ -985,12 +978,10 @@ def _check_pypi_version() -> tuple[str | None, str]:
         (latest_version, release_notes) — version is None when up-to-date.
     """
     try:
+        from packaging.version import Version
         with urlopen("https://pypi.org/pypi/iconfucius/json", timeout=3) as resp:
             latest = json.loads(resp.read())["info"]["version"]
-        def _ver_tuple(v: str) -> tuple:
-            """Parse a version string into a comparable tuple."""
-            return tuple(int(x) for x in v.split("."))
-        if _ver_tuple(latest) <= _ver_tuple(__version__):
+        if Version(latest) <= Version(__version__):
             return None, ""
         # Fetch release notes from GitHub (best-effort)
         notes = ""
@@ -1041,15 +1032,13 @@ def _is_non_default_ai(persona: Persona) -> bool:
     )
 
 
-def run_chat(persona_name: str, bot_name: str, verbose: bool = False,
-             experimental: bool = False) -> None:
+def run_chat(persona_name: str, bot_name: str, verbose: bool = False) -> None:
     """Run interactive chat with a trading persona.
 
     Args:
         persona_name: Name of the persona to load.
         bot_name: Default bot for trading context.
         verbose: Show verbose output.
-        experimental: Enable experimental features (/ai command).
     """
     from iconfucius.config import set_verbose
     set_verbose(verbose)
@@ -1093,7 +1082,8 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False,
 
     from iconfucius.ai import LoggingBackend
     from iconfucius.conversation_log import ConversationLogger
-    conv_logger = ConversationLogger()
+    from iconfucius.logging_config import get_session_stamp
+    conv_logger = ConversationLogger(stamp=get_session_stamp())
     backend = LoggingBackend(backend, conv_logger)
 
     # One-time migration: trades.md → trades.jsonl
@@ -1104,7 +1094,7 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False,
     system = persona.system_prompt
 
     # Inject setup status so the persona can guide users through setup
-    setup = execute_tool("setup_status", {})
+    setup = execute_tool("setup_and_operational_status", {})
     if not setup.get("ready"):
         system += "\n\n## Setup Status\n"
         system += (
@@ -1122,7 +1112,6 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False,
         "\n- memory_read_learnings — read your accumulated trading learnings"
         "\n- memory_read_trades — read recent trade history"
         "\n- token_lookup — resolve token names/tickers to IDs before trading"
-        "\n- enable_experimental — enable experimental features (AI model configuration)"
     )
 
     from iconfucius.config import get_bot_names
@@ -1159,9 +1148,7 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False,
 
     print(f"\n{greeting}\n")
 
-    # Determine if /ai is active for this session
-    from iconfucius.skills.executor import _experimental_enabled
-    ai_active = experimental or _experimental_enabled or non_default
+    ai_active = True
 
     print(f"\033[2miconfucius v{__version__} · exit to quit · Ctrl+C to interrupt\033[0m")
     ai_parts = [persona.ai_api_type, str(backend.model)]
@@ -1172,13 +1159,7 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False,
         print(f"\033[2mAI: {ai_desc} · /ai to change\033[0m")
     else:
         print(f"\033[2mAI: {ai_desc}\033[0m")
-    if experimental:
-        from iconfucius.skills.executor import EXPERIMENTAL_ENABLED, EXPERIMENTAL_RISK_WARNING
-        print(f"\033[2m\n{EXPERIMENTAL_ENABLED}\033[0m")
-        if backend.model != DEFAULT_MODEL:
-            print(f"\033[2mNote: recommended model is {DEFAULT_MODEL}\033[0m")
-        print(f"\033[2m\n{EXPERIMENTAL_RISK_WARNING}\033[0m")
-    elif backend.model != DEFAULT_MODEL:
+    if backend.model != DEFAULT_MODEL:
         print(f"\033[2mNote: recommended model is {DEFAULT_MODEL}\033[0m")
 
     # Check PyPI for newer version (non-blocking, best-effort)
@@ -1355,12 +1336,6 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False,
             break
 
         if user_input.startswith("/ai"):
-            # Re-check ai_active (enable_experimental may have been called)
-            from iconfucius.skills.executor import _experimental_enabled
-            ai_active = experimental or _experimental_enabled or non_default
-            if not ai_active:
-                print("\n  /ai is an experimental feature. Start with: iconfucius --experimental\n")
-                continue
             parts = user_input.split(maxsplit=1)
             ai_result = None
             if len(parts) == 1:

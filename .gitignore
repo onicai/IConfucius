@@ -2,8 +2,11 @@
 *.log
 .logs/
 .memory/
+.rasa/
 .vite/
+agent/rasa/models/
 .wallet/
+iconfucius.toml
 OLD/
 TODO.md
 *_wip.py
@@ -58,3 +61,4 @@ __pycache__/
 
 # Reproducible Build artifacts
 src/IConfucius/out/
+.cache/

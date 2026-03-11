@@ -11,11 +11,12 @@ TOOLS: list[dict] = [
     # Read-only tools (no confirmation needed)
     # ------------------------------------------------------------------
     {
-        "name": "setup_status",
+        "name": "setup_and_operational_status",
         "description": (
-            "Check if the iconfucius project is initialized and ready. "
-            "Returns which setup steps have been completed "
-            "(config, wallet, API key)."
+            "Check project setup and AI service operational status. "
+            "Returns setup steps (config, wallet, API key). "
+            "When setup is complete, also checks whether the AI provider "
+            "(e.g. Anthropic) is operational via its public status page."
         ),
         "input_schema": {
             "type": "object",
@@ -31,22 +32,6 @@ TOOLS: list[dict] = [
             "Check if a newer version of iconfucius is available. "
             "Returns the running version, latest version, and release notes. "
             "The user can type /upgrade to install the update."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {},
-            "required": [],
-        },
-        "requires_confirmation": False,
-        "category": "read",
-    },
-    {
-        "name": "enable_experimental",
-        "description": (
-            "Enable experimental features for this session. "
-            "Call this when the user asks to change the AI model, "
-            "API type, or backend configuration. "
-            "After enabling, tell the user to type /ai to configure."
         ),
         "input_schema": {
             "type": "object",
@@ -560,7 +545,9 @@ TOOLS: list[dict] = [
             "Minimum trade: 500 sats. "
             "REQUIRED: (1) token_id, (2) amount or amount_usd, (3) bot_name. "
             "If the user gives a token name, call token_lookup FIRST to get the token_id. "
-            "If any parameter is missing, ask the user before calling this tool."
+            "If any parameter is missing, ask the user before calling this tool. "
+            "Buys execute entirely on Odin.fun using the bot's BTC — "
+            "NO wallet ckBTC balance is needed."
         ),
         "input_schema": {
             "type": "object",
@@ -612,7 +599,9 @@ TOOLS: list[dict] = [
             "Minimum trade value: 500 sats. "
             "REQUIRED: (1) token_id, (2) amount or amount_usd or 'all', (3) bot_name. "
             "If the user gives a token name, call token_lookup FIRST to get the token_id. "
-            "If any parameter is missing, ask the user before calling this tool."
+            "If any parameter is missing, ask the user before calling this tool. "
+            "Sells execute entirely on Odin.fun — "
+            "NO wallet ckBTC balance is needed."
         ),
         "input_schema": {
             "type": "object",
@@ -664,7 +653,9 @@ TOOLS: list[dict] = [
         "description": (
             "Withdraw BTC from bot Odin.fun accounts back to the iconfucius wallet. "
             "REQUIRED: (1) amount or amount_usd or 'all', (2) bot_name or bot_names or all_bots. "
-            "If the user does not specify which bot, ask them."
+            "If the user does not specify which bot, ask them. "
+            "Withdrawals use the bot's own ckBTC to pay transfer fees — "
+            "NO wallet ckBTC balance is needed."
         ),
         "input_schema": {
             "type": "object",
@@ -717,7 +708,9 @@ TOOLS: list[dict] = [
             "token_transfer. "
             "WARNING: Transfers are irreversible. Sending to a wrong address means "
             "permanent loss of tokens. Always verify the destination address. "
-            "Provide amount as token count (e.g. '1000'), or 'all' for the entire balance."
+            "Provide amount as token count (e.g. '1000'), or 'all' for the entire balance. "
+            "Transfers execute on Odin.fun using the bot's identity — "
+            "NO wallet ckBTC balance is needed."
         ),
         "input_schema": {
             "type": "object",

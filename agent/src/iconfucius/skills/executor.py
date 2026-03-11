@@ -4,28 +4,13 @@ Each handler calls the underlying function, which returns a structured dict,
 and builds the response for the AI agent.
 """
 
+import asyncio
 import json
 import logging
 import os
 from pathlib import Path
 
 _log = logging.getLogger(__name__)
-
-
-# Session-level flag for experimental features (set by enable_experimental tool)
-_experimental_enabled = False
-
-EXPERIMENTAL_ENABLED = (
-    "Experimental features have been enabled for this session. "
-    "Type /ai to configure your AI model and backend."
-)
-
-EXPERIMENTAL_RISK_WARNING = (
-    "WARNING: Changing the AI model is an experimental feature. "
-    "Alternative backends \u2014 such as local llama.cpp, Ollama, or other "
-    "OpenAI-compatible endpoints \u2014 may not support tool use or may "
-    "behave unexpectedly. Use at your own risk."
-)
 
 
 def execute_tool(name: str, args: dict, *, persona_name: str = "") -> dict:
@@ -74,6 +59,11 @@ def execute_tool(name: str, args: dict, *, persona_name: str = "") -> dict:
         return {"status": "error", "error": str(e)}
 
 
+async def async_execute_tool(name: str, args: dict, *, persona_name: str = "") -> dict:
+    """Async wrapper — runs sync execute_tool in a thread pool."""
+    return await asyncio.to_thread(execute_tool, name, args, persona_name=persona_name)
+
+
 # ---------------------------------------------------------------------------
 # Formatting handlers
 # ---------------------------------------------------------------------------
@@ -83,24 +73,67 @@ def execute_tool(name: str, args: dict, *, persona_name: str = "") -> dict:
 # Setup handlers
 # ---------------------------------------------------------------------------
 
-def _handle_setup_status(args: dict) -> dict:
-    """Handle the setup_status tool call."""
-    from iconfucius.config import find_config, get_pem_file
+def _handle_setup_and_operational_status(_args: dict) -> dict:
+    """Handle the setup_and_operational_status tool call."""
+    from iconfucius.config import (
+        find_config, get_ai_provider, get_pem_file, get_provider_status_url,
+    )
 
     config_path = find_config()
     pem_exists = Path(get_pem_file()).exists()
     env_exists = Path(".env").exists()
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-    has_api_key = bool(api_key) and api_key != "your-api-key-here"
 
-    return {
+    # Check API key based on provider — non-Anthropic backends may not need one
+    provider = get_ai_provider()
+    if provider == "Anthropic":
+        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        has_api_key = bool(api_key) and api_key != "your-api-key-here"
+    else:
+        has_api_key = True
+
+    ready = all([config_path is not None, pem_exists])
+
+    # Bot count
+    bot_count = 0
+    if config_path is not None:
+        from iconfucius.config import get_bot_names
+        bot_count = len(get_bot_names())
+
+    # Wallet funded check (fast anonymous query)
+    wallet_funded = False
+    if pem_exists:
+        try:
+            from iconfucius.siwb import wallet_has_siwb_funds
+            wallet_funded = wallet_has_siwb_funds()
+        except Exception:
+            pass
+
+    result = {
         "status": "ok",
         "config_exists": config_path is not None,
         "wallet_exists": pem_exists,
         "env_exists": env_exists,
         "has_api_key": has_api_key,
-        "ready": all([config_path is not None, pem_exists, has_api_key]),
+        "ready": ready,
+        "bot_count": bot_count,
+        "wallet_funded": wallet_funded,
     }
+
+    if ready:
+        from iconfucius.health import fetch_provider_health
+
+        status_url = get_provider_status_url(provider)
+        result["ai_provider"] = provider
+        result["ai_status_url"] = status_url
+        result["ai_operational"] = None
+        result["ai_status_detail"] = "unknown"
+
+        if status_url:
+            health = fetch_provider_health(provider, status_url)
+            result["ai_operational"] = health["ok"]
+            result["ai_status_detail"] = health["status_detail"]
+
+    return result
 
 
 def _handle_check_update(args: dict) -> dict:
@@ -120,22 +153,6 @@ def _handle_check_update(args: dict) -> dict:
 
 # Populated by chat.py at startup so the handler doesn't re-fetch
 _update_cache: dict = {}
-
-
-def _handle_enable_experimental(args: dict) -> dict:
-    """Handle the enable_experimental tool call."""
-    global _experimental_enabled
-    _experimental_enabled = True
-    return {
-        "status": "ok",
-        "display": f"\n{EXPERIMENTAL_ENABLED}\n\n{EXPERIMENTAL_RISK_WARNING}",
-        "instruction": (
-            "Explain to the user that changing the AI model is experimental. "
-            "Alternative backends may lack tool-use support, produce lower "
-            "quality responses, or behave unexpectedly. Ask if they want to "
-            "proceed, and if so, tell them to type /ai."
-        ),
-    }
 
 
 def _handle_init(args: dict) -> dict:
@@ -371,6 +388,10 @@ def _handle_wallet_balance(args: dict) -> dict:
         "total_odin_sats": totals.get("odin_sats", 0),
         "total_token_value_sats": totals.get("token_value_sats", 0),
         "portfolio_sats": totals.get("portfolio_sats", 0),
+        "token_totals": {
+            k: {"balance": v["balance"], "value_sats": v["value_sats"]}
+            for k, v in totals.get("tokens", {}).items()
+        },
         "btc_usd_rate": btc_usd_rate,
         "constraints": {
             "min_deposit_sats": MIN_DEPOSIT_SATS,
@@ -934,10 +955,12 @@ def _handle_public_balance(args: dict) -> dict:
         for t in tokens:
             ticker = t.get("ticker", t.get("id", "?"))
             token_id = t.get("id", "?")
-            raw_balance = t.get("balance", 0)
-            divisibility = t.get("divisibility", 8)
-            decimals = t.get("decimals", 0)
-            price = t.get("price", 0)
+            raw_balance = t.get("balance") or 0
+            divisibility = t.get("divisibility")
+            divisibility = 8 if divisibility is None else divisibility
+            decimals = t.get("decimals")
+            decimals = decimals if decimals is not None else 3
+            price = t.get("price") or 0
             balance = adjust_api_decimals(raw_balance, decimals)
             value_sats = millisubunit_value_sats(raw_balance, price, divisibility)
             human_balance = balance / (10 ** divisibility) if divisibility > 0 else balance
@@ -1061,6 +1084,7 @@ def _handle_token_discover(args: dict) -> dict:
             f"    Price: {t['price_sats']:,.3f} sats | "
             f"MCap: {mcap_str} | "
             f"Vol 24h: {vol_str} | "
+            f"Power Holders: {t.get('power_holder_count', 0):,} | "
             f"Holders: {t['holder_count']:,}"
         )
         lines.append(f"    {t['safety']}")
@@ -1107,6 +1131,7 @@ def _handle_token_price(args: dict) -> dict:
     marketcap_sats = msat_to_sats(data.get("marketcap", 0))
     volume_24_sats = msat_to_sats(data.get("volume_24", 0))
     holder_count = data.get("holder_count", 0)
+    power_holder_count = data.get("power_holder_count", 0)
     btc_liquidity_sats = msat_to_sats(data.get("btc_liquidity", 0))
 
     # Price: API gives msat per token, convert to sats
@@ -1141,7 +1166,8 @@ def _handle_token_price(args: dict) -> dict:
         f"Market cap:   {fmt_sats(marketcap_sats, btc_usd)}",
         f"24h volume:   {fmt_sats(volume_24_sats, btc_usd)}",
         f"Liquidity:    {fmt_sats(btc_liquidity_sats, btc_usd)}",
-        f"Holders:      {holder_count:,}",
+        f"Power Holders: {power_holder_count:,}",
+        f"Holders:       {holder_count:,}",
         f"Supply:       21,000,000 (21M)",
     ]
 
@@ -1159,6 +1185,7 @@ def _handle_token_price(args: dict) -> dict:
         "marketcap_sats": marketcap_sats,
         "volume_24h_sats": volume_24_sats,
         "holder_count": holder_count,
+        "power_holder_count": power_holder_count,
         "total_supply": 21_000_000,
     }
 
@@ -1705,6 +1732,7 @@ def _record_trade(tool_name: str, args: dict, result: dict,
     price = 0
     ticker = token_id
     btc_usd = None
+    data = None
     try:
         from iconfucius.tokens import fetch_token_data
 
@@ -1745,7 +1773,11 @@ def _record_trade(tool_name: str, args: dict, result: dict,
     elif is_sell_all:
         entry["tokens_sold"] = "all"
     else:
-        display_tokens = _safe_float(amount)
+        from iconfucius.units import millisubunits_to_display
+        msu = int(_safe_float(amount))
+        div = data.get("divisibility", 8) if data else 8
+        dec = data.get("decimals", 3) if data else 3
+        display_tokens = round(millisubunits_to_display(msu, div, dec), 2)
         entry["tokens_sold"] = display_tokens
         if price:
             from iconfucius.units import sats_from_display_tokens
@@ -1915,9 +1947,8 @@ def _handle_memory_update(args: dict, *, persona_name: str = "") -> dict:
 # ---------------------------------------------------------------------------
 
 _HANDLERS: dict[str, callable] = {
-    "setup_status": _handle_setup_status,
+    "setup_and_operational_status": _handle_setup_and_operational_status,
     "check_update": _handle_check_update,
-    "enable_experimental": _handle_enable_experimental,
     "init": _handle_init,
     "set_bot_count": _handle_set_bot_count,
     "bot_list": _handle_bot_list,

@@ -80,6 +80,25 @@ def is_bech32_btc_address(address: str) -> bool:
 
 AI_TIMEOUT_DEFAULT = 600  # seconds
 
+# Provider → status page URL mapping
+_PROVIDER_STATUS = {
+    "Anthropic": "https://status.claude.com/",
+}
+
+
+def get_ai_provider() -> str:
+    """Return the resolved AI provider name for the current project."""
+    from iconfucius.persona import resolve_ai_config
+    config = load_config()
+    ai_section = config.get("ai", {})
+    _api_type, _model, _base_url, provider = resolve_ai_config(ai_section)
+    return provider
+
+
+def get_provider_status_url(provider: str) -> str | None:
+    """Return the status page URL for a provider, or None if unknown."""
+    return _PROVIDER_STATUS.get(provider)
+
 # ---------------------------------------------------------------------------
 # BTC/USD rate & sats formatting
 # ---------------------------------------------------------------------------
@@ -153,9 +172,7 @@ PEM_FILE = ".wallet/identity-private.pem"
 
 DEFAULT_CONFIG = {
     "settings": {"default_persona": "iconfucius"},
-    "bots": {
-        "bot-1": {"description": "Bot 1"},
-    },
+    "bots": {},
     "ai": {},
 }
 
@@ -362,6 +379,18 @@ def get_ai_config() -> dict:
     return config.get("ai", {})
 
 
+def get_rasa_model_group(
+    group: str, default_provider: str, default_model: str,
+) -> tuple[str, str]:
+    """Return (provider, model) for a Rasa model group, or defaults."""
+    config = load_config()
+    mg = (config.get("ai", {}).get("rasa", {})
+          .get("endpoints", {}).get("model_groups", {}).get(group, {}))
+    provider = mg.get("provider", default_provider)
+    model = mg.get("model", default_model)
+    return provider, model
+
+
 def get_ai_timeout() -> int:
     """Return AI request timeout in seconds from config or default.
 
@@ -398,40 +427,18 @@ def create_default_config(num_bots: int = 3) -> str:
     Returns:
         TOML content as string.
     """
-    num_bots = max(1, min(1000, num_bots))
+    num_bots = max(0, min(1000, num_bots))
     header = '''# iconfucius configuration
 # See: https://github.com/onicai/IConfucius
 
 [settings]
-# See README-security.md for details
+# See https://github.com/onicai/IConfucius/blob/main/agent/README-security.md
+# It is recommended to install blst and set verify_certicifactes to `true`
+# for additional protection against man-in-the-middle attacks at the network level
 verify_certificates = false
-cache_sessions = true
-default_persona = "iconfucius"
-
-# AI configuration (overrides persona defaults)
-# Default: Claude with claude-opus-4-6 (API key via ANTHROPIC_API_KEY env var)
-#
-# Claude with a different model:
-# [ai]
-# model = "claude-sonnet-4-6"
-#
-# Any OpenAI-compatible endpoint (llama.cpp, Ollama, vLLM, LM Studio, etc.):
-# [ai]
-# api_type = "openai"
-# base_url = "http://localhost:55128"
-# # API key via OPENAI_API_KEY env var (optional for local servers)
-#
-# Start llama.cpp server:
-#   llama-server --jinja --port 55128 -hf bartowski/Mistral-Nemo-Instruct-2407-GGUF:Q4_K_M
-#
-# Recommended local models for tool calling (Q4_K_M quantization):
-#   ~7.5GB  Mistral-NeMo-12B    bartowski/Mistral-Nemo-Instruct-2407-GGUF:Q4_K_M
-#   ~9 GB   Qwen2.5-14B         bartowski/Qwen2.5-14B-Instruct-GGUF:Q4_K_M
-#   ~15GB   Mistral-Small-24B   bartowski/Mistral-Small-24B-Instruct-2501-GGUF:Q4_K_M
 
 # Bot definitions
-# Each bot gets its own trading identity on Odin.Fun.
-# Optional: persona = "<name>" assigns a trading persona to the bot.
+# Each bot registers an account for trading on Odin.Fun
 '''
     bots = "\n".join(
         f'[bots.bot-{i}]\ndescription = "Bot {i}"\n'

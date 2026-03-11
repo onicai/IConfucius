@@ -135,7 +135,8 @@ def _load_identity():
 
 @wallet_app.command()
 def create(
-    force: bool = typer.Option(False, "--force", "-f", help="Overwrite existing wallet"),
+    force: bool = typer.Option(False, "--force", help="Overwrite existing wallet"),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug logging"),
 ):
     """Generate a new Ed25519 wallet identity."""
     from icp_identity import Identity
@@ -179,8 +180,8 @@ def create(
 
 @wallet_app.command()
 def balance(
-    token_id: str = typer.Option("29m8", "--token", "-t", help="Token ID to check"),
-    bot: Optional[str] = typer.Option(None, "--bot", "-b", help="Bot name to use"),
+    token_id: str = typer.Option("29m8", "--token", help="Token ID to check"),
+    bot: Optional[str] = typer.Option(None, "--bot", help="Bot name to use"),
     all_bots: bool = typer.Option(False, "--all-bots", help="Show all bots"),
     ckbtc_minter: bool = typer.Option(
         False, "--ckbtc-minter",
@@ -193,6 +194,7 @@ def balance(
     network: Optional[str] = typer.Option(
         None, "--network", help="PoAIW network of ckSigner: prd, testing, development"
     ),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug logging"),
 ):
     """Show ckBTC and Odin token balance."""
     from iconfucius.cli import _resolve_bot_names, _resolve_network, state
@@ -337,6 +339,7 @@ def info(
     network: Optional[str] = typer.Option(
         None, "--network", help="PoAIW network of ckSigner: prd, testing, development"
     ),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug logging"),
 ):
     """Show wallet address and ckBTC balance."""
     from iconfucius.cli import _resolve_network
@@ -369,6 +372,7 @@ def receive(
     network: Optional[str] = typer.Option(
         None, "--network", help="PoAIW network of ckSigner: prd, testing, development"
     ),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug logging"),
 ):
     """Show wallet address for funding with ckBTC or BTC."""
     from icp_agent import Agent, Client
@@ -437,6 +441,7 @@ def send(
     network: Optional[str] = typer.Option(
         None, "--network", help="PoAIW network of ckSigner: prd, testing, development"
     ),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug logging"),
 ):
     """Send ckBTC to a principal or BTC to a Bitcoin address."""
     from icp_agent import Agent, Client

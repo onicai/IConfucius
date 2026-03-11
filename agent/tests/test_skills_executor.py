@@ -63,9 +63,9 @@ class TestExecuteToolDispatch:
 
 
 class TestSetupStatusExecutor:
-    def test_setup_status_returns_all_fields(self):
+    def test_setup_and_operational_status_returns_all_fields(self):
         """Verify setup status returns all fields."""
-        result = execute_tool("setup_status", {})
+        result = execute_tool("setup_and_operational_status", {})
         assert result["status"] == "ok"
         assert "config_exists" in result
         assert "wallet_exists" in result
@@ -73,13 +73,43 @@ class TestSetupStatusExecutor:
         assert "has_api_key" in result
         assert "ready" in result
 
-    def test_setup_status_ready_requires_all(self):
+    def test_setup_and_operational_status_ready_requires_all(self):
         """ready should be False when any component is missing."""
         # In the test environment, wallet likely doesn't exist
-        result = execute_tool("setup_status", {})
+        result = execute_tool("setup_and_operational_status", {})
         assert result["status"] == "ok"
         # ready should be a bool
         assert isinstance(result["ready"], bool)
+
+    def test_not_ready_skips_operational_fields(self):
+        """When setup is not ready, operational fields should be absent."""
+        result = execute_tool("setup_and_operational_status", {})
+        if not result["ready"]:
+            assert "ai_provider" not in result
+            assert "ai_operational" not in result
+
+    @patch("iconfucius.health.urlopen")
+    def test_ready_includes_operational_fields(self, mock_urlopen, odin_project, monkeypatch):  # noqa: ARG002
+        """When ready=True, result includes ai_provider and ai_operational."""
+        import json
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-key")
+
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = json.dumps({
+            "components": [
+                {"name": "Claude API (api.anthropic.com)", "status": "operational"},
+            ]
+        }).encode()
+        mock_resp.__enter__ = lambda s: s
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        mock_urlopen.return_value = mock_resp
+
+        result = execute_tool("setup_and_operational_status", {})
+        assert result["status"] == "ok"
+        assert result["ready"] is True
+        assert result["ai_provider"] == "Anthropic"
+        assert result["ai_operational"] is True
+        assert result["ai_status_detail"] == "operational"
 
 
 class TestInitExecutor:
@@ -121,8 +151,8 @@ class TestInitExecutor:
         assert "[bots.bot-2]" in content
         assert "[bots.bot-3]" not in content
 
-    def test_init_without_num_bots_defaults_to_three(self, tmp_path, monkeypatch):
-        """Verify init without num bots defaults to three."""
+    def test_init_without_num_bots_creates_no_bots(self, tmp_path, monkeypatch):
+        """Verify init without num bots creates no bot sections."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         import iconfucius.config as cfg
@@ -132,8 +162,7 @@ class TestInitExecutor:
         result = execute_tool("init", {})
         assert result["status"] == "ok"
         content = (tmp_path / "iconfucius.toml").read_text()
-        assert "[bots.bot-3]" in content
-        assert "[bots.bot-4]" not in content
+        assert "[bots.bot-1]" not in content
 
 
 class TestBotListExecutor:
@@ -849,9 +878,10 @@ class TestTradeRecordingSafeFloat:
         monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
         from iconfucius.skills.executor import _HANDLERS
         original = _HANDLERS["trade_sell"]
+        # 500.5 display tokens = 50050000000000 milli-subunits (div=8, dec=3)
         _HANDLERS["trade_sell"] = self._fake_handler(
             {"status": "ok", "display": "Sold!",
-             "details": [{"amount": 500.5}]})
+             "details": [{"amount": 50050000000000}]})
         try:
             result = execute_tool("trade_sell",
                                   {"token_id": "29m8", "amount": 1000,
@@ -862,7 +892,7 @@ class TestTradeRecordingSafeFloat:
         assert result["status"] == "ok"
         mock_append.assert_called_once()
         entry = mock_append.call_args[0][1]
-        # Should use 500.5 from details, not 1000 from args
+        # amount is in milli-subunits; should be converted to display tokens
         assert entry["tokens_sold"] == 500.5
 
     @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100000.0)

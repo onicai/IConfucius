@@ -66,6 +66,29 @@ def cached_messages(messages: list[dict]) -> list[dict]:
     return result
 
 
+def format_api_error(e: Exception) -> str:
+    """Return a user-friendly error message for AI provider errors."""
+    msg = str(e).lower()
+    # Detect provider from exception module
+    is_anthropic = type(e).__module__.startswith("anthropic")
+    provider = "Anthropic" if is_anthropic else "The AI provider"
+    if "credit balance" in msg or "purchase credits" in msg:
+        return (
+            f"Your {provider} API credit balance is too low. "
+            + ("Add credits at: https://console.anthropic.com/settings/plans"
+               if is_anthropic else "Please check your account billing.")
+        )
+    if "api_key" in msg or "auth" in msg:
+        return "Authentication failed — check your API key in .env"
+    if "rate" in msg and "limit" in msg:
+        return f"{provider} rate limited your request. Please wait a moment and try again."
+    if "overloaded" in msg:
+        return f"{provider} is temporarily overloaded. Please try again in a moment."
+    if "timed out" in msg or "timeout" in msg:
+        return f"{provider} request timed out. Please try again."
+    return f"{provider} error: {e}" if is_anthropic else str(e)
+
+
 class AIBackend(ABC):
     """Abstract base class for AI chat backends."""
 
