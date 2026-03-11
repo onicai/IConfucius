@@ -10,7 +10,8 @@ Traditional LLM agents with pure tool calling let the model decide which tools
 to call, in what order, and with what arguments. This works well for open-ended
 tasks, but for business-critical workflows like trading it introduces a serious
 risk: the LLM can hallucinate business logic — skipping confirmation steps,
-inventing parameter values, or calling tools in the wrong sequence.
+blocking transactions due to hallucinated rules, inventing parameter values,
+or calling tools in the wrong sequence.
 
 CALM solves this by separating **what the LLM decides** from **what the system
 executes**. The LLM's only job is to understand the user's intent and fill
