@@ -4,6 +4,21 @@ IConfucius uses [Rasa Pro CALM](https://rasa.com/docs/rasa-pro/) for
 conversational flow management. The LLM reads flow definitions and routes user
 messages to the correct flow, collecting slots and executing actions.
 
+## Why CALM over pure tool-calling agents?
+
+Traditional LLM agents with pure tool calling let the model decide which tools
+to call, in what order, and with what arguments. This works well for open-ended
+tasks, but for business-critical workflows like trading it introduces a serious
+risk: the LLM can hallucinate business logic — skipping confirmation steps,
+inventing parameter values, or calling tools in the wrong sequence.
+
+CALM solves this by separating **what the LLM decides** from **what the system
+executes**. The LLM's only job is to understand the user's intent and fill
+slots; the actual business logic — step ordering, validations, confirmations —
+is defined in deterministic flow definitions (`data/flows.yml`). The LLM cannot
+skip a confirmation step or invent a trade amount, because the flow controls
+which action runs next.
+
 ## Prerequisites
 
 - Python environment with Rasa Pro installed (`conda activate IConfucius`)
