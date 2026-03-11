@@ -4,7 +4,7 @@ IConfucius uses [Rasa Pro CALM](https://rasa.com/docs/rasa-pro/) for
 conversational flow management. The LLM reads flow definitions and routes user
 messages to the correct flow, collecting slots and executing actions.
 
-## Why CALM over pure tool-calling agents?
+## Why Rasa Pro CALM over pure tool-calling agents?
 
 Traditional LLM agents with pure tool calling let the model decide which tools
 to call, in what order, and with what arguments. This works well for open-ended
