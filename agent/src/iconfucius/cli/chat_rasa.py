@@ -15,14 +15,17 @@ from iconfucius.cli.chat import (
 )
 from iconfucius.skills.executor import execute_tool
 
-# Rasa project directory (agent/rasa/ relative to the repo root)
-_RASA_DIR = Path(__file__).resolve().parent.parent.parent.parent / "rasa"
+# Inside installed package: site-packages/iconfucius/rasa/
+_RASA_DIR_PKG = Path(__file__).resolve().parent.parent / "rasa"
+# Editable install / dev: agent/src/iconfucius/rasa/
+_RASA_DIR_DEV = Path(__file__).resolve().parent.parent.parent.parent / "rasa"
 
 
 def _find_rasa_dir() -> Path:
     """Locate the rasa/ directory, checking multiple candidate paths."""
     candidates = [
-        _RASA_DIR,
+        _RASA_DIR_PKG,
+        _RASA_DIR_DEV,
         Path.cwd() / "rasa",
         Path.cwd() / "agent" / "rasa",
     ]

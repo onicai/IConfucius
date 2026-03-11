@@ -58,3 +58,6 @@ out/
 
 # PyPI
 .pypirc
+
+# Rasa trained models (built during release)
+rasa/models/

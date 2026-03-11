@@ -74,3 +74,12 @@ with a progress bar so the user always sees visual feedback. This includes:
 When adding a new tool, check whether it makes network calls. If so, add it to
 the `use_spinner` tuple in `_run_tool_loop`.
 
+---
+
+## Skills
+
+| Skill                        | Location                                                        |
+| ---------------------------- | --------------------------------------------------------------- |
+| `iconfucius-release-to-pypi` | `IConfucius/.claude/skills/iconfucius-release-to-pypi/SKILL.md` |
+| `iconfucius-e2e-test`        | `IConfucius/.claude/skills/iconfucius-e2e-test/SKILL.md`        |
+

@@ -77,7 +77,14 @@ include = ["iconfucius*"]
 exclude = ["canisters*"]
 
 [tool.setuptools.package-data]
-iconfucius = ["py.typed", "*.toml", "personas/**/*.toml", "personas/**/*.md", "client/dist/**/*"]
+iconfucius = [
+    "py.typed", "*.toml",
+    "personas/**/*.toml", "personas/**/*.md",
+    "client/dist/**/*",
+    "rasa/*.yml", "rasa/data/*.yml",
+    "rasa/actions/*.py",
+    "rasa/models/release-model.tar.gz",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

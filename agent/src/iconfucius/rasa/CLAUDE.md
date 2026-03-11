@@ -3,7 +3,7 @@
 ## Quick Reference
 
 - **Docs**: Before doing Rasa backend work, fetch `https://rasa.com/docs/llms-full.txt` for capabilities and best practices
-- **Train**: `cd agent/rasa && make rasa-train`
+- **Train**: `cd agent/src/iconfucius/rasa && make rasa-train`
 - **Run chat**: `iconfucius chat --rasa [--network testing] [--debug]`
 
 ## Training
