@@ -7,14 +7,20 @@ messages to the correct flow, collecting slots and executing actions.
 ## Prerequisites
 
 - Python environment with Rasa Pro installed (`conda activate IConfucius`)
-- API keys in `agent/rasa/.env` (auto-loaded by Rasa):
+- API keys and licenses in `agent/rasa/.env` (auto-loaded by Rasa):
 
 ```
 ANTHROPIC_API_KEY=sk-ant-...
+RASA_LICENSE=ey...
 ```
 
-The Anthropic key is used at **runtime** for the command generator and response
-rephraser (both default to `claude-opus-4-6`).
+| Variable           | Where to get it                                                                                    |
+| ------------------ | -------------------------------------------------------------------------------------------------- |
+| `ANTHROPIC_API_KEY` | [Anthropic Console](https://console.anthropic.com/settings/keys) — create an API key               |
+| `RASA_LICENSE`      | [Rasa Developer Edition](https://rasa.com/rasa-pro-developer-edition-license-key-request) — free   |
+
+The onboarding wizard (`iconfucius chat --rasa`) will prompt for both if they
+are missing and save them to `.env` automatically.
 
 ## Quick Start
 
