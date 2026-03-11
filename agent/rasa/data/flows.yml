@@ -198,6 +198,7 @@ flows:
         description: "Amount to spend per bot: sats (e.g. '5000'), USD with $ prefix (e.g. '$5'), or 'all'"
       - collect: bot_target
         description: "Bot name (e.g. 'bot-1'), comma-separated list, or 'all'"
+      - action: action_format_trade_confirm
       - collect: confirm_trade
         ask_before_filling: true
         utter: utter_confirm_trade_buy
@@ -223,6 +224,7 @@ flows:
         description: "Amount of tokens to sell per bot: token count (e.g. '1000'), USD with $ prefix (e.g. '$5'), or 'all'"
       - collect: bot_target
         description: "Bot name (e.g. 'bot-1'), comma-separated list, or 'all'"
+      - action: action_format_trade_confirm
       - collect: confirm_trade
         ask_before_filling: true
         utter: utter_confirm_trade_sell

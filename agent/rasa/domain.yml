@@ -92,10 +92,18 @@ slots:
     type: text
     mappings:
       - type: controlled
+  token_name:
+    type: text
+    mappings:
+      - type: controlled
   trade_amount:
     type: text
     mappings:
       - type: from_llm
+  trade_display:
+    type: text
+    mappings:
+      - type: controlled
   confirm_trade:
     type: bool
     mappings:
@@ -178,6 +186,7 @@ actions:
   - action_withdraw
   # Trading
   - action_resolve_token
+  - action_format_trade_confirm
   - action_trade_buy
   - action_trade_sell
   # Transfers
@@ -225,9 +234,9 @@ responses:
     - text: "How much? (sats, $USD, token count, or 'all')"
 
   utter_confirm_trade_buy:
-    - text: "Buy {token_id} for {trade_amount} per bot ({bot_target})? (yes/no)"
+    - text: "Buy {token_name} ({token_id}) for {trade_display} using {bot_target}?"
   utter_confirm_trade_sell:
-    - text: "Sell {trade_amount} of {token_id} per bot ({bot_target})? (yes/no)"
+    - text: "Sell {trade_display} of {token_name} ({token_id}) using {bot_target}?"
   utter_trade_cancelled:
     - text: "Trade cancelled."
 
@@ -245,37 +254,37 @@ responses:
     - text: "Overwrite existing configuration?"
 
   utter_confirm_token_transfer:
-    - text: "Transfer {transfer_amount} of {token_id} to {transfer_to_address} from {bot_target}? WARNING: Irreversible. (yes/no)"
+    - text: "Transfer {transfer_amount} of {token_id} to {transfer_to_address} from {bot_target}? WARNING: Irreversible."
   utter_transfer_cancelled:
     - text: "Transfer cancelled."
   utter_confirm_wallet_send:
-    - text: "Send {send_amount} to {send_address}? (yes/no)"
+    - text: "Send {send_amount} to {send_address}?"
   utter_send_cancelled:
     - text: "Send cancelled."
   utter_confirm_init:
-    - text: "Initialize iconfucius project with {setup_num_bots} bot(s)? (yes/no)"
+    - text: "Initialize iconfucius project with {setup_num_bots} bot(s)?"
   utter_confirm_wallet_create:
-    - text: "Create new wallet identity? (yes/no)"
+    - text: "Create new wallet identity?"
   utter_confirm_set_bots:
-    - text: "Change bot count to {setup_num_bots}? (yes/no)"
+    - text: "Change bot count to {setup_num_bots}?"
   utter_setup_cancelled:
     - text: "Setup cancelled."
 
   utter_confirm_fund:
-    - text: "Deposit {fund_amount} sats to {bot_target}? (yes/no)"
+    - text: "Deposit {fund_amount} sats to {bot_target}?"
   utter_fund_cancelled:
     - text: "Deposit cancelled."
   utter_confirm_withdraw:
-    - text: "Withdraw {withdraw_amount} from {bot_target}? (yes/no)"
+    - text: "Withdraw {withdraw_amount} from {bot_target}?"
   utter_withdraw_cancelled:
     - text: "Withdrawal cancelled."
 
   utter_confirm_memory_update:
-    - text: "Update {memory_file} memory file? (yes/no)"
+    - text: "Update {memory_file} memory file?"
   utter_memory_update_cancelled:
     - text: "Memory update cancelled."
   utter_confirm_memory_archive:
-    - text: "Archive balance snapshots older than {keep_days} days? (yes/no)"
+    - text: "Archive balance snapshots older than {keep_days} days?"
   utter_memory_archive_cancelled:
     - text: "Archive cancelled."
 
@@ -293,7 +302,7 @@ responses:
           Conversation history:
           {{history}}
 
-          The student's message was unclear. Ask for clarification in your voice.
+          The user's message was unclear. Ask for clarification in your voice.
           Respond to: {{current_input}}
           Response:
 
@@ -308,14 +317,15 @@ responses:
           Do NOT add a wisdom quote unless the moment calls for it.
           Start the response with a single appropriate emoji.
 
-          The student just completed a flow and received a response.
-          Briefly acknowledge what was done, offer a short insight or observation if appropriate,
-          and invite the next question. Keep it to 1-2 sentences.
+          The user just completed a flow and received a response.
+          Briefly acknowledge what was done, offer a short insight or observation if appropriate.
+          Do NOT ask a follow-up question — the user knows they can continue.
+          Keep it to 1 sentence.
 
           Conversation history:
           {{history}}
 
-          The student asked: {{current_input}}
+          The user asked: {{current_input}}
           Response:
 
   utter_free_chitchat_response:

@@ -9,6 +9,28 @@ from iconfucius.skills.executor import async_execute_tool
 from .actions_utility import _send_result
 
 
+def _fmt_trade_amount(raw: str | None) -> str:
+    """Format a raw trade amount for display in confirmation prompts."""
+    if not raw:
+        return "?"
+    raw = raw.strip()
+    if raw.lower() == "all":
+        return "all"
+    if raw.startswith("$"):
+        return raw
+    try:
+        sats = int(float(raw))
+        from iconfucius.config import fmt_sats, get_btc_to_usd_rate
+
+        rate = get_btc_to_usd_rate()
+        return fmt_sats(sats, rate)
+    except Exception:
+        try:
+            return f"{int(float(raw)):,} sats"
+        except ValueError:
+            return raw
+
+
 def _parse_bot_target(bot_target: str | None) -> dict[str, Any]:
     """Convert bot_target slot into executor args."""
     if not bot_target:

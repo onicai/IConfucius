@@ -6,7 +6,7 @@ from rasa_sdk.executor import CollectingDispatcher
 
 from iconfucius.skills.executor import async_execute_tool
 
-from .actions_funding import _parse_amount, _parse_bot_target
+from .actions_funding import _fmt_trade_amount, _parse_amount, _parse_bot_target
 from .actions_utility import _send_result
 
 
@@ -30,7 +30,11 @@ class ActionResolveToken(Action):
             match = result.get("known_match")
             if match:
                 token_id = match["id"]
-                return [SlotSet("token_id", token_id)]
+                token_name = match.get("name") or match.get("ticker") or token_id
+                return [
+                    SlotSet("token_id", token_id),
+                    SlotSet("token_name", token_name),
+                ]
 
             # Multiple results — show them and clear token_query for re-collection
             display = result.get("display", "")
@@ -41,6 +45,7 @@ class ActionResolveToken(Action):
             )
             return [
                 SlotSet("token_id", None),
+                SlotSet("token_name", None),
                 SlotSet("token_query", None),
             ]
 
@@ -49,8 +54,23 @@ class ActionResolveToken(Action):
         )
         return [
             SlotSet("token_id", None),
+            SlotSet("token_name", None),
             SlotSet("token_query", None),
         ]
+
+
+class ActionFormatTradeConfirm(Action):
+    def name(self) -> Text:
+        return "action_format_trade_confirm"
+
+    async def run(
+        self,
+        dispatcher: CollectingDispatcher,
+        tracker: Tracker,
+        domain: Dict[Text, Any],
+    ) -> List[Dict[Text, Any]]:
+        raw = tracker.get_slot("trade_amount")
+        return [SlotSet("trade_display", _fmt_trade_amount(raw))]
 
 
 class ActionTradeBuy(Action):
@@ -71,7 +91,9 @@ class ActionTradeBuy(Action):
         return [
             SlotSet("token_query", None),
             SlotSet("token_id", None),
+            SlotSet("token_name", None),
             SlotSet("trade_amount", None),
+            SlotSet("trade_display", None),
             SlotSet("bot_target", None),
             SlotSet("confirm_trade", None),
         ]
@@ -95,7 +117,9 @@ class ActionTradeSell(Action):
         return [
             SlotSet("token_query", None),
             SlotSet("token_id", None),
+            SlotSet("token_name", None),
             SlotSet("trade_amount", None),
+            SlotSet("trade_display", None),
             SlotSet("bot_target", None),
             SlotSet("confirm_trade", None),
         ]

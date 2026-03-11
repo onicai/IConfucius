@@ -26,7 +26,7 @@
 The `description` field in `flows.yml` is what the LLM reads to decide which flow to trigger and how to fill slots. Adding context hints there (e.g. "use recently discussed token") directly influences slot prefilling behavior.
 
 ### Confirmation prompts
-Use `(yes/no)` instead of `[Y/n]` in `utter_confirm_*` responses. The chat client (`chat_rasa.py`) skips empty input, so pressing Enter alone does nothing — users must type actual text.
+Do NOT add `(yes/no)` or `[Y/n]` hints to `utter_confirm_*` responses. CALM's LLM interprets natural language confirmations (e.g. "sure", "go ahead", "nah"). The non-Rasa CLI mode uses `[Y/n]`, but Rasa mode should have no hint.
 
 ### Env vars in endpoints.yml
 `endpoints.yml` uses three model groups via env vars:
