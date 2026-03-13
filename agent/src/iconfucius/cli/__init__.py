@@ -303,8 +303,10 @@ def main_callback(
     state.all_bots = all_bots
     state.verbose = verbose
     state.network = network
-    state.rasa = rasa
-    state.debug = debug
+    if rasa:
+        state.rasa = rasa
+    if debug:
+        state.debug = debug
     set_network(network)
     if ctx.invoked_subcommand is None:
         # Bare invocation: launch the web UI
@@ -349,16 +351,16 @@ def _start_chat():
 
         # Ask how many bots
         try:
-            bots_input = input("How many bots? [3] ").strip()
+            bots_input = input("How many bots? [1] ").strip()
         except (KeyboardInterrupt, EOFError):
             print()
             return
-        num_bots = 3
+        num_bots = 1
         if bots_input:
             try:
                 num_bots = max(1, min(1000, int(bots_input)))
             except ValueError:
-                print("Invalid number, using default (3).")
+                print("Invalid number, using default (1).")
 
         result = execute_tool("init", {"num_bots": num_bots})
         if result.get("status") != "ok":
@@ -390,23 +392,40 @@ def _start_chat():
     # --- Step 2b: Rasa license (only for --rasa mode) ---
     if getattr(state, "rasa", False):
         import os
-        rasa_license = os.environ.get("RASA_LICENSE", "")
-        has_rasa_license = bool(rasa_license) and rasa_license != "your-rasa-license-here"
-        if not has_rasa_license:
-            print("A Rasa Pro license is needed for the CALM backend.")
-            print("Get your free Developer Edition license at:")
-            print("  https://rasa.com/rasa-pro-developer-edition-license-key-request\n")
+        from rasa.utils.licensing import validate_license_from_env
+        # Reload .env — it may have just been created/modified during onboarding
+        from dotenv import load_dotenv
+        load_dotenv(dotenv_path=Path.cwd() / ".env", override=True)
+
+        for attempt in range(3):
+            rasa_license = os.environ.get("RASA_LICENSE", "")
+            needs_input = not rasa_license or rasa_license == "your-rasa-license-here"
+            if needs_input or attempt > 0:
+                if attempt == 0:
+                    print("A Rasa Pro license is needed for the CALM backend.")
+                    print("Get your free Developer Edition license at:")
+                    print("  https://rasa.com/rasa-pro-developer-edition-license-key-request\n")
+                try:
+                    license_key = input("Paste your Rasa Pro License: ").strip()
+                except (KeyboardInterrupt, EOFError):
+                    print()
+                    return
+                if not license_key:
+                    print("\nNo license entered. Add RASA_LICENSE to .env and try again.")
+                    return
+                _save_rasa_license(license_key)
+                print("Saved Rasa license to .env\n")
+
+            # Validate license via Rasa
             try:
-                license_key = input("Paste your Rasa license (ey...): ").strip()
-            except (KeyboardInterrupt, EOFError):
-                print()
-                return
-            if not license_key:
-                print("\nNo license entered. Add RASA_LICENSE to .env and try again.")
-                return
-            _save_rasa_license(license_key)
-            print("Saved Rasa license to .env")
-            print()
+                validate_license_from_env()
+                break  # valid
+            except SystemExit:
+                if attempt < 2:
+                    print("\nInvalid license. Please try again.\n")
+                else:
+                    print("\nFailed to validate Rasa license after 3 attempts.")
+                    return
 
     # --- Step 3: Wallet create ---
     if not setup.get("wallet_exists"):
@@ -525,6 +544,12 @@ def chat(
     if bot:
         state.bot_name = bot
     if rasa:
+        try:
+            import rasa  # noqa: F401
+        except ImportError:
+            print("Error: Rasa Pro is not installed.")
+            print("Install with: pip install 'iconfucius[rasa]'")
+            raise typer.Exit(1)
         state.rasa = True
     if debug:
         state.debug = True

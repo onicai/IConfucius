@@ -1,19 +1,34 @@
-"""Interactive chat using Rasa CALM backend (in-process agent)."""
+"""Interactive chat using Rasa CALM backend via SSE channel.
+
+The CLI is a pure HTTP client: POST a user message to the Rasa SSE
+endpoint, read the event stream.  Same code path for local development
+(Rasa runs as a subprocess) and AWS (Rasa runs remotely).
+"""
 
 import asyncio
+import json
 import logging
+import os
+import subprocess
 import sys
+import time
+import uuid
 from pathlib import Path
+
+import httpx
 
 from iconfucius import __version__
 from iconfucius.cli.chat import (
     QUOTE_TOPICS,
     _Spinner,
     _check_pypi_version,
+    _get_language_code,
     _handle_upgrade,
     _run_with_spinner,
 )
 from iconfucius.skills.executor import execute_tool
+
+_log = logging.getLogger(__name__)
 
 # Inside installed package: site-packages/iconfucius/rasa/
 _RASA_DIR_PKG = Path(__file__).resolve().parent.parent / "rasa"
@@ -37,112 +52,137 @@ def _find_rasa_dir() -> Path:
     )
 
 
-async def _load_rasa_agent(rasa_dir: Path, debug: bool = False):
-    """Load the Rasa agent in-process with actions_module support."""
-    import os
+# ------------------------------------------------------------------
+# Rasa subprocess management
+# ------------------------------------------------------------------
 
+def _start_rasa_server(
+    rasa_dir: Path, port: int, mcp_url: str,
+    llm_provider: str, llm_model: str,
+    reph_provider: str, reph_model: str,
+    sub_provider: str, sub_model: str,
+    debug: bool,
+) -> subprocess.Popen:
+    """Start Rasa as a subprocess with SSE channel."""
+    env = {
+        **os.environ,
+        "ICONFUCIUS_MCP_URL": mcp_url,
+        "RASA_LLM_PROVIDER": llm_provider,
+        "RASA_LLM_MODEL": llm_model,
+        "RASA_REPHRASER_PROVIDER": reph_provider,
+        "RASA_REPHRASER_MODEL": reph_model,
+        "RASA_SUBAGENT_PROVIDER": sub_provider,
+        "RASA_SUBAGENT_MODEL": sub_model,
+        "RASA_SUBAGENT_TOOL_TIMEOUT": os.environ.get(
+            "RASA_SUBAGENT_TOOL_TIMEOUT", "120"
+        ),
+    }
+
+    if not debug:
+        env["LOG_LEVEL"] = "ERROR"
+        env["SANIC_LOG_LEVEL"] = "ERROR"
+        env.setdefault("LLM_API_HEALTH_CHECK", "false")
+
+    cmd = [
+        "rasa", "run", "--enable-api",
+        "--port", str(port),
+        "--credentials", "credentials.yml",
+        "--endpoints", "endpoints.yml",
+    ]
     if debug:
-        os.environ["LOG_LEVEL"] = "DEBUG"
-        os.environ.setdefault("LLM_API_HEALTH_CHECK", "false")
-    else:
-        # Suppress verbose Rasa debug/info logging
-        os.environ["LOG_LEVEL"] = "ERROR"
-        os.environ.setdefault("LLM_API_HEALTH_CHECK", "false")
-        logging.getLogger("rasa").setLevel(logging.ERROR)
-        logging.getLogger("matplotlib").setLevel(logging.ERROR)
-        logging.getLogger().setLevel(logging.ERROR)
+        cmd.append("--debug")
 
-        # Configure structlog to filter debug/info messages
-        import structlog
-        from rasa.utils.log_utils import configure_structlog
-        configure_structlog(logging.ERROR)
-
-    import warnings
-    warnings.filterwarnings("ignore", category=UserWarning, module="pydantic")
-
-    # Make the actions package importable
-    if str(rasa_dir) not in sys.path:
-        sys.path.insert(0, str(rasa_dir))
-
-    from rasa.core.agent import load_agent
-    from rasa.core.config.available_endpoints import AvailableEndpoints
-    from rasa.core.config.configuration import Configuration
-    from rasa.model import get_local_model
-
-    endpoints_path = rasa_dir / "endpoints.yml"
-    Configuration.initialise_endpoints(endpoints_path)
-
-    endpoints = AvailableEndpoints.read_endpoints(endpoints_path)
-    model_path = get_local_model(rasa_dir / "models")
-
-    return await load_agent(model_path=model_path, endpoints=endpoints)
+    return subprocess.Popen(
+        cmd,
+        cwd=str(rasa_dir),
+        env=env,
+        stdout=None if debug else subprocess.PIPE,
+        stderr=None if debug else subprocess.PIPE,
+    )
 
 
-async def _handle_message(agent, text: str, sender_id: str) -> list[str]:
-    """Send a message to the Rasa agent and return bot response texts."""
-    responses = await agent.handle_text(text, sender_id=sender_id)
-    return [r.get("text", "") for r in (responses or []) if r.get("text")]
+async def _wait_for_rasa_ready(rasa_url: str, timeout: int = 120, interval: float = 0.5) -> None:
+    """Poll the SSE health endpoint until Rasa is ready."""
+    deadline = time.monotonic() + timeout
+    async with httpx.AsyncClient() as client:
+        while time.monotonic() < deadline:
+            try:
+                r = await client.get(f"{rasa_url}/webhooks/sse/")
+                if r.status_code == 200:
+                    return
+            except httpx.ConnectError:
+                pass
+            await asyncio.sleep(interval)
+    raise RuntimeError(f"Rasa server not ready after {timeout}s")
 
 
-async def _start_goodbye_task(agent, persona, sender_id: str):
-    """Schedule goodbye generation as a background asyncio task."""
-    async def _generate():
-        try:
-            responses = await _handle_message(agent, persona.goodbye_prompt, sender_id)
-            return responses[0] if responses else "May your path be wise."
-        except Exception:
-            return "May your path be wise."
-    return asyncio.create_task(_generate())
+# ------------------------------------------------------------------
+# SSE streaming
+# ------------------------------------------------------------------
+
+async def _sse_stream(client: httpx.AsyncClient, url: str, sender_id: str, text: str):
+    """POST a message and yield SSE events from the response stream."""
+    async with client.stream(
+        "POST", url, json={"message": text, "sender_id": sender_id},
+    ) as response:
+        event_type = None
+        async for line in response.aiter_lines():
+            if line.startswith("event: "):
+                event_type = line[7:]
+            elif line.startswith("data: "):
+                data = json.loads(line[6:])
+                if event_type == "custom" and data.get("type") == "tool_status":
+                    yield {"type": "tool_status", "text": data["text"]}
+                elif event_type == "bot_uttered":
+                    yield {"type": "bot_uttered", **data}
+                event_type = None
 
 
-def _get_goodbye(goodbye_task) -> str:
-    """Return goodbye if background task completed, else static fallback."""
-    if goodbye_task is not None and goodbye_task.done():
-        try:
-            return goodbye_task.result()
-        except Exception:
-            pass
-    return "May your path be wise."
+async def _send_sse_message(
+    client: httpx.AsyncClient, url: str, sender_id: str, text: str,
+    spinner_label: str = "",
+) -> list[str]:
+    """Send a message via SSE and collect all bot_uttered responses."""
+    responses = []
+    with _Spinner(spinner_label) as sp:
+        async for event in _sse_stream(client, url, sender_id, text):
+            if event["type"] == "tool_status":
+                sp.update(event["text"])
+            elif event["type"] == "bot_uttered" and event.get("text"):
+                responses.append(event["text"])
+    return responses
 
 
-def run_chat_rasa(
-    persona_name: str, bot_name: str, verbose: bool = False, debug: bool = False,
+# ------------------------------------------------------------------
+# Async chat loop
+# ------------------------------------------------------------------
+
+async def _run_chat_rasa_async(
+    persona_name: str, bot_name: str, verbose: bool, debug: bool,
 ) -> None:
-    """Run interactive chat using the Rasa CALM backend.
+    print("\033[2mLoading IConfucius...\033[0m", end="", flush=True)
 
-    Args:
-        persona_name: Name of the persona to load.
-        bot_name: Default bot for trading context.
-        verbose: Show verbose output.
-        debug: Show Rasa debug logs on screen.
-    """
-    from iconfucius.config import set_verbose
+    from iconfucius.config import get_rasa_model_group, set_verbose
+    from iconfucius.persona import PersonaNotFoundError, load_persona
+
     set_verbose(verbose)
 
-    from iconfucius.persona import PersonaNotFoundError, load_persona
     try:
         persona = load_persona(persona_name)
     except PersonaNotFoundError as e:
         print(f"Error: {e}")
         return
 
-    # Expose Rasa model group config as env vars for endpoints.yml
-    import os
-    from iconfucius.config import get_rasa_model_group
-
-    # Command generator (flow routing) — default anthropic / claude-opus-4-6
+    # Resolve model groups from config
     llm_provider, llm_model = get_rasa_model_group(
         "command_generator", "anthropic", "claude-opus-4-6",
     )
-    os.environ.setdefault("RASA_LLM_PROVIDER", llm_provider)
-    os.environ.setdefault("RASA_LLM_MODEL", llm_model)
-
-    # NLG rephraser (persona voice) — default anthropic / claude-opus-4-6
     reph_provider, reph_model = get_rasa_model_group(
         "response_rephraser", "anthropic", "claude-opus-4-6",
     )
-    os.environ.setdefault("RASA_REPHRASER_PROVIDER", reph_provider)
-    os.environ.setdefault("RASA_REPHRASER_MODEL", reph_model)
+    sub_provider, sub_model = get_rasa_model_group(
+        "sub_agent", "anthropic", "claude-opus-4-6",
+    )
 
     # Set up conversation logger + litellm callback for LLM call logging
     from iconfucius.conversation_log import ConversationLogger
@@ -155,144 +195,210 @@ def run_chat_rasa(
     import litellm
     litellm.callbacks.append(rasa_logger)
 
-    # Load Rasa agent
-    try:
-        rasa_dir = _find_rasa_dir()
-    except FileNotFoundError as e:
-        print(f"Error: {e}")
-        conv_logger.close()
-        return
+    # 1. Start MCP server (asyncio task, same process)
+    from iconfucius.mcp_server import MCP_DEFAULT_PORT, start_mcp_server
 
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+    mcp_port = int(os.environ.get("ICONFUCIUS_MCP_PORT", str(MCP_DEFAULT_PORT)))
+    mcp_url = f"http://127.0.0.1:{mcp_port}/mcp"
+    os.environ.setdefault("ICONFUCIUS_MCP_URL", mcp_url)
 
-    try:
-        with _Spinner("Loading Rasa agent..."):
-            agent = loop.run_until_complete(_load_rasa_agent(rasa_dir, debug=debug))
-    except Exception as e:
-        print(f"\nError loading Rasa agent: {e}")
-        conv_logger.close()
-        return
-
-    if not agent.is_ready():
-        print("Error: Rasa agent failed to load. Run 'rasa train' first.")
-        conv_logger.close()
-        return
-
-    sender_id = f"cli-{persona_name}"
-
-    # Startup greeting & goodbye — route through Rasa chitchat (model from endpoints.yml)
-    from iconfucius.cli.chat import _get_language_code
-    import random
-
-    lang = _get_language_code()
-    entry = random.choice(QUOTE_TOPICS)
+    mcp_task = None
+    mcp_uv_server = None
+    rasa_process = None
 
     try:
-        with _Spinner(f"{persona.name} is thinking..."):
+        try:
+            mcp_task, mcp_uv_server = await start_mcp_server(port=mcp_port)
+        except SystemExit:
+            conv_logger.close()
+            return
+
+        # 2. Start Rasa server (subprocess) -- skip if RASA_URL provided
+        rasa_url = os.environ.get("RASA_URL")
+        if not rasa_url:
+            try:
+                rasa_dir = _find_rasa_dir()
+            except FileNotFoundError as e:
+                print(f"Error: {e}")
+                return
+
+            rasa_port = int(os.environ.get("RASA_PORT", "5005"))
+            rasa_url = f"http://127.0.0.1:{rasa_port}"
+
+            print("\r\033[K", end="", flush=True)  # clear "Loading..." line
+            with _Spinner("Starting Rasa server..."):
+                rasa_process = _start_rasa_server(
+                    rasa_dir, rasa_port, mcp_url,
+                    llm_provider, llm_model,
+                    reph_provider, reph_model,
+                    sub_provider, sub_model,
+                    debug,
+                )
+                try:
+                    await _wait_for_rasa_ready(rasa_url)
+                except RuntimeError as e:
+                    print(f"\nError: {e}")
+                    # Show stderr if available
+                    if rasa_process.stderr:
+                        err = rasa_process.stderr.read()
+                        if err:
+                            print(err.decode(errors="replace")[-2000:])
+                    return
+
+        sse_url = f"{rasa_url}/webhooks/sse/webhook"
+        sender_id = uuid.uuid4().hex
+
+        async with httpx.AsyncClient(timeout=httpx.Timeout(120.0)) as client:
+            # 3. Startup greeting
+            import random
+
+            lang = _get_language_code()
+            entry = random.choice(QUOTE_TOPICS)
             greeting_prompt = persona.greeting_prompt.format(
                 icon=entry["icon"], topic=entry[lang],
             )
-            greeting_responses = loop.run_until_complete(
-                _handle_message(agent, greeting_prompt, sender_id)
+
+            greeting_responses = await _send_sse_message(
+                client, sse_url, sender_id, greeting_prompt,
+                spinner_label=f"{persona.name} is thinking...",
             )
+            greeting = greeting_responses[0] if greeting_responses else (
+                f"{entry['icon']} {persona.name} -- {entry[lang]}"
+            )
+            print(f"\n{greeting}\n")
 
-        greeting = greeting_responses[0] if greeting_responses else ""
-        if not greeting:
-            greeting = f"{entry['icon']} {persona.name} — {entry[lang]}"
-    except Exception:
-        greeting = f"{entry['icon']} {persona.name} — {entry[lang]}"
+            # 4. Show wallet balance at startup
+            setup = execute_tool("setup_and_operational_status", {})
+            if setup.get("wallet_exists"):
+                from iconfucius.cli.balance import run_wallet_balance
+                try:
+                    wallet_data = _run_with_spinner(
+                        "Checking wallet...", run_wallet_balance,
+                        ckbtc_minter=False,
+                    )
+                    if wallet_data:
+                        display_text = wallet_data.pop("_display", "")
+                        if display_text:
+                            print(f"{display_text}\n")
+                except Exception:
+                    pass
 
-    print(f"\n{greeting}\n")
+            # 5. Status line
+            print(f"\033[2miconfucius v{__version__} · Rasa Pro CALM · exit to quit · Ctrl+C to interrupt\033[0m")
+            print(f"\033[2mLLM: {llm_provider}/{llm_model} · rephraser: {reph_provider}/{reph_model} · sub-agent: {sub_provider}/{sub_model}\033[0m")
+            if rasa_process:
+                print(f"\033[2mRasa: {rasa_url} (local) · MCP: http://127.0.0.1:{mcp_port}/mcp\033[0m")
+            else:
+                print(f"\033[2mRasa: {rasa_url} (remote) · MCP: http://127.0.0.1:{mcp_port}/mcp\033[0m")
 
-    # Schedule goodbye generation in background (non-blocking)
-    goodbye_task = loop.run_until_complete(
-        _start_goodbye_task(agent, persona, sender_id)
-    )
+            # Check PyPI for newer version
+            latest_version, _release_notes = _check_pypi_version()
+            if latest_version:
+                print(f"\033[2mUpdate available: v{latest_version} · /upgrade to install\033[0m")
+                from iconfucius.skills.executor import _update_cache
+                _update_cache["latest_version"] = latest_version
+                _update_cache["release_notes"] = _release_notes
+            print()
 
-    # Show wallet balance at startup (same as non-rasa chat)
-    setup = execute_tool("setup_and_operational_status", {})
-    if setup.get("wallet_exists"):
-        from iconfucius.cli.balance import run_wallet_balance
+            # Enable readline for input history
+            try:
+                import readline  # noqa: F401
+            except ImportError:
+                pass
+
+            def _prompt_banner() -> None:
+                print("\033[2m" + "-" * 60 + "\033[0m")
+                if latest_version:
+                    print(f"\033[2mv{latest_version} available · /upgrade to install\033[0m")
+                    print("\033[2m" + "-" * 60 + "\033[0m")
+
+            # 6. Chat loop
+            while True:
+                try:
+                    _prompt_banner()
+                    user_input = await asyncio.to_thread(
+                        input, f"\033[2mv{__version__}\033[0m > ",
+                    )
+                    user_input = user_input.strip()
+                except (KeyboardInterrupt, EOFError):
+                    print("\n\nMay your path be wise.")
+                    break
+
+                if user_input.lower() == "/upgrade":
+                    _handle_upgrade()
+                    continue
+
+                if user_input.lower() in ("exit", "quit", "/exit", "/quit"):
+                    print()
+                    break
+
+                if not user_input:
+                    continue
+
+                try:
+                    responses = await _send_sse_message(
+                        client, sse_url, sender_id, user_input,
+                        spinner_label=f"{persona.name} is thinking...",
+                    )
+                    for text in responses:
+                        print(f"\n{text}")
+                    if responses:
+                        print()
+                except KeyboardInterrupt:
+                    print("\n\nInterrupted.")
+                    continue
+                except Exception as e:
+                    print(f"\nError: {e}\n")
+                    continue
+
+    finally:
+        # 7. Shutdown — suppress noisy logs during teardown
+        logging.getLogger("uvicorn.error").setLevel(logging.CRITICAL)
+
+        spinner = _Spinner("Shutting down Rasa server...")
+        spinner.__enter__()
         try:
-            wallet_data = _run_with_spinner(
-                "Checking wallet...", run_wallet_balance, ckbtc_minter=False,
-            )
-            if wallet_data:
-                display_text = wallet_data.pop("_display", "")
-                if display_text:
-                    print(f"{display_text}\n")
+            if rasa_process is not None:
+                rasa_process.terminate()
+                try:
+                    rasa_process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    rasa_process.kill()
+
+            if mcp_uv_server is not None:
+                mcp_uv_server.should_exit = True
+            if mcp_task is not None:
+                try:
+                    await mcp_task
+                except Exception:
+                    pass
+
+            conv_logger.close()
+        finally:
+            spinner.__exit__(None, None, None)
+
+        # Suppress noisy threading errors during interpreter shutdown
+        try:
+            sys.stderr.close()
         except Exception:
             pass
 
-    print(f"\033[2miconfucius v{__version__} · Rasa Pro CALM · exit to quit · Ctrl+C to interrupt\033[0m")
-    print(f"\033[2mLLM: {llm_provider}/{llm_model} · rephraser: {reph_provider}/{reph_model}\033[0m")
 
-    # Check PyPI for newer version
-    latest_version, _release_notes = _check_pypi_version()
-    if latest_version:
-        print(f"\033[2mUpdate available: v{latest_version} · /upgrade to install\033[0m")
-        from iconfucius.skills.executor import _update_cache
-        _update_cache["latest_version"] = latest_version
-        _update_cache["release_notes"] = _release_notes
-    print()
+# ------------------------------------------------------------------
+# Public entry point
+# ------------------------------------------------------------------
 
-    # Enable readline for input history
-    try:
-        import readline  # noqa: F401
-    except ImportError:
-        pass
+def run_chat_rasa(
+    persona_name: str, bot_name: str, verbose: bool = False, debug: bool = False,
+) -> None:
+    """Run interactive chat using the Rasa CALM backend.
 
-    def _prompt_banner() -> None:
-        print("\033[2m" + "─" * 60 + "\033[0m")
-        if latest_version:
-            print(f"\033[2mv{latest_version} available · /upgrade to install\033[0m")
-            print("\033[2m" + "─" * 60 + "\033[0m")
-
-    while True:
-        try:
-            _prompt_banner()
-            user_input = input(f"\033[2mv{__version__}\033[0m > ").strip()
-        except (KeyboardInterrupt, EOFError):
-            goodbye = _get_goodbye(goodbye_task)
-            print(f"\n\n{goodbye}")
-            break
-
-        if user_input.lower() == "/upgrade":
-            _handle_upgrade()
-            continue
-
-        if user_input.lower() in ("exit", "quit", "/exit", "/quit"):
-            goodbye = _get_goodbye(goodbye_task)
-            print(f"\n{goodbye}")
-            break
-
-        if not user_input:
-            continue
-
-        try:
-            with _Spinner(f"{persona.name} is thinking..."):
-                responses = loop.run_until_complete(
-                    _handle_message(agent, user_input, sender_id)
-                )
-            for text in responses:
-                print(f"\n{text}")
-            if responses:
-                print()
-        except KeyboardInterrupt:
-            print("\n\nInterrupted.")
-            continue
-        except Exception as e:
-            print(f"\nError: {e}\n")
-            continue
-
-    # Cancel any pending background tasks before closing the loop
-    if goodbye_task is not None and not goodbye_task.done():
-        goodbye_task.cancel()
-        try:
-            loop.run_until_complete(goodbye_task)
-        except (asyncio.CancelledError, Exception):
-            pass
-
-    loop.close()
-    conv_logger.close()
+    Args:
+        persona_name: Name of the persona to load.
+        bot_name: Default bot for trading context.
+        verbose: Show verbose output.
+        debug: Show Rasa debug logs on screen.
+    """
+    asyncio.run(
+        _run_chat_rasa_async(persona_name, bot_name, verbose, debug)
+    )

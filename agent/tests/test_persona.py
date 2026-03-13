@@ -219,7 +219,7 @@ class TestResolveAiConfig:
         assert api_type == "openai"
         assert model == "default"
         assert base_url == "http://localhost:55128"
-        assert provider == "Unknown"
+        assert provider == "OpenAI"
 
     def test_openai_with_model_and_url(self):
         """Verify openai with model and url."""
@@ -231,7 +231,7 @@ class TestResolveAiConfig:
         assert api_type == "openai"
         assert model == "meta-llama/Llama-3-70b"
         assert base_url == "https://api.together.xyz/v1"
-        assert provider == "Unknown"
+        assert provider == "OpenAI"
 
     def test_auto_detect_openai_from_base_url(self):
         """base_url set without api_type → auto-detect openai."""
@@ -241,7 +241,7 @@ class TestResolveAiConfig:
         assert api_type == "openai"
         assert model == "default"
         assert base_url == "http://localhost:8080"
-        assert provider == "Unknown"
+        assert provider == "OpenAI"
 
     def test_auto_detect_claude_from_model(self):
         """model starts with 'claude-' without api_type → auto-detect claude."""
@@ -273,7 +273,7 @@ class TestResolveAiConfig:
         assert api_type == "openai"
         assert model == "default"
         assert base_url == "http://localhost:55128"
-        assert provider == "Unknown"
+        assert provider == "OpenAI"
 
     def test_claude_keeps_default_model(self):
         """DEFAULT_MODEL is preserved for claude api_type."""

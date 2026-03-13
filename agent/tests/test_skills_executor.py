@@ -701,9 +701,13 @@ class TestTradeRecording:
         assert result["status"] == "error"
         mock_append.assert_not_called()
 
+    @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100000.0)
+    @patch("iconfucius.tokens.fetch_token_data",
+           return_value={"price": 1500, "ticker": "ICONFUCIUS"})
     @patch("iconfucius.memory.append_trade")
-    def test_no_persona_no_recording(self, mock_append):
-        """Verify no persona no recording."""
+    def test_no_persona_defaults_to_iconfucius(self, mock_append,
+                                                _mock_fetch, _mock_usd):
+        """When no persona_name is passed, it defaults to 'iconfucius' and records."""
         from iconfucius.skills.executor import _HANDLERS
         original = _HANDLERS["trade_buy"]
         _HANDLERS["trade_buy"] = self._fake_handler(
@@ -715,7 +719,8 @@ class TestTradeRecording:
         finally:
             _HANDLERS["trade_buy"] = original
         assert result["status"] == "ok"
-        mock_append.assert_not_called()
+        mock_append.assert_called_once()
+        assert mock_append.call_args[0][0] == "iconfucius"
 
     @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100000.0)
     @patch("iconfucius.tokens.fetch_token_data",
@@ -1063,11 +1068,12 @@ class TestMemoryToolHandlers:
         assert result["status"] == "error"
         assert "required" in result["error"].lower()
 
-    def test_no_persona_returns_error(self):
-        """Verify no persona returns error."""
-        result = execute_tool("memory_read_strategy", {})
-        assert result["status"] == "error"
-        assert "persona" in result["error"].lower()
+    def test_no_persona_defaults_to_iconfucius(self):
+        """When no persona_name is passed, it defaults to 'iconfucius'."""
+        with patch("iconfucius.memory.read_strategy", return_value="test") as m:
+            result = execute_tool("memory_read_strategy", {})
+        assert result["status"] == "ok"
+        m.assert_called_once_with("iconfucius")
 
 
 class TestWalletBalanceResult:

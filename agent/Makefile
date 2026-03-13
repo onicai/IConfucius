@@ -1,6 +1,6 @@
 # Makefile for iconfucius Python package
 
-.PHONY: all help install install-dev install-blst bundle-ui build clean publish-test publish test lint \
+.PHONY: all help install install-dev install-blst bundle-ui bundle-rasa build clean publish-test publish test lint \
        e2e-setup e2e-fund-check-ckbtc e2e-fund-check-btc \
        e2e-trade-bot-1 e2e-trade-all-bots \
        e2e-transfer-bot-1 \
@@ -85,7 +85,11 @@ bundle-ui:
 		echo "Skipping UI bundle (scripts/bundle_client.sh not found)"; \
 	fi
 
-build: clean bundle-ui
+bundle-rasa:
+	@echo "Training Rasa release model..."
+	$(MAKE) -C src/iconfucius/rasa rasa-train-for-release
+
+build: clean bundle-ui bundle-rasa
 	pip install --quiet build
 	python -m build
 

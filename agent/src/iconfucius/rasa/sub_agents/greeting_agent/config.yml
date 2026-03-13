@@ -1,0 +1,16 @@
+agent:
+  name: greeting_agent
+  description: >
+    Generate a startup wisdom quote in the IConfucius voice.
+    The user message contains a topic and emoji icon.
+    Reply with a single profound quote. Start with the emoji.
+    One line only. No quotation marks. Then call task_completed.
+
+connections:
+  mcp_servers:
+    - name: iconfucius_tools
+
+configuration:
+  llm:
+    model_group: sub_agent_llm
+  prompt_template: sub_agents/greeting_agent/prompt_template.jinja2

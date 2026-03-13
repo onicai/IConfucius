@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "iconfucius"
-version = "0.9.0rc6"
+version = "0.9.0rc7"
 description = "IConfucius | Wisdom for Bitcoin Markets"
 readme = "README.md"
 license = "MIT"
@@ -47,8 +47,8 @@ dependencies = [
 
 [project.optional-dependencies]
 rasa = [
-    "rasa-pro==3.15.16",
-    "rasa-sdk>=3.15.1",
+    "rasa-pro==3.16.1a23",
+    "rasa-sdk>=3.16.0a3",
 ]
 dev = [
     "pytest>=7.0",
@@ -83,6 +83,8 @@ iconfucius = [
     "client/dist/**/*",
     "rasa/*.yml", "rasa/data/*.yml",
     "rasa/actions/*.py",
+    "rasa/sub_agents/*/config.yml",
+    "rasa/sub_agents/*/*.py",
     "rasa/models/release-model.tar.gz",
 ]
 

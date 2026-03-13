@@ -25,6 +25,7 @@ def execute_tool(name: str, args: dict, *, persona_name: str = "") -> dict:
         {"status": "ok", ...} on success,
         {"status": "error", "error": "message"} on failure.
     """
+    persona_name = persona_name or "iconfucius"
     handler = _HANDLERS.get(name)
     if handler is None:
         return {"status": "error", "error": f"Unknown tool: {name}"}

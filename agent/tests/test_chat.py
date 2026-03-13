@@ -1,5 +1,6 @@
 """Tests for iconfucius.cli.chat — Chat command and persona integration."""
 
+import asyncio
 import json
 from unittest.mock import patch, MagicMock
 
@@ -598,7 +599,7 @@ class TestAmountUsdPreConversion:
 
         with patch("builtins.input", return_value="y"):
             messages = []
-            _run_tool_loop(backend, messages, "system", [], "TestBot")
+            asyncio.run(_run_tool_loop(backend, messages, "system", [], "TestBot"))
 
         # amount should have been converted: $10 at $100k/BTC = 10,000 sats
         call_args = mock_exec.call_args[0]
@@ -631,7 +632,7 @@ class TestAmountUsdPreConversion:
 
         with patch("builtins.input", return_value="y"):
             messages = []
-            _run_tool_loop(backend, messages, "system", [], "TestBot")
+            asyncio.run(_run_tool_loop(backend, messages, "system", [], "TestBot"))
 
         call_args = mock_exec.call_args[0]
         assert call_args[1]["amount"] == 5_000  # $5 at $100k = 5,000 sats
@@ -662,7 +663,7 @@ class TestAmountUsdPreConversion:
 
         with patch("builtins.input", return_value="y"):
             messages = []
-            _run_tool_loop(backend, messages, "system", [], "TestBot")
+            asyncio.run(_run_tool_loop(backend, messages, "system", [], "TestBot"))
 
         # amount_usd should still be present — handler converts to tokens
         call_args = mock_exec.call_args[0]
@@ -696,7 +697,7 @@ class TestAmountUsdPreConversion:
 
         with patch("builtins.input", return_value="y"):
             messages = []
-            _run_tool_loop(backend, messages, "system", [], "TestBot")
+            asyncio.run(_run_tool_loop(backend, messages, "system", [], "TestBot"))
 
         # Original amount preserved (pre-conversion skipped)
         call_args = mock_exec.call_args[0]
@@ -738,7 +739,7 @@ class TestRunToolLoop:
         backend.chat_with_tools.return_value = response
 
         messages = []
-        _run_tool_loop(backend, messages, "system", [], "TestBot")
+        asyncio.run(_run_tool_loop(backend, messages, "system", [], "TestBot"))
 
         # Should have added assistant message
         assert len(messages) == 1
@@ -768,7 +769,7 @@ class TestRunToolLoop:
         backend.chat_with_tools.side_effect = [resp1, resp2]
 
         messages = []
-        _run_tool_loop(backend, messages, "system", [], "TestBot")
+        asyncio.run(_run_tool_loop(backend, messages, "system", [], "TestBot"))
 
         # Should have: assistant (tool_use), user (tool_result), assistant (text)
         assert len(messages) == 3
@@ -800,7 +801,7 @@ class TestRunToolLoop:
 
         with patch("builtins.input", return_value="y"):
             messages = []
-            _run_tool_loop(backend, messages, "system", [], "TestBot")
+            asyncio.run(_run_tool_loop(backend, messages, "system", [], "TestBot"))
 
         mock_exec.assert_called_once()
 
@@ -831,7 +832,7 @@ class TestRunToolLoop:
 
         with patch("builtins.input", return_value="y") as mock_input:
             messages = []
-            _run_tool_loop(backend, messages, "system", [], "TestBot")
+            asyncio.run(_run_tool_loop(backend, messages, "system", [], "TestBot"))
 
         # Only one input() call for the batch
         mock_input.assert_called_once()
@@ -865,7 +866,7 @@ class TestRunToolLoop:
 
         with patch("builtins.input", return_value="n"):
             messages = []
-            _run_tool_loop(backend, messages, "system", [], "TestBot")
+            asyncio.run(_run_tool_loop(backend, messages, "system", [], "TestBot"))
 
         # No tools executed
         mock_exec.assert_not_called()
@@ -913,7 +914,7 @@ class TestRunToolLoop:
         with patch("iconfucius.cli.chat.get_tool_metadata", side_effect=fake_meta), \
              patch("builtins.input", return_value="n"):
             messages = []
-            _run_tool_loop(backend, messages, "system", [], "TestBot")
+            asyncio.run(_run_tool_loop(backend, messages, "system", [], "TestBot"))
 
         # Declining the batch stops the entire loop immediately
         mock_exec.assert_not_called()
@@ -933,7 +934,7 @@ class TestRunToolLoop:
         backend.chat_with_tools.return_value = response
 
         messages = []
-        _run_tool_loop(backend, messages, "system", [], "TestBot")
+        asyncio.run(_run_tool_loop(backend, messages, "system", [], "TestBot"))
 
         # Should have called chat_with_tools exactly MAX_TOOL_ITERATIONS times
         assert backend.chat_with_tools.call_count == _MAX_TOOL_ITERATIONS
@@ -979,7 +980,7 @@ class TestRunToolLoop:
         # User confirms every operation (default Y)
         with patch("builtins.input", return_value=""):
             messages = []
-            _run_tool_loop(backend, messages, "system", [], "TestBot")
+            asyncio.run(_run_tool_loop(backend, messages, "system", [], "TestBot"))
 
         # All confirmed iterations ran + final text response
         assert backend.chat_with_tools.call_count == total_iterations + 1
@@ -1006,8 +1007,8 @@ class TestRunToolLoop:
         backend.chat_with_tools.side_effect = [resp1, resp2]
 
         messages = []
-        _run_tool_loop(backend, messages, "system", [], "TestBot",
-                       persona_key="iconfucius")
+        asyncio.run(_run_tool_loop(backend, messages, "system", [], "TestBot",
+                                   persona_key="iconfucius"))
 
         mock_exec.assert_called_once_with("setup_and_operational_status", {},
                                           persona_name="iconfucius")
@@ -1052,7 +1053,7 @@ class TestRunToolLoop:
                    side_effect=fake_meta), \
              patch("builtins.input", return_value="y"):
             messages = []
-            _run_tool_loop(backend, messages, "system", [], "TestBot")
+            asyncio.run(_run_tool_loop(backend, messages, "system", [], "TestBot"))
 
         # Only fund should have been executed
         mock_exec.assert_called_once()
@@ -1096,7 +1097,7 @@ class TestToolResultPassthrough:
         backend.chat_with_tools.side_effect = [resp1, resp2]
 
         messages = []
-        _run_tool_loop(backend, messages, "system", [], "TestBot")
+        asyncio.run(_run_tool_loop(backend, messages, "system", [], "TestBot"))
 
         tool_result_msg = messages[1]  # user message with tool_results
         content = json.loads(tool_result_msg["content"][0]["content"])

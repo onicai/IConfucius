@@ -1,6 +1,11 @@
 action_endpoint:
   actions_module: "actions"
 
+mcp_servers:
+  - name: iconfucius_tools
+    url: ${ICONFUCIUS_MCP_URL}
+    type: http
+
 nlg:
   type: rephrase
   llm:
@@ -15,3 +20,9 @@ model_groups:
     models:
       - provider: ${RASA_REPHRASER_PROVIDER}
         model: ${RASA_REPHRASER_MODEL}
+  - id: sub_agent_llm
+    models:
+      - provider: ${RASA_SUBAGENT_PROVIDER}
+        model: ${RASA_SUBAGENT_MODEL}
+        timeout: 120
+        max_completion_tokens: 4096

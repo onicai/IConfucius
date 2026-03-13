@@ -287,24 +287,30 @@ flows:
         action: action_wallet_send
 
   # ---------------------------------------------------------------------------
+  # Sub-agent flows
+  # ---------------------------------------------------------------------------
+  advisory:
+    description: >
+      When the user asks for advice, analysis, opinions, evaluation, or
+      wants to discuss trading strategy, portfolio management, market
+      outlook, or any question that requires reasoning across multiple
+      data sources. Examples: "should I sell?", "what do you think about
+      the price?", "review my strategy", "how is my portfolio doing?",
+      "what should I do?", "is now a good time to buy?", "how can I
+      trade on odin fun?". Also use this for general questions about
+      Odin.fun, Bitcoin Runes, or how iconfucius works.
+    steps:
+      - call: advisory_agent
+
+  greeting:
+    description: >
+      Generate a startup greeting with a wisdom quote (internal use only).
+    steps:
+      - call: greeting_agent
+
+  # ---------------------------------------------------------------------------
   # Setup
   # ---------------------------------------------------------------------------
-  setup_init:
-    description: Initialize an iconfucius project. Optionally set setup_num_bots (default 3) and setup_force slots.
-    steps:
-      - collect: confirm_setup
-        ask_before_filling: true
-        utter: utter_confirm_init
-      - noop: true
-        next:
-          - if: not slots.confirm_setup
-            then:
-              - action: utter_setup_cancelled
-                next: END
-          - else: do_init
-      - id: do_init
-        action: action_init
-
   setup_wallet:
     description: Create a new Ed25519 wallet identity for iconfucius. Optionally set setup_force slot to overwrite.
     steps:

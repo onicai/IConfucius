@@ -1,0 +1,21 @@
+{
+  "mcpServers": {
+    "rasa-copilot": {
+      "type": "stdio",
+      "command": "/opt/miniconda3/envs/IConfucius/bin/python",
+      "args": [
+        "-m",
+        "rasa",
+        "tools",
+        "run",
+        "--mode",
+        "stdio",
+        "--project-path",
+        "/Users/arjaan/github/repos/IConfucius/agent/src/iconfucius/rasa"
+      ],
+      "env": {
+        "ICONFUCIUS_MCP_URL": "http://127.0.0.1:5138/mcp"
+      }
+    }
+  }
+}

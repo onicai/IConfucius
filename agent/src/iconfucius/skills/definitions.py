@@ -802,6 +802,16 @@ TOOLS: list[dict] = [
 ]
 
 
+def get_read_only_tools() -> list[dict]:
+    """Return read-only tool definitions (category='read').
+
+    Used by the advisory sub-agent to expose tools without maintaining
+    a separate allowlist. Adding a new read tool here automatically
+    makes it available to the advisory agent.
+    """
+    return [t for t in TOOLS if t.get("category") == "read"]
+
+
 def get_tools_for_anthropic() -> list[dict]:
     """Return tool definitions in Anthropic API format.
 

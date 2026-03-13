@@ -193,7 +193,6 @@ actions:
   - action_token_transfer
   - action_wallet_send
   # Setup
-  - action_init
   - action_wallet_create
   - action_set_bot_count
 
@@ -249,7 +248,7 @@ responses:
   utter_ask_send_address:
     - text: "Where to send? (IC principal for ckBTC, or bc1... for BTC)"
   utter_ask_setup_num_bots:
-    - text: "How many bots? (1-1000, default 3)"
+    - text: "How many bots? (1-1000, default 1)"
   utter_ask_setup_force:
     - text: "Overwrite existing configuration?"
 
@@ -261,8 +260,6 @@ responses:
     - text: "Send {send_amount} to {send_address}?"
   utter_send_cancelled:
     - text: "Send cancelled."
-  utter_confirm_init:
-    - text: "Initialize iconfucius project with {setup_num_bots} bot(s)?"
   utter_confirm_wallet_create:
     - text: "Create new wallet identity?"
   utter_confirm_set_bots:

@@ -1131,7 +1131,7 @@ class TestStartChatWizard:
         mock_exec.side_effect = track_exec
         result = runner.invoke(app, ["chat"])
         init_calls = [(n, a) for n, a in calls if n == "init"]
-        assert init_calls[0][1] == {"num_bots": 3}
+        assert init_calls[0][1] == {"num_bots": 1}
 
     @patch("iconfucius.cli.chat.run_chat")
     @patch("iconfucius.skills.executor.execute_tool")
@@ -1153,7 +1153,7 @@ class TestStartChatWizard:
         result = runner.invoke(app, ["chat"])
         assert "Invalid number" in result.output
         init_calls = [(n, a) for n, a in calls if n == "init"]
-        assert init_calls[0][1] == {"num_bots": 3}
+        assert init_calls[0][1] == {"num_bots": 1}
 
     @patch("iconfucius.cli.chat.run_chat")
     @patch("iconfucius.skills.executor.execute_tool")

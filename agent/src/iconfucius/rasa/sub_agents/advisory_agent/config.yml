@@ -1,0 +1,36 @@
+agent:
+  name: advisory_agent
+  description: >
+    Handle advisory, evaluative, and analytical questions about tokens,
+    trading strategy, portfolio management, market conditions, and general
+    questions about Odin.fun, Bitcoin Runes, or how iconfucius works.
+    Use available tools to look up prices, check balances, read trading
+    memory, and provide data-driven advice in the IConfucius persona voice.
+
+connections:
+  mcp_servers:
+    - name: iconfucius_tools
+      include_tools:
+        - setup_and_operational_status
+        - check_update
+        - bot_list
+        - wallet_balance
+        - wallet_monitor
+        - how_to_fund_wallet
+        - token_lookup
+        - token_discover
+        - token_price
+        - security_status
+        - public_balance
+        - account_lookup
+        - memory_read_strategy
+        - memory_read_learnings
+        - memory_read_trades
+        - memory_read_balances
+
+configuration:
+  module: sub_agents.advisory_agent.advisory_agent.AdvisoryAgent
+  llm:
+    model_group: sub_agent_llm
+  prompt_template: sub_agents/advisory_agent/prompt_template.jinja2
+  include_date_time: true
