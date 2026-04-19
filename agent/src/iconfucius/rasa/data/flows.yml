@@ -25,7 +25,18 @@ flows:
   install_blst:
     description: Install the blst library for IC certificate verification
     steps:
-      - action: action_install_blst
+      - collect: confirm_install_blst
+        ask_before_filling: true
+        utter: utter_confirm_install_blst
+      - noop: true
+        next:
+          - if: not slots.confirm_install_blst
+            then:
+              - action: utter_install_blst_cancelled
+                next: END
+          - else: do_install_blst
+      - id: do_install_blst
+        action: action_install_blst
 
   # ---------------------------------------------------------------------------
   # Balance
@@ -198,7 +209,7 @@ flows:
         description: "Amount to spend per bot: sats (e.g. '5000'), USD with $ prefix (e.g. '$5'), or 'all'"
       - collect: bot_target
         description: "Bot name (e.g. 'bot-1'), comma-separated list, or 'all'"
-      - action: action_format_trade_confirm
+      - action: action_format_trade_buy_confirm
       - collect: confirm_trade
         ask_before_filling: true
         utter: utter_confirm_trade_buy
@@ -224,7 +235,7 @@ flows:
         description: "Amount of tokens to sell per bot: token count (e.g. '1000'), USD with $ prefix (e.g. '$5'), or 'all'"
       - collect: bot_target
         description: "Bot name (e.g. 'bot-1'), comma-separated list, or 'all'"
-      - action: action_format_trade_confirm
+      - action: action_format_trade_sell_confirm
       - collect: confirm_trade
         ask_before_filling: true
         utter: utter_confirm_trade_sell

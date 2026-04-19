@@ -422,7 +422,7 @@ def create_default_config(num_bots: int = 3) -> str:
     """Generate default config file content.
 
     Args:
-        num_bots: Number of bot definitions to create (1-1000, default 3).
+        num_bots: Number of bot definitions to create (0-1000, default 3).
 
     Returns:
         TOML content as string.

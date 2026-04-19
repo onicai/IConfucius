@@ -219,6 +219,7 @@ class State:
     verbose: bool = True
     network: str = "prd"
     rasa: bool = False
+    debug: bool = False
 
 
 state = State()
@@ -453,56 +454,44 @@ def _start_chat():
                  verbose=state.verbose)
 
 
-def _save_api_key(api_key: str) -> None:
-    """Write an API key to .env (replace placeholder, update existing, or append)."""
+def _write_env_file(content: str) -> None:
+    """Write `.env` with restrictive (0600) permissions — file holds secrets."""
+    env_path = Path(".env")
+    env_path.write_text(content)
+    try:
+        env_path.chmod(0o600)
+    except OSError:
+        pass
+
+
+def _save_env_var(key: str, value: str, placeholder: str) -> None:
+    """Write `key=value` to .env (replace placeholder, update existing, or append)."""
     import os
     import re
 
     env_path = Path(".env")
     if env_path.exists():
         content = env_path.read_text()
-        if "your-api-key-here" in content:
-            content = content.replace("your-api-key-here", api_key)
-        elif "ANTHROPIC_API_KEY" in content:
-            content = re.sub(
-                r"ANTHROPIC_API_KEY=.*",
-                f"ANTHROPIC_API_KEY={api_key}",
-                content,
-            )
+        if placeholder in content:
+            content = content.replace(placeholder, value)
+        elif key in content:
+            content = re.sub(rf"{re.escape(key)}=.*", f"{key}={value}", content)
         else:
             separator = "" if content.endswith("\n") else "\n"
-            content += f"{separator}ANTHROPIC_API_KEY={api_key}\n"
-        env_path.write_text(content)
+            content += f"{separator}{key}={value}\n"
+        _write_env_file(content)
     else:
-        env_path.write_text(f"ANTHROPIC_API_KEY={api_key}\n")
+        _write_env_file(f"{key}={value}\n")
 
-    os.environ["ANTHROPIC_API_KEY"] = api_key
+    os.environ[key] = value
+
+
+def _save_api_key(api_key: str) -> None:
+    _save_env_var("ANTHROPIC_API_KEY", api_key, "your-api-key-here")
 
 
 def _save_rasa_license(license_key: str) -> None:
-    """Write a Rasa license to .env (replace placeholder, update existing, or append)."""
-    import os
-    import re
-
-    env_path = Path(".env")
-    if env_path.exists():
-        content = env_path.read_text()
-        if "your-rasa-license-here" in content:
-            content = content.replace("your-rasa-license-here", license_key)
-        elif "RASA_LICENSE" in content:
-            content = re.sub(
-                r"RASA_LICENSE=.*",
-                f"RASA_LICENSE={license_key}",
-                content,
-            )
-        else:
-            separator = "" if content.endswith("\n") else "\n"
-            content += f"{separator}RASA_LICENSE={license_key}\n"
-        env_path.write_text(content)
-    else:
-        env_path.write_text(f"RASA_LICENSE={license_key}\n")
-
-    os.environ["RASA_LICENSE"] = license_key
+    _save_env_var("RASA_LICENSE", license_key, "your-rasa-license-here")
 
 
 # ---------------------------------------------------------------------------
@@ -539,11 +528,11 @@ def chat(
         state.bot_name = bot
     if rasa:
         try:
-            import rasa  # noqa: F401
-        except ImportError:
+            from rasa.utils.licensing import validate_license_from_env  # noqa: F401
+        except ImportError as e:
             print("Error: Rasa Pro is not installed.")
             print("Install with: pip install 'iconfucius[rasa]'")
-            raise typer.Exit(1)
+            raise typer.Exit(1) from e
         state.rasa = True
     if debug:
         state.debug = True
@@ -567,7 +556,7 @@ def _ensure_env_file() -> None:
     """Create .env if missing, or add ANTHROPIC_API_KEY/RASA_LICENSE if not present."""
     env_path = Path(".env")
     if not env_path.exists():
-        env_path.write_text(ENV_TEMPLATE)
+        _write_env_file(ENV_TEMPLATE)
         print("Created .env with ANTHROPIC_API_KEY and RASA_LICENSE placeholders")
         return
 
@@ -592,7 +581,7 @@ def _ensure_env_file() -> None:
         changed = True
         print("Added RASA_LICENSE to .env")
     if changed:
-        env_path.write_text(content)
+        _write_env_file(content)
     else:
         print(".env already contains ANTHROPIC_API_KEY and RASA_LICENSE")
 

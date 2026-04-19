@@ -9,6 +9,12 @@ from iconfucius.skills.executor import async_execute_tool
 from .actions_funding import _fmt_trade_amount, _parse_amount, _parse_bot_target
 from .actions_utility import _send_result
 
+DEFAULT_PERSONA = "iconfucius"
+
+
+def _persona(tracker: Tracker) -> str:
+    return tracker.get_slot("persona_key") or DEFAULT_PERSONA
+
 
 class ActionResolveToken(Action):
     def name(self) -> Text:
@@ -59,9 +65,9 @@ class ActionResolveToken(Action):
         ]
 
 
-class ActionFormatTradeConfirm(Action):
+class ActionFormatTradeBuyConfirm(Action):
     def name(self) -> Text:
-        return "action_format_trade_confirm"
+        return "action_format_trade_buy_confirm"
 
     async def run(
         self,
@@ -71,6 +77,26 @@ class ActionFormatTradeConfirm(Action):
     ) -> List[Dict[Text, Any]]:
         raw = tracker.get_slot("trade_amount")
         return [SlotSet("trade_display", _fmt_trade_amount(raw))]
+
+
+class ActionFormatTradeSellConfirm(Action):
+    def name(self) -> Text:
+        return "action_format_trade_sell_confirm"
+
+    async def run(
+        self,
+        dispatcher: CollectingDispatcher,
+        tracker: Tracker,
+        domain: Dict[Text, Any],
+    ) -> List[Dict[Text, Any]]:
+        raw = (tracker.get_slot("trade_amount") or "").strip()
+        if not raw:
+            display = "?"
+        elif raw.lower() == "all" or raw.startswith("$"):
+            display = raw
+        else:
+            display = f"{raw} tokens"
+        return [SlotSet("trade_display", display)]
 
 
 class ActionTradeBuy(Action):
@@ -87,7 +113,10 @@ class ActionTradeBuy(Action):
         args.update(_parse_amount(tracker.get_slot("trade_amount")))
         args.update(_parse_bot_target(tracker.get_slot("bot_target")))
 
-        _send_result(dispatcher, await async_execute_tool("trade_buy", args))
+        _send_result(
+            dispatcher,
+            await async_execute_tool("trade_buy", args, persona_name=_persona(tracker)),
+        )
         return [
             SlotSet("token_query", None),
             SlotSet("token_id", None),
@@ -113,7 +142,10 @@ class ActionTradeSell(Action):
         args.update(_parse_amount(tracker.get_slot("trade_amount")))
         args.update(_parse_bot_target(tracker.get_slot("bot_target")))
 
-        _send_result(dispatcher, await async_execute_tool("trade_sell", args))
+        _send_result(
+            dispatcher,
+            await async_execute_tool("trade_sell", args, persona_name=_persona(tracker)),
+        )
         return [
             SlotSet("token_query", None),
             SlotSet("token_id", None),

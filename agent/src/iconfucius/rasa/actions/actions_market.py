@@ -67,7 +67,7 @@ class ActionTokenDiscover(Action):
             args["sort"] = sort_order
         limit = tracker.get_slot("discover_limit")
         if limit is not None:
-            args["limit"] = int(limit)
+            args["limit"] = limit
 
         _send_result(dispatcher, await async_execute_tool("token_discover", args))
         return [

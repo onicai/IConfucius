@@ -104,10 +104,17 @@ class SSEInput(InputChannel):
         @sse_webhook.route("/webhook", methods=["POST"])
         async def receive(
             request: Request,
-        ) -> ResponseStream:
-            sender_id = request.json.get("sender_id", "default")
-            text = request.json.get("message", "")
-            metadata = request.json.get("metadata")
+        ) -> BaseHTTPResponse:
+            payload = request.json or {}
+            if not isinstance(payload, dict):
+                return response.json(
+                    {"error": "JSON object body required"},
+                    status=400,
+                )
+
+            sender_id = payload.get("sender_id", "default")
+            text = payload.get("message", "")
+            metadata = payload.get("metadata")
 
             return ResponseStream(
                 partial(

@@ -1,6 +1,7 @@
 from typing import Any, Dict, List, Text
 
 from rasa_sdk import Action, Tracker
+from rasa_sdk.events import SlotSet
 from rasa_sdk.executor import CollectingDispatcher
 
 from iconfucius.skills.executor import async_execute_tool
@@ -91,4 +92,4 @@ class ActionInstallBlst(Action):
         domain: Dict[Text, Any],
     ) -> List[Dict[Text, Any]]:
         _send_result(dispatcher, await async_execute_tool("install_blst", {}))
-        return []
+        return [SlotSet("confirm_install_blst", None)]

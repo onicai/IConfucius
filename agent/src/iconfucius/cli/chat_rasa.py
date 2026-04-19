@@ -206,6 +206,8 @@ async def _run_chat_rasa_async(
 
         # 2. Start Rasa server (subprocess) -- skip if RASA_URL provided
         rasa_url = os.environ.get("RASA_URL")
+        # Clear the "Loading IConfucius..." line regardless of local/remote Rasa
+        print("\r\033[K", end="", flush=True)
         if not rasa_url:
             try:
                 rasa_dir = _find_rasa_dir()
@@ -216,7 +218,6 @@ async def _run_chat_rasa_async(
             rasa_port = int(os.environ.get("RASA_PORT", "5005"))
             rasa_url = f"http://127.0.0.1:{rasa_port}"
 
-            print("\r\033[K", end="", flush=True)  # clear "Loading..." line
             with _Spinner("Starting Rasa server..."):
                 rasa_process = _start_rasa_server(
                     rasa_dir, rasa_port, mcp_url,

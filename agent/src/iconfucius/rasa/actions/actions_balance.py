@@ -8,6 +8,12 @@ from iconfucius.skills.executor import async_execute_tool
 
 from .actions_utility import _send_result
 
+DEFAULT_PERSONA = "iconfucius"
+
+
+def _persona(tracker: Tracker) -> str:
+    return tracker.get_slot("persona_key") or DEFAULT_PERSONA
+
 
 class ActionWalletBalance(Action):
     def name(self) -> Text:
@@ -23,10 +29,16 @@ class ActionWalletBalance(Action):
         bot_name = tracker.get_slot("bot_name")
         if bot_name:
             args["bot_name"] = bot_name
-        if tracker.get_slot("ckbtc_minter"):
+        ckbtc_minter = tracker.get_slot("ckbtc_minter")
+        if str(ckbtc_minter).strip().lower() in ("1", "true", "yes", "y"):
             args["ckbtc_minter"] = True
 
-        _send_result(dispatcher, await async_execute_tool("wallet_balance", args))
+        _send_result(
+            dispatcher,
+            await async_execute_tool(
+                "wallet_balance", args, persona_name=_persona(tracker),
+            ),
+        )
         return [
             SlotSet("bot_name", None),
             SlotSet("ckbtc_minter", None),

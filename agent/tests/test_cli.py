@@ -1115,8 +1115,8 @@ class TestStartChatWizard:
     @patch("iconfucius.cli.chat.run_chat")
     @patch("iconfucius.skills.executor.execute_tool")
     @patch("builtins.input", side_effect=["y", ""])
-    def test_empty_bot_count_defaults_to_three(self, mock_input, mock_exec, mock_chat):
-        """Pressing Enter at bot count prompt uses default of 3."""
+    def test_empty_bot_count_defaults_to_one(self, mock_input, mock_exec, mock_chat):
+        """Pressing Enter at bot count prompt uses default of 1."""
         calls = []
 
         def track_exec(name, args):

@@ -201,14 +201,16 @@ def _handle_setup_and_operational_status(_args: dict) -> dict:
         from iconfucius.config import get_bot_names
         bot_count = len(get_bot_names())
 
-    # Wallet funded check (fast anonymous query)
-    wallet_funded = False
+    # Wallet funded check (fast anonymous query).
+    # None = not checked / check failed (distinguishable from False = empty wallet).
+    wallet_funded: bool | None = None
     if pem_exists:
         try:
             from iconfucius.siwb import wallet_has_siwb_funds
             wallet_funded = wallet_has_siwb_funds()
-        except Exception:
-            pass
+        except Exception as exc:
+            from iconfucius.logging_config import get_logger
+            get_logger().debug("setup_status: wallet funding check failed: %s", exc)
 
     result = {
         "status": "ok",
@@ -491,7 +493,10 @@ def _handle_wallet_balance(args: dict) -> dict:
         "total_token_value_sats": totals.get("token_value_sats", 0),
         "portfolio_sats": totals.get("portfolio_sats", 0),
         "token_totals": {
-            k: {"balance": v["balance"], "value_sats": v["value_sats"]}
+            k: {
+                "balance": v.get("balance", 0),
+                "value_sats": v.get("value_sats", 0),
+            }
             for k, v in totals.get("tokens", {}).items()
         },
         "btc_usd_rate": btc_usd_rate,
@@ -1161,7 +1166,10 @@ def _handle_token_discover(args: dict) -> dict:
     from iconfucius.tokens import discover_tokens
 
     sort = args.get("sort", "volume")
-    limit = args.get("limit", 20)
+    try:
+        limit = max(1, min(100, int(args.get("limit", 20))))
+    except (TypeError, ValueError):
+        limit = 20
 
     tokens = discover_tokens(sort=sort, limit=limit)
 
@@ -1824,7 +1832,8 @@ def _record_trade(tool_name: str, args: dict, result: dict,
 
     # Prefer actual amount from result details (may be capped by run_trade)
     details = result.get("details", [])
-    if details and details[0].get("amount") is not None:
+    amount_from_result = bool(details and details[0].get("amount") is not None)
+    if amount_from_result:
         amount = details[0]["amount"]
     else:
         amount = args.get("amount", "?")
@@ -1875,11 +1884,14 @@ def _record_trade(tool_name: str, args: dict, result: dict,
     elif is_sell_all:
         entry["tokens_sold"] = "all"
     else:
-        from iconfucius.units import millisubunits_to_display
-        msu = int(_safe_float(amount))
-        div = data.get("divisibility", 8) if data else 8
-        dec = data.get("decimals", 3) if data else 3
-        display_tokens = round(millisubunits_to_display(msu, div, dec), 2)
+        if amount_from_result:
+            from iconfucius.units import millisubunits_to_display
+            msu = int(_safe_float(amount))
+            div = data.get("divisibility", 8) if data else 8
+            dec = data.get("decimals", 3) if data else 3
+            display_tokens = round(millisubunits_to_display(msu, div, dec), 2)
+        else:
+            display_tokens = round(_safe_float(amount), 2)
         entry["tokens_sold"] = display_tokens
         if price:
             from iconfucius.units import sats_from_display_tokens

@@ -893,11 +893,15 @@ def run_all_balances(bot_names: list, token_id: str = "29m8",
 
     # Run wallet info and bot balances in parallel
     wallet_box: dict = {}
+    wallet_error: dict = {}
 
     def _fetch_wallet():
-        wallet_box["data"], wallet_box["lines"] = _collect_wallet_info(
-            btc_usd_rate, ckbtc_minter=ckbtc_minter,
-        )
+        try:
+            wallet_box["data"], wallet_box["lines"] = _collect_wallet_info(
+                btc_usd_rate, ckbtc_minter=ckbtc_minter,
+            )
+        except Exception as exc:
+            wallet_error["exc"] = exc
 
     wallet_thread = _threading.Thread(target=_fetch_wallet, daemon=True)
     wallet_thread.start()
@@ -919,6 +923,8 @@ def run_all_balances(bot_names: list, token_id: str = "29m8",
             all_data.append(result)
 
     wallet_thread.join()
+    if "exc" in wallet_error:
+        raise wallet_error["exc"]
     wallet_data = wallet_box["data"]
     wallet_lines = wallet_box["lines"]
 

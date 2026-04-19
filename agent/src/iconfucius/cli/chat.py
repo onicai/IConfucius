@@ -539,6 +539,9 @@ def _handle_ai_slash_command(user_input, backend, persona):
         new_model = arg[6:].strip()
     else:
         new_model = arg
+    if not new_model:
+        print("\n  Usage: /ai model <model-name>\n")
+        return None
     backend.model = new_model
     persona.ai_model = new_model
     _persist_ai_model(new_model)
@@ -556,6 +559,9 @@ def _handle_model_slash_command(user_input, backend, persona):
             persona.ai_model = backend.model
     else:
         new_model = parts[1].strip()
+        if not new_model:
+            print("\n  Usage: /model <model-name>\n")
+            return
         backend.model = new_model
         persona.ai_model = new_model
         _persist_ai_model(new_model)
@@ -882,6 +888,7 @@ async def _run_tool_loop(backend, messages: list[dict], system: str,
                 "wallet_monitor", "token_lookup", "token_price",
                 "token_discover", "account_lookup", "public_balance",
                 "security_status", "install_blst",
+                "setup_and_operational_status",
             )
 
             if mcp_session is not None:
@@ -1079,7 +1086,8 @@ async def _run_chat_async(persona_name: str, bot_name: str, verbose: bool = Fals
     system = persona.system_prompt
 
     # Inject setup status so the persona can guide users through setup
-    setup = execute_tool("setup_and_operational_status", {})
+    with _Spinner("Checking setup and service status..."):
+        setup = await asyncio.to_thread(execute_tool, "setup_and_operational_status", {})
     if not setup.get("ready"):
         system += "\n\n## Setup Status\n"
         system += (
@@ -1312,14 +1320,22 @@ async def _run_chat_async(persona_name: str, bot_name: str, verbose: bool = Fals
 
     try:
         if mcp_task is not None:
-            from mcp.client.session import ClientSession
-            from mcp.client.streamable_http import streamablehttp_client
+            try:
+                from mcp.client.session import ClientSession
+                from mcp.client.streamable_http import streamablehttp_client
 
-            _mcp_ctx = streamablehttp_client(mcp_url)
-            read, write, _ = await _mcp_ctx.__aenter__()
-            _mcp_session_ctx = ClientSession(read, write)
-            mcp_session = await _mcp_session_ctx.__aenter__()
-            await mcp_session.initialize()
+                _mcp_ctx = streamablehttp_client(mcp_url)
+                read, write, _ = await _mcp_ctx.__aenter__()
+                _mcp_session_ctx = ClientSession(read, write)
+                mcp_session = await _mcp_session_ctx.__aenter__()
+                await mcp_session.initialize()
+            except Exception:
+                from iconfucius.logging_config import get_logger
+                get_logger().debug(
+                    "MCP client unavailable; falling back to direct tools",
+                    exc_info=True,
+                )
+                mcp_session = None
 
         # If balance data has a next_step, trigger an automatic AI response
         if (startup_balance_result

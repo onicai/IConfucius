@@ -60,6 +60,10 @@ slots:
     type: bool
     mappings:
       - type: from_llm
+  confirm_install_blst:
+    type: bool
+    mappings:
+      - type: from_llm
 
   # Funding / Withdraw
   fund_amount:
@@ -186,7 +190,8 @@ actions:
   - action_withdraw
   # Trading
   - action_resolve_token
-  - action_format_trade_confirm
+  - action_format_trade_buy_confirm
+  - action_format_trade_sell_confirm
   - action_trade_buy
   - action_trade_sell
   # Transfers
@@ -284,6 +289,10 @@ responses:
     - text: "Archive balance snapshots older than {keep_days} days?"
   utter_memory_archive_cancelled:
     - text: "Archive cancelled."
+  utter_confirm_install_blst:
+    - text: "Install the blst library for IC certificate verification?"
+  utter_install_blst_cancelled:
+    - text: "Install cancelled."
 
   utter_clarification_no_options_rasa:
     - text: "I can help, but I need more information. Please tell me a bit more about what you would like to do."

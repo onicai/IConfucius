@@ -42,9 +42,9 @@ pip install -e ".[rasa]"
 ### API keys and licenses
 
 - Active conda environment (`conda activate IConfucius`)
-- API keys and licenses in `agent/rasa/.env` (auto-loaded by Rasa):
+- API keys and licenses in `agent/src/iconfucius/rasa/.env` (auto-loaded by Rasa):
 
-```
+```env
 ANTHROPIC_API_KEY=sk-ant-...
 RASA_LICENSE=ey...
 ```
@@ -60,8 +60,8 @@ are missing and save them to `.env` automatically.
 ## Quick Start
 
 ```bash
-# Train the Rasa model (from agent/rasa/)
-cd agent/rasa
+# Train the Rasa model (from agent/src/iconfucius/rasa/)
+cd agent/src/iconfucius/rasa
 make rasa-train
 
 # Run the chat (from your iconfucius project folder, where iconfucius.toml lives)

@@ -66,7 +66,7 @@ class ActionMemoryReadTrades(Action):
         args: dict[str, Any] = {}
         last_n = tracker.get_slot("last_n")
         if last_n is not None:
-            args["last_n"] = int(last_n)
+            args["last_n"] = last_n
 
         _send_result(
             dispatcher,
@@ -90,7 +90,7 @@ class ActionMemoryReadBalances(Action):
         args: dict[str, Any] = {}
         last_n = tracker.get_slot("last_n")
         if last_n is not None:
-            args["last_n"] = int(last_n)
+            args["last_n"] = last_n
 
         _send_result(
             dispatcher,
@@ -139,7 +139,7 @@ class ActionMemoryArchive(Action):
         args: dict[str, Any] = {}
         keep_days = tracker.get_slot("keep_days")
         if keep_days is not None:
-            args["keep_days"] = int(keep_days)
+            args["keep_days"] = keep_days
 
         _send_result(
             dispatcher,
