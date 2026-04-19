@@ -42,10 +42,10 @@ IConfucius | Wisdom for Bitcoin Markets
 
 \b
 Three modes:
-  iconfucius                    Launch the local Web UI (default)
-  iconfucius ui                 Same as above (explicit)
-  iconfucius chat               Chat via terminal with IConfucius
+  iconfucius                    Chat via terminal with IConfucius (default)
+  iconfucius chat               Same as above (explicit)
   iconfucius chat --rasa        Chat via terminal using Rasa Pro CALM backend
+  iconfucius ui                 Launch the local Web UI
   iconfucius <command>          Execute individual commands directly
 \b
 Direct commands:
@@ -287,10 +287,6 @@ def main_callback(
     debug: bool = typer.Option(
         False, "--debug", help="Show Rasa debug logs on screen (only with --rasa)"
     ),
-    port: int = typer.Option(55129, "--port", help="Port to serve on"),
-    no_browser: bool = typer.Option(
-        False, "--no-browser", help="Don't open browser automatically"
-    ),
     version: bool = typer.Option(
         False, "--version", help="Show version and exit",
         callback=_version_callback, is_eager=True,
@@ -309,10 +305,8 @@ def main_callback(
         state.debug = debug
     set_network(network)
     if ctx.invoked_subcommand is None:
-        # Bare invocation: launch the web UI
-        from iconfucius.client.server import run_server
-
-        run_server(port=port, open_browser=not no_browser)
+        # Bare invocation: start the terminal chat (same as 'iconfucius chat')
+        _start_chat()
 
 
 # ---------------------------------------------------------------------------
@@ -718,7 +712,7 @@ def init(
     print("     iconfucius wallet create")
     print("  2. Fund your wallet:")
     print("     iconfucius wallet receive")
-    print("  3. Launch the web UI:")
+    print("  3. Start chatting:")
     print("     iconfucius")
 
 

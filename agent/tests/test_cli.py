@@ -26,12 +26,12 @@ TR = "iconfucius.transfers"
 # ---------------------------------------------------------------------------
 
 class TestHelpOutput:
-    @patch("iconfucius.client.server.run_server")
-    def test_no_args_launches_ui(self, mock_run_server):
-        """Verify invoking CLI with no arguments launches the web UI."""
+    @patch("iconfucius.cli._start_chat")
+    def test_no_args_launches_chat(self, mock_start_chat):
+        """Verify invoking CLI with no arguments starts the terminal chat."""
         result = runner.invoke(app, [])
         assert result.exit_code == 0
-        mock_run_server.assert_called_once_with(port=55129, open_browser=True)
+        mock_start_chat.assert_called_once_with()
 
     def test_help_flag(self):
         """Verify --help prints help text with section headers."""
