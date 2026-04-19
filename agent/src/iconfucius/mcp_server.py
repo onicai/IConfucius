@@ -49,10 +49,25 @@ def create_mcp_server() -> Server:
 
     @server.call_tool()
     async def _call_tool(name: str, arguments: dict) -> CallToolResult:
-        result = await asyncio.to_thread(
-            execute_tool, name, arguments, persona_name="iconfucius",
-        )
-        text = json.dumps(result, default=str)
+        try:
+            result = await asyncio.to_thread(
+                execute_tool, name, arguments, persona_name="iconfucius",
+            )
+        except BaseException as exc:
+            import traceback
+            tb = traceback.format_exc()
+            _log.error("Tool %r crashed in execute_tool: %s", name, tb)
+            result = {"status": "error",
+                      "error": f"{type(exc).__name__}: {exc}",
+                      "traceback": tb}
+        if not isinstance(result, dict):
+            result = {"status": "error",
+                      "error": f"Tool {name} returned non-dict: {type(result).__name__}"}
+        try:
+            text = json.dumps(result, default=str)
+        except Exception as exc:
+            text = json.dumps({"status": "error",
+                               "error": f"Result not JSON-serialisable: {exc}"})
         is_error = result.get("status") == "error"
         return CallToolResult(
             content=[TextContent(type="text", text=text)],

@@ -113,7 +113,22 @@ async def _call_tool_mcp(mcp_session, name, arguments, use_spinner=False, label=
     else:
         mcp_result = await mcp_session.call_tool(name, arguments)
 
-    return json.loads(mcp_result.content[0].text)
+    # Defensive: an empty/missing content block means the MCP server died
+    # mid-request. Surface it as a structured error instead of raising
+    # json.JSONDecodeError: Expecting value: line 1 column 1 (char 0).
+    if not mcp_result.content:
+        return {"status": "error",
+                "error": f"MCP tool {name!r} returned no content (server likely crashed)."}
+    text = getattr(mcp_result.content[0], "text", "") or ""
+    if not text.strip():
+        return {"status": "error",
+                "error": f"MCP tool {name!r} returned empty text content."}
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as exc:
+        return {"status": "error",
+                "error": f"MCP tool {name!r} returned non-JSON content: {exc}",
+                "raw_text": text[:500]}
 
 
 class _CliWizardIO:
@@ -779,6 +794,16 @@ async def _run_tool_loop(backend, messages: list[dict], system: str,
         # Pre-convert amount_usd → amount (sats) so the rest of the flow
         # works uniformly with sats and fmt_sats shows the USD value.
         # Skip trade_sell: it converts USD to tokens, not sats.
+        # Coerce to the tool's declared amount type (int vs str) — the MCP
+        # server rejects mismatched types with "Input validation error".
+        from iconfucius.skills.definitions import TOOLS as _TOOLS
+        _amount_schema_type = {
+            t["name"]: (
+                t.get("input_schema", {}).get("properties", {})
+                .get("amount", {}).get("type", "integer")
+            )
+            for t in _TOOLS
+        }
         for b in tool_blocks:
             if b.name == "trade_sell":
                 continue
@@ -789,7 +814,10 @@ async def _run_tool_loop(backend, messages: list[dict], system: str,
                     from iconfucius.units import usd_to_sats
                     rate = get_btc_to_usd_rate()
                     sats = usd_to_sats(float(usd), rate)
-                    b.input["amount"] = sats
+                    if _amount_schema_type.get(b.name) == "string":
+                        b.input["amount"] = str(sats)
+                    else:
+                        b.input["amount"] = sats
                     del b.input["amount_usd"]
                 except Exception:
                     pass  # handler will convert or report error
