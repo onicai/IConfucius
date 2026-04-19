@@ -1,6 +1,6 @@
 flows:
   pattern_chitchat:
-    description: Handle greetings, wisdom quote generation, off-topic and chitchat messages with a free-form LLM response
+    description: Handle off-topic and chitchat messages with a free-form LLM response. Do NOT use for greetings — use the greeting flow instead.
     steps:
       - action: utter_free_chitchat_response
 
@@ -19,7 +19,7 @@ flows:
     steps:
       - noop: true
         next:
-          - if: not (context.previous_flow_name matches "^pattern")
+          - if: not (context.previous_flow_name matches "^pattern") and context.previous_flow_name != "greeting"
             then: ask_follow_up
           - else: END
       - id: ask_follow_up

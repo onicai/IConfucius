@@ -12,6 +12,107 @@ from pathlib import Path
 
 _log = logging.getLogger(__name__)
 
+# Topics and icons for IConfucius startup quotes
+QUOTE_TOPICS = [
+    {"icon": "☕️", "topic": "Coffee"},
+    {"icon": "📈", "topic": "Cryptocurrency"},
+    {"icon": "🌤️", "topic": "Sky"},
+    {"icon": "🌸", "topic": "Flowers"},
+    {"icon": "⚖️", "topic": "Justice"},
+    {"icon": "🌱", "topic": "The disruptive nature of progress"},
+    {"icon": "🏋️", "topic": "Discipline"},
+    {"icon": "🕰️", "topic": "Patience"},
+    {"icon": "☯️", "topic": "Harmony"},
+    {"icon": "🎎", "topic": "Ritual and Courtesy"},
+    {"icon": "🤝", "topic": "Integrity"},
+    {"icon": "📖", "topic": "Lifelong Learning"},
+    {"icon": "🪞", "topic": "Reflection"},
+    {"icon": "🍃", "topic": "Acceptance of Nature"},
+    {"icon": "🍂", "topic": "Simplicity"},
+    {"icon": "⚖️", "topic": "Balance"},
+    {"icon": "🤠", "topic": "Trust"},
+    {"icon": "💰", "topic": "Accumulation of Wealth"},
+    {"icon": "💵", "topic": "Investment"},
+    {"icon": "⚠️", "topic": "Risk"},
+    {"icon": "💡", "topic": "Innovation"},
+    {"icon": "🌌", "topic": "Adaptation"},
+    {"icon": "🗿", "topic": "Resilience"},
+    {"icon": "🔍", "topic": "Insight"},
+    {"icon": "🎯", "topic": "Goal Setting"},
+    {"icon": "🌈", "topic": "Freedom"},
+    {"icon": "👷", "topic": "Responsibility"},
+    {"icon": "⏳", "topic": "Time Management"},
+    {"icon": "💸", "topic": "Wealth"},
+    {"icon": "🏋️", "topic": "Moderation"},
+    {"icon": "💹", "topic": "Digital Assets"},
+    {"icon": "🔀", "topic": "Consensus"},
+    {"icon": "🛠️", "topic": "Decentralization"},
+    {"icon": "👀", "topic": "Transparency"},
+    {"icon": "🤔", "topic": "Wisdom"},
+    {"icon": "📈", "topic": "Credit"},
+    {"icon": "🔒", "topic": "Security"},
+    {"icon": "🍀", "topic": "Opportunity"},
+    {"icon": "🌱", "topic": "Growth"},
+    {"icon": "🤝", "topic": "Collaboration"},
+    {"icon": "🔀", "topic": "Choice"},
+    {"icon": "💼", "topic": "Professionalism"},
+    {"icon": "📊", "topic": "Prudence"},
+    {"icon": "🤖", "topic": "Rationality"},
+    {"icon": "📑", "topic": "Contract"},
+    {"icon": "🛠️", "topic": "Blockchain"},
+    {"icon": "🔎", "topic": "Anonymity"},
+    {"icon": "🏆", "topic": "Competition"},
+    {"icon": "👑", "topic": "Leadership"},
+    {"icon": "🏢", "topic": "Market"},
+    {"icon": "🏞️", "topic": "Community"},
+    {"icon": "🌟", "topic": "Self-Actualization"},
+    {"icon": "💖", "topic": "Kindness"},
+    {"icon": "✨", "topic": "Belief"},
+    {"icon": "🦁", "topic": "Loyalty"},
+    {"icon": "🌿", "topic": "Virtue"},
+    {"icon": "🔮", "topic": "Vision"},
+    {"icon": "🌟", "topic": "Achievement"},
+    {"icon": "👥", "topic": "Sharing"},
+    {"icon": "📢", "topic": "Communication"},
+    {"icon": "🔄", "topic": "Execution"},
+    {"icon": "🔢", "topic": "Algorithm"},
+    {"icon": "🌧️", "topic": "Calmness"},
+    {"icon": "⚔️", "topic": "Struggle"},
+    {"icon": "📶", "topic": "Signal"},
+    {"icon": "💶", "topic": "Greed"},
+    {"icon": "💜", "topic": "Charity"},
+    {"icon": "🎨", "topic": "Art"},
+    {"icon": "📱", "topic": "Technology"},
+    {"icon": "🔫", "topic": "Strategy"},
+    {"icon": "🌼", "topic": "Endurance"},
+    {"icon": "🌟", "topic": "Dreams"},
+    {"icon": "🎵", "topic": "Rhythm"},
+    {"icon": "🏥", "topic": "Health"},
+    {"icon": "🏡", "topic": "Family"},
+    {"icon": "🎓", "topic": "Education"},
+    {"icon": "🛰", "topic": "Travel"},
+    {"icon": "🎉", "topic": "Happiness"},
+    {"icon": "🔒", "topic": "Confidentiality"},
+    {"icon": "🔄", "topic": "Principles"},
+    {"icon": "🏛️", "topic": "Law"},
+    {"icon": "⏳", "topic": "Efficiency"},
+    {"icon": "💪", "topic": "Antifragility"},
+    {"icon": "📍", "topic": "Morality"},
+    {"icon": "💡", "topic": "Inspiration"},
+    {"icon": "⚖️", "topic": "Fairness"},
+    {"icon": "🌟", "topic": "Future"},
+    {"icon": "🎐", "topic": "Tradition"},
+    {"icon": "👨‍👨‍👦", "topic": "Relationships"},
+]
+
+
+def _handle_greeting_topic(_args: dict) -> dict:
+    """Return a random topic and emoji for greeting quotes."""
+    import random
+
+    entry = random.choice(QUOTE_TOPICS)
+    return {"status": "ok", "topic": entry["topic"], "icon": entry["icon"]}
+
 
 def execute_tool(name: str, args: dict, *, persona_name: str = "") -> dict:
     """Execute a tool by name with the given arguments.
@@ -1948,6 +2049,7 @@ def _handle_memory_update(args: dict, *, persona_name: str = "") -> dict:
 # ---------------------------------------------------------------------------
 
 _HANDLERS: dict[str, callable] = {
+    "greeting_topic": _handle_greeting_topic,
     "setup_and_operational_status": _handle_setup_and_operational_status,
     "check_update": _handle_check_update,
     "init": _handle_init,

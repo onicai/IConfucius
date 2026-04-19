@@ -54,7 +54,10 @@ class AdvisoryAgent(MCPOpenAgent):
             self._recipient_id = None
 
     async def _execute_tool_call(
-        self, tool_name: str, arguments: Dict[str, Any],
+        self,
+        tool_name: str,
+        arguments: Dict[str, Any],
+        agent_input: Optional[AgentInput] = None,
     ) -> AgentToolResult:
         if self._output_channel and self._recipient_id:
             label = TOOL_LABELS.get(tool_name, f"Running {tool_name}...")
@@ -62,4 +65,4 @@ class AdvisoryAgent(MCPOpenAgent):
                 self._recipient_id,
                 {"type": "tool_status", "tool": tool_name, "text": label},
             )
-        return await super()._execute_tool_call(tool_name, arguments)
+        return await super()._execute_tool_call(tool_name, arguments, agent_input)

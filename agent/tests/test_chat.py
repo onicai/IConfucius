@@ -16,7 +16,6 @@ from iconfucius.cli.chat import (
     _fmt_sats,
     _fmt_tokens,
     _generate_startup,
-    _get_language_code,
     _format_api_error,
     _handle_ai_interactive,
     _handle_model_interactive,
@@ -30,8 +29,8 @@ from iconfucius.cli.chat import (
     _run_tool_loop,
     _Spinner,
     _MAX_TOOL_ITERATIONS,
-    QUOTE_TOPICS,
 )
+from iconfucius.skills.executor import QUOTE_TOPICS
 from iconfucius.persona import DEFAULT_MODEL, Persona
 
 runner = CliRunner()
@@ -103,7 +102,8 @@ def _make_persona(**overrides) -> Persona:
 
 
 class TestGenerateStartup:
-    def test_returns_greeting_and_goodbye(self):
+    @patch("iconfucius.cli.chat.execute_tool", return_value={"status": "ok", "topic": "Coffee", "icon": "☕️"})
+    def test_returns_greeting_and_goodbye(self, _mock_tool):
         """_generate_startup returns a (greeting, goodbye) tuple."""
         mock_backend = MagicMock()
         mock_backend.chat.return_value = (
@@ -113,60 +113,47 @@ class TestGenerateStartup:
             "May your path be ever illuminated."
         )
         persona = _make_persona()
-        greeting, goodbye = _generate_startup(mock_backend, persona, "en")
+        greeting, goodbye = _generate_startup(mock_backend, persona)
         assert len(greeting) > 0
         assert len(goodbye) > 0
         assert "illuminated" in goodbye
 
-    def test_uses_persona_greeting_prompt_template(self):
+    @patch("iconfucius.cli.chat.execute_tool", return_value={"status": "ok", "topic": "Coffee", "icon": "☕️"})
+    def test_uses_persona_greeting_prompt_template(self, _mock_tool):
         """The greeting prompt template gets {icon} and {topic} filled in."""
         mock_backend = MagicMock()
         mock_backend.chat.return_value = "Line1\n\nLine2\n\nLine3\n\nGoodbye"
         persona = _make_persona(
             greeting_prompt="Say hi about {topic} with {icon}."
         )
-        _generate_startup(mock_backend, persona, "en")
+        _generate_startup(mock_backend, persona)
         call_args = mock_backend.chat.call_args
         user_msg = call_args[0][0][0]["content"]
         # Placeholders should be replaced with actual values
         assert "{topic}" not in user_msg
         assert "{icon}" not in user_msg
 
-    def test_uses_persona_system_prompt(self):
+    @patch("iconfucius.cli.chat.execute_tool", return_value={"status": "ok", "topic": "Coffee", "icon": "☕️"})
+    def test_uses_persona_system_prompt(self, _mock_tool):
         """The system prompt passed to the backend is the persona's."""
         mock_backend = MagicMock()
         mock_backend.chat.return_value = "Quote\n\nWelcome\n\nExit\n\nBye"
         persona = _make_persona(system_prompt="Custom system prompt.")
-        _generate_startup(mock_backend, persona, "en")
+        _generate_startup(mock_backend, persona)
         call_args = mock_backend.chat.call_args
         assert call_args[1]["system"] == "Custom system prompt."
 
-    def test_includes_goodbye_prompt_in_request(self):
+    @patch("iconfucius.cli.chat.execute_tool", return_value={"status": "ok", "topic": "Coffee", "icon": "☕️"})
+    def test_includes_goodbye_prompt_in_request(self, _mock_tool):
         """The goodbye prompt from the persona is included in the API request."""
         mock_backend = MagicMock()
         mock_backend.chat.return_value = "Quote\n\nWelcome\n\nExit\n\nBye"
         persona = _make_persona(goodbye_prompt="Bid farewell warmly.")
-        _generate_startup(mock_backend, persona, "en")
+        _generate_startup(mock_backend, persona)
         call_args = mock_backend.chat.call_args
         user_msg = call_args[0][0][0]["content"]
         assert "Bid farewell warmly." in user_msg
 
-
-class TestLanguageDetection:
-    def test_english_default(self, monkeypatch):
-        """Verify english default."""
-        monkeypatch.setattr("locale.getlocale", lambda: ("en_US", "UTF-8"))
-        assert _get_language_code() == "en"
-
-    def test_chinese_detected(self, monkeypatch):
-        """Verify chinese detected."""
-        monkeypatch.setattr("locale.getlocale", lambda: ("zh_CN", "UTF-8"))
-        assert _get_language_code() == "cn"
-
-    def test_none_locale_defaults_to_english(self, monkeypatch):
-        """Verify none locale defaults to english."""
-        monkeypatch.setattr("locale.getlocale", lambda: (None, None))
-        assert _get_language_code() == "en"
 
 
 class _FakeAnthropicError(Exception):
@@ -230,8 +217,7 @@ class TestQuoteTopics:
     def test_each_topic_has_required_keys(self):
         """Verify each topic has required keys."""
         for entry in QUOTE_TOPICS:
-            assert "cn" in entry
-            assert "en" in entry
+            assert "topic" in entry
             assert "icon" in entry
 
 

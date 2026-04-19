@@ -11,6 +11,17 @@ TOOLS: list[dict] = [
     # Read-only tools (no confirmation needed)
     # ------------------------------------------------------------------
     {
+        "name": "greeting_topic",
+        "description": "Get a random wisdom topic and emoji for generating a greeting quote.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+        "requires_confirmation": False,
+        "category": "read",
+    },
+    {
         "name": "setup_and_operational_status",
         "description": (
             "Check project setup and AI service operational status. "

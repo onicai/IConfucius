@@ -46,10 +46,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-rasa = [
-    "rasa-pro==3.16.1a23",
-    "rasa-sdk>=3.16.0a3",
-]
+rasa = ["rasa-pro[monitoring]==3.16.4"]
 dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.24.0",
@@ -69,7 +66,7 @@ Issues = "https://github.com/onicai/IConfucius/issues"
 iconfucius = "iconfucius.cli:main"
 
 [tool.setuptools]
-package-dir = {"" = "src"}
+package-dir = { "" = "src" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -78,10 +75,13 @@ exclude = ["canisters*"]
 
 [tool.setuptools.package-data]
 iconfucius = [
-    "py.typed", "*.toml",
-    "personas/**/*.toml", "personas/**/*.md",
+    "py.typed",
+    "*.toml",
+    "personas/**/*.toml",
+    "personas/**/*.md",
     "client/dist/**/*",
-    "rasa/*.yml", "rasa/data/*.yml",
+    "rasa/*.yml",
+    "rasa/data/*.yml",
     "rasa/actions/*.py",
     "rasa/sub_agents/*/config.yml",
     "rasa/sub_agents/*/*.py",

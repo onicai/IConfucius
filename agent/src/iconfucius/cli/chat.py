@@ -3,8 +3,6 @@
 import asyncio
 import itertools
 import json
-import locale
-import random
 import sys
 import threading
 import time
@@ -17,98 +15,6 @@ from iconfucius.persona import DEFAULT_MODEL, Persona, PersonaNotFoundError, loa
 from iconfucius.skills.definitions import get_tool_metadata, get_tools_for_anthropic
 from iconfucius.skills.executor import execute_tool
 
-# Topics and icons for IConfucius startup quotes (from IConfucius agent)
-QUOTE_TOPICS = [
-    {"cn": "咖啡", "icon": "☕️", "en": "Coffee"},
-    {"cn": "加密货币", "icon": "📈", "en": "Cryptocurrency"},
-    {"cn": "天空", "icon": "🌤️", "en": "Sky"},
-    {"cn": "花朵", "icon": "🌸", "en": "Flowers"},
-    {"cn": "公正之神", "icon": "⚖️", "en": "Justice"},
-    {"cn": "进步的颠覆性本质", "icon": "🌱", "en": "The disruptive nature of progress"},
-    {"cn": "修养", "icon": "🏋️", "en": "Discipline"},
-    {"cn": "耐心", "icon": "🕰️", "en": "Patience"},
-    {"cn": "和谐", "icon": "☯️", "en": "Harmony"},
-    {"cn": "礼仪", "icon": "🎎", "en": "Ritual and Courtesy"},
-    {"cn": "诚信", "icon": "🤝", "en": "Integrity"},
-    {"cn": "学习", "icon": "📖", "en": "Lifelong Learning"},
-    {"cn": "反思", "icon": "🪞", "en": "Reflection"},
-    {"cn": "顺其自然", "icon": "🍃", "en": "Acceptance of Nature"},
-    {"cn": "简朴", "icon": "🍂", "en": "Simplicity"},
-    {"cn": "平衡", "icon": "⚖️", "en": "Balance"},
-    {"cn": "信任", "icon": "🤠", "en": "Trust"},
-    {"cn": "积累", "icon": "💰", "en": "Accumulation of Wealth"},
-    {"cn": "投资", "icon": "💵", "en": "Investment"},
-    {"cn": "风险", "icon": "⚠️", "en": "Risk"},
-    {"cn": "创新", "icon": "💡", "en": "Innovation"},
-    {"cn": "适应", "icon": "🌌", "en": "Adaptation"},
-    {"cn": "坚韧", "icon": "🗿", "en": "Resilience"},
-    {"cn": "洞察", "icon": "🔍", "en": "Insight"},
-    {"cn": "目标", "icon": "🎯", "en": "Goal Setting"},
-    {"cn": "自由", "icon": "🌈", "en": "Freedom"},
-    {"cn": "责任", "icon": "👷", "en": "Responsibility"},
-    {"cn": "时间", "icon": "⏳", "en": "Time Management"},
-    {"cn": "财富", "icon": "💸", "en": "Wealth"},
-    {"cn": "节制", "icon": "🏋️", "en": "Moderation"},
-    {"cn": "虚拟资产", "icon": "💹", "en": "Digital Assets"},
-    {"cn": "共识", "icon": "🔀", "en": "Consensus"},
-    {"cn": "去中心化", "icon": "🛠️", "en": "Decentralization"},
-    {"cn": "透明", "icon": "👀", "en": "Transparency"},
-    {"cn": "智慧", "icon": "🤔", "en": "Wisdom"},
-    {"cn": "信用", "icon": "📈", "en": "Credit"},
-    {"cn": "安全", "icon": "🔒", "en": "Security"},
-    {"cn": "机遇", "icon": "🍀", "en": "Opportunity"},
-    {"cn": "成长", "icon": "🌱", "en": "Growth"},
-    {"cn": "合作", "icon": "🤝", "en": "Collaboration"},
-    {"cn": "选择", "icon": "🔀", "en": "Choice"},
-    {"cn": "敬业", "icon": "💼", "en": "Professionalism"},
-    {"cn": "审慎", "icon": "📊", "en": "Prudence"},
-    {"cn": "理性", "icon": "🤖", "en": "Rationality"},
-    {"cn": "契约", "icon": "📑", "en": "Contract"},
-    {"cn": "区块链", "icon": "🛠️", "en": "Blockchain"},
-    {"cn": "匿名", "icon": "🔎", "en": "Anonymity"},
-    {"cn": "竞争", "icon": "🏆", "en": "Competition"},
-    {"cn": "领导", "icon": "👑", "en": "Leadership"},
-    {"cn": "市场", "icon": "🏢", "en": "Market"},
-    {"cn": "社区", "icon": "🏞️", "en": "Community"},
-    {"cn": "自我实现", "icon": "🌟", "en": "Self-Actualization"},
-    {"cn": "善良", "icon": "💖", "en": "Kindness"},
-    {"cn": "信念", "icon": "✨", "en": "Belief"},
-    {"cn": "忠诚", "icon": "🦁", "en": "Loyalty"},
-    {"cn": "美德", "icon": "🌿", "en": "Virtue"},
-    {"cn": "远见", "icon": "🔮", "en": "Vision"},
-    {"cn": "成就", "icon": "🌟", "en": "Achievement"},
-    {"cn": "共享", "icon": "👥", "en": "Sharing"},
-    {"cn": "交流", "icon": "📢", "en": "Communication"},
-    {"cn": "执行力", "icon": "🔄", "en": "Execution"},
-    {"cn": "算法", "icon": "🔢", "en": "Algorithm"},
-    {"cn": "冷静", "icon": "🌧️", "en": "Calmness"},
-    {"cn": "奋斗", "icon": "⚔️", "en": "Struggle"},
-    {"cn": "信号", "icon": "📶", "en": "Signal"},
-    {"cn": "贪婪", "icon": "💶", "en": "Greed"},
-    {"cn": "慈善", "icon": "💜", "en": "Charity"},
-    {"cn": "艺术", "icon": "🎨", "en": "Art"},
-    {"cn": "科技", "icon": "📱", "en": "Technology"},
-    {"cn": "策略", "icon": "🔫", "en": "Strategy"},
-    {"cn": "耐力", "icon": "🌼", "en": "Endurance"},
-    {"cn": "梦想", "icon": "🌟", "en": "Dreams"},
-    {"cn": "节奏", "icon": "🎵", "en": "Rhythm"},
-    {"cn": "健康", "icon": "🏥", "en": "Health"},
-    {"cn": "家庭", "icon": "🏡", "en": "Family"},
-    {"cn": "教育", "icon": "🎓", "en": "Education"},
-    {"cn": "旅行", "icon": "🛰", "en": "Travel"},
-    {"cn": "幸福", "icon": "🎉", "en": "Happiness"},
-    {"cn": "机密", "icon": "🔒", "en": "Confidentiality"},
-    {"cn": "原则", "icon": "🔄", "en": "Principles"},
-    {"cn": "法律", "icon": "🏛️", "en": "Law"},
-    {"cn": "效率", "icon": "⏳", "en": "Efficiency"},
-    {"cn": "反脆弱", "icon": "💪", "en": "Antifragility"},
-    {"cn": "道德", "icon": "📍", "en": "Morality"},
-    {"cn": "灵感", "icon": "💡", "en": "Inspiration"},
-    {"cn": "公平", "icon": "⚖️", "en": "Fairness"},
-    {"cn": "未来", "icon": "🌟", "en": "Future"},
-    {"cn": "传统", "icon": "🎐", "en": "Tradition"},
-    {"cn": "关系", "icon": "👨‍👨‍👦", "en": "Relationships"},
-]
 
 
 
@@ -231,14 +137,6 @@ class _CliWizardIO:
         print(text)
 
 
-def _get_language_code() -> str:
-    """Detect system language. Returns 'cn' for Chinese, 'en' otherwise."""
-    try:
-        lang = locale.getlocale()[0] or ""
-    except ValueError:
-        lang = ""
-    return "cn" if lang.startswith("zh") else "en"
-
 
 def _prompt_increase_timeout() -> str:
     """Ask the user if they want to increase the AI timeout. Returns status message."""
@@ -335,15 +233,15 @@ def _format_api_error(e: Exception) -> str:
     return format_api_error(e)
 
 
-def _generate_startup(backend, persona, lang: str) -> tuple[str, str]:
+def _generate_startup(backend, persona) -> tuple[str, str]:
     """Generate greeting and goodbye in one API call.
 
     Uses the persona's greeting_prompt and goodbye_prompt templates.
     Returns (greeting_text, goodbye_text).
     """
-    entry = random.choice(QUOTE_TOPICS)
-    icon = entry["icon"]
-    topic = entry[lang]
+    result = execute_tool("greeting_topic", {})
+    icon = result["icon"]
+    topic = result["topic"]
 
     # Build greeting prompt from persona template
     greeting_prompt = persona.greeting_prompt.format(icon=icon, topic=topic)
@@ -1225,11 +1123,10 @@ async def _run_chat_async(persona_name: str, bot_name: str, verbose: bool = Fals
         wallet_future = _bg_pool.submit(run_wallet_balance, ckbtc_minter=False)
 
     # Verify API access with a startup greeting (also caches goodbye)
-    lang = _get_language_code()
     try:
         with _Spinner(f"{persona.name} is thinking..."):
             greeting, goodbye = await asyncio.to_thread(
-                _generate_startup, backend, persona, lang,
+                _generate_startup, backend, persona,
             )
     except Exception as e:
         print(f"\n{_format_api_error(e)}")

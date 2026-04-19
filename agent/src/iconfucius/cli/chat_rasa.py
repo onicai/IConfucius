@@ -10,7 +10,6 @@ import json
 import logging
 import os
 import subprocess
-import sys
 import time
 import uuid
 from pathlib import Path
@@ -19,10 +18,8 @@ import httpx
 
 from iconfucius import __version__
 from iconfucius.cli.chat import (
-    QUOTE_TOPICS,
     _Spinner,
     _check_pypi_version,
-    _get_language_code,
     _handle_upgrade,
     _run_with_spinner,
 )
@@ -77,6 +74,12 @@ def _start_rasa_server(
             "RASA_SUBAGENT_TOOL_TIMEOUT", "120"
         ),
     }
+    # Langfuse tracing: forward env vars with safe defaults so Rasa
+    # doesn't crash when the user hasn't configured Langfuse yet.
+    env.setdefault("LANGFUSE_HOST", "http://localhost:12526")
+    env.setdefault("LANGFUSE_PUBLIC_KEY", "placeholder")
+    env.setdefault("LANGFUSE_PRIVATE_KEY", "placeholder")
+
 
     if not debug:
         env["LOG_LEVEL"] = "ERROR"
@@ -184,17 +187,6 @@ async def _run_chat_rasa_async(
         "sub_agent", "anthropic", "claude-opus-4-6",
     )
 
-    # Set up conversation logger + litellm callback for LLM call logging
-    from iconfucius.conversation_log import ConversationLogger
-    from iconfucius.logging_config import get_session_stamp
-    from iconfucius.rasa_llm_logger import RasaLLMLogger
-
-    conv_logger = ConversationLogger(stamp=get_session_stamp())
-    rasa_logger = RasaLLMLogger(conv_logger)
-
-    import litellm
-    litellm.callbacks.append(rasa_logger)
-
     # 1. Start MCP server (asyncio task, same process)
     from iconfucius.mcp_server import MCP_DEFAULT_PORT, start_mcp_server
 
@@ -210,7 +202,6 @@ async def _run_chat_rasa_async(
         try:
             mcp_task, mcp_uv_server = await start_mcp_server(port=mcp_port)
         except SystemExit:
-            conv_logger.close()
             return
 
         # 2. Start Rasa server (subprocess) -- skip if RASA_URL provided
@@ -249,23 +240,13 @@ async def _run_chat_rasa_async(
         sender_id = uuid.uuid4().hex
 
         async with httpx.AsyncClient(timeout=httpx.Timeout(120.0)) as client:
-            # 3. Startup greeting
-            import random
-
-            lang = _get_language_code()
-            entry = random.choice(QUOTE_TOPICS)
-            greeting_prompt = persona.greeting_prompt.format(
-                icon=entry["icon"], topic=entry[lang],
-            )
-
+            # 3. Startup greeting — triggers greeting flow
             greeting_responses = await _send_sse_message(
-                client, sse_url, sender_id, greeting_prompt,
+                client, sse_url, sender_id, "hi",
                 spinner_label=f"{persona.name} is thinking...",
             )
-            greeting = greeting_responses[0] if greeting_responses else (
-                f"{entry['icon']} {persona.name} -- {entry[lang]}"
-            )
-            print(f"\n{greeting}\n")
+            if greeting_responses:
+                print(f"\n{greeting_responses[0]}\n")
 
             # 4. Show wallet balance at startup
             setup = execute_tool("setup_and_operational_status", {})
@@ -286,10 +267,11 @@ async def _run_chat_rasa_async(
             # 5. Status line
             print(f"\033[2miconfucius v{__version__} · Rasa Pro CALM · exit to quit · Ctrl+C to interrupt\033[0m")
             print(f"\033[2mLLM: {llm_provider}/{llm_model} · rephraser: {reph_provider}/{reph_model} · sub-agent: {sub_provider}/{sub_model}\033[0m")
-            if rasa_process:
-                print(f"\033[2mRasa: {rasa_url} (local) · MCP: http://127.0.0.1:{mcp_port}/mcp\033[0m")
-            else:
-                print(f"\033[2mRasa: {rasa_url} (remote) · MCP: http://127.0.0.1:{mcp_port}/mcp\033[0m")
+            _lf_active = os.environ.get("LANGFUSE_PUBLIC_KEY", "placeholder") != "placeholder"
+            _lf_host = os.environ.get("LANGFUSE_HOST", "http://localhost:12526")
+            _lf_label = f"Langfuse: {_lf_host}" if _lf_active else "Langfuse: off"
+            _rasa_loc = "local" if rasa_process else "remote"
+            print(f"\033[2mRasa: {rasa_url} ({_rasa_loc}) · MCP: http://127.0.0.1:{mcp_port}/mcp · {_lf_label}\033[0m")
 
             # Check PyPI for newer version
             latest_version, _release_notes = _check_pypi_version()
@@ -311,6 +293,10 @@ async def _run_chat_rasa_async(
                 if latest_version:
                     print(f"\033[2mv{latest_version} available · /upgrade to install\033[0m")
                     print("\033[2m" + "-" * 60 + "\033[0m")
+
+            # Suppress uvicorn ASGI teardown errors on Ctrl+C
+            logging.getLogger("uvicorn.error").setLevel(logging.CRITICAL)
+            logging.getLogger("uvicorn.access").setLevel(logging.CRITICAL)
 
             # 6. Chat loop
             while True:
@@ -352,36 +338,21 @@ async def _run_chat_rasa_async(
                     continue
 
     finally:
-        # 7. Shutdown — suppress noisy logs during teardown
-        logging.getLogger("uvicorn.error").setLevel(logging.CRITICAL)
+        if rasa_process is not None:
+            rasa_process.terminate()
+            try:
+                rasa_process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                rasa_process.kill()
 
-        spinner = _Spinner("Shutting down Rasa server...")
-        spinner.__enter__()
-        try:
-            if rasa_process is not None:
-                rasa_process.terminate()
-                try:
-                    rasa_process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    rasa_process.kill()
+        if mcp_uv_server is not None:
+            mcp_uv_server.should_exit = True
+        if mcp_task is not None:
+            mcp_task.cancel()
 
-            if mcp_uv_server is not None:
-                mcp_uv_server.should_exit = True
-            if mcp_task is not None:
-                try:
-                    await mcp_task
-                except Exception:
-                    pass
-
-            conv_logger.close()
-        finally:
-            spinner.__exit__(None, None, None)
-
-        # Suppress noisy threading errors during interpreter shutdown
-        try:
-            sys.stderr.close()
-        except Exception:
-            pass
+        # Force-exit to avoid hanging on the daemon thread still blocked
+        # in input().  All subprocesses have been terminated above.
+        os._exit(0)
 
 
 # ------------------------------------------------------------------

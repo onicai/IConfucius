@@ -304,7 +304,8 @@ flows:
 
   greeting:
     description: >
-      Generate a startup greeting with a wisdom quote (internal use only).
+      Generate a wisdom quote greeting. Use when the user says hello, hi,
+      hey, greetings, or any other greeting.
     steps:
       - call: greeting_agent
 

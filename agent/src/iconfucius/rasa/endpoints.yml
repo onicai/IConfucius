@@ -11,6 +11,12 @@ nlg:
   llm:
     model_group: response_rephraser
 
+tracing:
+  - type: langfuse
+    host: ${LANGFUSE_HOST}
+    public_key: ${LANGFUSE_PUBLIC_KEY}
+    private_key: ${LANGFUSE_PRIVATE_KEY}
+
 model_groups:
   - id: command_generator
     models:

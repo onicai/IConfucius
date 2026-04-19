@@ -96,7 +96,6 @@ class TestStartRasaServer:
             reph_model="claude-sonnet-4-6",
             sub_provider="openai",
             sub_model="gpt-4o",
-            verbose=False,
             debug=False,
         )
 
@@ -132,7 +131,7 @@ class TestStartRasaServer:
             llm_provider="a", llm_model="b",
             reph_provider="c", reph_model="d",
             sub_provider="e", sub_model="f",
-            verbose=False, debug=True,
+            debug=True,
         )
 
         cmd = mock_popen.call_args[0][0]
@@ -142,8 +141,8 @@ class TestStartRasaServer:
         assert "LOG_LEVEL" not in env
 
     @patch("subprocess.Popen")
-    def test_verbose_mode_stdout(self, mock_popen, tmp_path):
-        """Verbose mode passes stdout/stderr to terminal (None)."""
+    def test_debug_mode_stdout(self, mock_popen, tmp_path):
+        """Debug mode passes stdout/stderr to terminal (None)."""
         mock_popen.return_value = MagicMock()
 
         _start_rasa_server(
@@ -152,7 +151,7 @@ class TestStartRasaServer:
             llm_provider="a", llm_model="b",
             reph_provider="c", reph_model="d",
             sub_provider="e", sub_model="f",
-            verbose=True, debug=False,
+            debug=True,
         )
 
         kwargs = mock_popen.call_args[1]
@@ -160,8 +159,8 @@ class TestStartRasaServer:
         assert kwargs["stderr"] is None
 
     @patch("subprocess.Popen")
-    def test_non_verbose_pipes_output(self, mock_popen, tmp_path):
-        """Non-verbose mode captures stdout/stderr via PIPE."""
+    def test_non_debug_pipes_output(self, mock_popen, tmp_path):
+        """Non-debug mode captures stdout/stderr via PIPE."""
         mock_popen.return_value = MagicMock()
 
         _start_rasa_server(
@@ -170,7 +169,7 @@ class TestStartRasaServer:
             llm_provider="a", llm_model="b",
             reph_provider="c", reph_model="d",
             sub_provider="e", sub_model="f",
-            verbose=False, debug=False,
+            debug=False,
         )
 
         kwargs = mock_popen.call_args[1]
@@ -188,7 +187,7 @@ class TestStartRasaServer:
             llm_provider="a", llm_model="b",
             reph_provider="c", reph_model="d",
             sub_provider="e", sub_model="f",
-            verbose=False, debug=False,
+            debug=False,
         )
 
         assert mock_popen.call_args[1]["cwd"] == str(tmp_path)
@@ -205,7 +204,7 @@ class TestStartRasaServer:
             llm_provider="a", llm_model="b",
             reph_provider="c", reph_model="d",
             sub_provider="e", sub_model="f",
-            verbose=False, debug=False,
+            debug=False,
         )
 
         env = mock_popen.call_args[1]["env"]

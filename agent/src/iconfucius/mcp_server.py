@@ -100,6 +100,7 @@ async def start_mcp_server(
     # clear error message instead of a cryptic traceback.
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             s.bind(("127.0.0.1", port))
     except OSError:
         print(f"\nPort {port} is already in use.")
@@ -119,4 +120,12 @@ async def start_mcp_server(
     uv_server = uvicorn.Server(config)
 
     task = asyncio.create_task(uv_server.serve())
+    # Wait until uvicorn has actually bound the port. Without this the
+    # caller races the event loop — streamablehttp_client connects before
+    # serve() has started listening and fails with httpx.ConnectError.
+    while not uv_server.started:
+        if task.done():
+            task.result()  # re-raise whatever killed serve()
+            raise RuntimeError("uvicorn exited before binding")
+        await asyncio.sleep(0.01)
     return task, uv_server
