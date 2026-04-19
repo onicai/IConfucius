@@ -24,15 +24,16 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
       - name: Install build tools (macOS ARM)
         if: matrix.os == 'macos-latest'
         run: brew install automake libtool
 
       - name: Install dependencies
         working-directory: agent
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+        run: uv pip install --system -e ".[dev,rasa]"
 
       - name: Install SWIG (Ubuntu)
         if: runner.os == 'Linux'
@@ -83,6 +84,9 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -95,11 +99,11 @@ jobs:
       - name: Build wheel
         working-directory: agent
         run: |
-          python -m pip install --upgrade pip build
+          uv pip install --system build
           python -m build
 
       - name: Install wheel (no C compiler)
-        run: CC=/bin/false CXX=/bin/false pip install agent/dist/*.whl
+        run: CC=/bin/false CXX=/bin/false uv pip install --system agent/dist/*.whl
 
       - name: Verify package imports
         run: |
