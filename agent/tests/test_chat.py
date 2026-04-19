@@ -621,7 +621,9 @@ class TestAmountUsdPreConversion:
             asyncio.run(_run_tool_loop(backend, messages, "system", [], "TestBot"))
 
         call_args = mock_exec.call_args[0]
-        assert call_args[1]["amount"] == 5_000  # $5 at $100k = 5,000 sats
+        # wallet_send declares amount: string in the MCP schema, so the pre-converter
+        # coerces the sats value to a string to match.
+        assert call_args[1]["amount"] == "5000"  # $5 at $100k = 5,000 sats
         assert "amount_usd" not in call_args[1]
 
     @patch("iconfucius.cli.chat.execute_tool", return_value={"status": "ok"})

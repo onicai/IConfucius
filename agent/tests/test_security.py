@@ -461,7 +461,9 @@ class TestPreConversionSecurity:
 
         call_args = mock_exec.call_args[0]
         assert call_args[0] == "withdraw"
-        assert call_args[1]["amount"] == 10_000
+        # withdraw declares amount: string in the MCP schema, so the pre-converter
+        # coerces the sats value to a string to match.
+        assert call_args[1]["amount"] == "10000"
         assert "amount_usd" not in call_args[1]
 
     @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100_000.0)
