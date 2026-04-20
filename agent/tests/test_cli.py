@@ -1339,11 +1339,12 @@ class TestStartChatWizard:
 
     # --- Full wizard flow ---
 
+    @patch("iconfucius.cli.get_bot_names", return_value=["bot-1", "bot-2"])
     @patch("iconfucius.cli.chat.run_chat")
     @patch("iconfucius.skills.executor.execute_tool")
     @patch("builtins.input", side_effect=["y", "2", "sk-ant-full-flow", "y"])
     def test_full_wizard_flow(self, mock_input, mock_exec, mock_chat,
-                               tmp_path, monkeypatch):
+                               mock_get_bot_names, tmp_path, monkeypatch):
         """Full flow: init → API key → wallet → chat."""
         monkeypatch.chdir(tmp_path)
         step = {"n": 0}  # track wizard progression

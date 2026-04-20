@@ -328,9 +328,11 @@ def _start_chat():
 
     Onboarding wizard: init → API key → wallet → show address → chat.
     """
+    from iconfucius.cli.chat import _Spinner
     from iconfucius.skills.executor import execute_tool
 
-    setup = execute_tool("setup_and_operational_status", {})
+    with _Spinner("Checking setup status..."):
+        setup = execute_tool("setup_and_operational_status", {})
 
     # --- Step 1: Project init ---
     if not setup.get("config_exists"):
@@ -365,7 +367,8 @@ def _start_chat():
         print(f"Created project with {num_bots} bot(s): {bot_list}")
         print()
         # Re-check after init
-        setup = execute_tool("setup_and_operational_status", {})
+        with _Spinner("Checking setup status..."):
+            setup = execute_tool("setup_and_operational_status", {})
 
     # --- Step 2: API key ---
     if not setup.get("has_api_key"):
@@ -443,10 +446,20 @@ def _start_chat():
             return
         print("Wallet created.")
         print()
-        setup = execute_tool("setup_and_operational_status", {})
+        with _Spinner("Checking wallet status..."):
+            setup = execute_tool("setup_and_operational_status", {})
 
     persona_name = "iconfucius"
-    bot_name = state.bot_name or "bot-1"
+    configured_bots = get_bot_names()
+    if state.bot_name:
+        bot_name = state.bot_name
+    elif configured_bots:
+        bot_name = configured_bots[0]
+    else:
+        print("No bots are configured yet.")
+        print("Add at least one bot to iconfucius.toml, or run:")
+        print("  iconfucius init --force --bots 1")
+        return
 
     if getattr(state, "rasa", False):
         from iconfucius.cli.chat_rasa import run_chat_rasa
@@ -469,6 +482,12 @@ def _write_env_file(content: str) -> None:
         pass
 
 
+def _has_env_key(content: str, key: str) -> bool:
+    """Return True iff .env content defines `key` as an assignment (not a comment)."""
+    import re
+    return re.search(rf"(?m)^\s*{re.escape(key)}\s*=", content) is not None
+
+
 def _save_env_var(key: str, value: str, placeholder: str) -> None:
     """Write `key=value` to .env (replace placeholder, update existing, or append)."""
     import os
@@ -479,8 +498,12 @@ def _save_env_var(key: str, value: str, placeholder: str) -> None:
         content = env_path.read_text()
         if placeholder in content:
             content = content.replace(placeholder, value)
-        elif key in content:
-            content = re.sub(rf"{re.escape(key)}=.*", f"{key}={value}", content)
+        elif _has_env_key(content, key):
+            content = re.sub(
+                rf"(?m)^\s*{re.escape(key)}\s*=.*$",
+                f"{key}={value}",
+                content,
+            )
         else:
             separator = "" if content.endswith("\n") else "\n"
             content += f"{separator}{key}={value}\n"
@@ -567,7 +590,7 @@ def _ensure_env_file() -> None:
 
     content = env_path.read_text()
     changed = False
-    if "ANTHROPIC_API_KEY" not in content:
+    if not _has_env_key(content, "ANTHROPIC_API_KEY"):
         separator = "" if content.endswith("\n") else "\n"
         content += (
             f"{separator}"
@@ -576,7 +599,7 @@ def _ensure_env_file() -> None:
         )
         changed = True
         print("Added ANTHROPIC_API_KEY to .env")
-    if "RASA_LICENSE" not in content:
+    if not _has_env_key(content, "RASA_LICENSE"):
         separator = "" if content.endswith("\n") else "\n"
         content += (
             f"{separator}"

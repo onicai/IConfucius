@@ -128,6 +128,9 @@ async def _sse_stream(client: httpx.AsyncClient, url: str, sender_id: str, text:
     async with client.stream(
         "POST", url, json={"message": text, "sender_id": sender_id},
     ) as response:
+        # httpx.AsyncClient.stream() does not raise on non-2xx; surface HTTP
+        # errors explicitly so we don't try to parse an error page as SSE.
+        response.raise_for_status()
         event_type = None
         async for line in response.aiter_lines():
             if line.startswith("event: "):
@@ -187,28 +190,29 @@ async def _run_chat_rasa_async(
         "sub_agent", "anthropic", "claude-opus-4-6",
     )
 
-    # 1. Start MCP server (asyncio task, same process)
+    # 1. Resolve MCP endpoint (actual server only starts for local Rasa below).
     from iconfucius.mcp_server import MCP_DEFAULT_PORT, start_mcp_server
 
     mcp_port = int(os.environ.get("ICONFUCIUS_MCP_PORT", str(MCP_DEFAULT_PORT)))
     mcp_url = f"http://127.0.0.1:{mcp_port}/mcp"
-    os.environ.setdefault("ICONFUCIUS_MCP_URL", mcp_url)
 
     mcp_task = None
     mcp_uv_server = None
     rasa_process = None
 
     try:
-        try:
-            mcp_task, mcp_uv_server = await start_mcp_server(port=mcp_port)
-        except SystemExit:
-            return
-
         # 2. Start Rasa server (subprocess) -- skip if RASA_URL provided
         rasa_url = os.environ.get("RASA_URL")
         # Clear the "Loading IConfucius..." line regardless of local/remote Rasa
         print("\r\033[K", end="", flush=True)
         if not rasa_url:
+            # Local Rasa path: start MCP server for it to call back into.
+            # (Remote Rasa can't reach 127.0.0.1 MCP, so skip the launch there.)
+            os.environ.setdefault("ICONFUCIUS_MCP_URL", mcp_url)
+            try:
+                mcp_task, mcp_uv_server = await start_mcp_server(port=mcp_port)
+            except SystemExit:
+                return
             try:
                 rasa_dir = _find_rasa_dir()
             except FileNotFoundError as e:
@@ -247,6 +251,18 @@ async def _run_chat_rasa_async(
         sender_id = uuid.uuid4().hex
 
         async with httpx.AsyncClient(timeout=httpx.Timeout(120.0)) as client:
+            # Seed the bot_name slot so flows that expect it don't have to ask.
+            # Rasa accepts slot events via the conversation tracker endpoint.
+            if bot_name:
+                try:
+                    await client.post(
+                        f"{rasa_url}/conversations/{sender_id}/tracker/events",
+                        json=[{"event": "slot", "name": "bot_name", "value": bot_name}],
+                    )
+                except httpx.HTTPError:
+                    # Non-fatal — the user can still specify a bot interactively.
+                    pass
+
             # 3. Startup greeting — triggers greeting flow
             greeting_responses = await _send_sse_message(
                 client, sse_url, sender_id, "hi",
@@ -256,11 +272,16 @@ async def _run_chat_rasa_async(
                 print(f"\n{greeting_responses[0]}\n")
 
             # 4. Show wallet balance at startup
-            setup = execute_tool("setup_and_operational_status", {})
+            setup = await asyncio.to_thread(
+                _run_with_spinner,
+                "Checking setup and service status...",
+                execute_tool, "setup_and_operational_status", {},
+            )
             if setup.get("wallet_exists"):
                 from iconfucius.cli.balance import run_wallet_balance
                 try:
-                    wallet_data = _run_with_spinner(
+                    wallet_data = await asyncio.to_thread(
+                        _run_with_spinner,
                         "Checking wallet...", run_wallet_balance,
                         ckbtc_minter=False,
                     )
@@ -269,7 +290,9 @@ async def _run_chat_rasa_async(
                         if display_text:
                             print(f"{display_text}\n")
                 except Exception:
-                    pass
+                    logging.getLogger(__name__).debug(
+                        "Rasa startup wallet check failed", exc_info=True,
+                    )
 
             # 5. Status line
             print(f"\033[2miconfucius v{__version__} · Rasa Pro CALM · exit to quit · Ctrl+C to interrupt\033[0m")
@@ -355,11 +378,14 @@ async def _run_chat_rasa_async(
         if mcp_uv_server is not None:
             mcp_uv_server.should_exit = True
         if mcp_task is not None:
-            mcp_task.cancel()
-
-        # Force-exit to avoid hanging on the daemon thread still blocked
-        # in input().  All subprocesses have been terminated above.
-        os._exit(0)
+            try:
+                await asyncio.wait_for(mcp_task, timeout=5)
+            except asyncio.TimeoutError:
+                mcp_task.cancel()
+                try:
+                    await mcp_task
+                except asyncio.CancelledError:
+                    pass
 
 
 # ------------------------------------------------------------------

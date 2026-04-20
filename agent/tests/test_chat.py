@@ -37,12 +37,14 @@ runner = CliRunner()
 
 
 class TestChatCommand:
+    @patch("iconfucius.cli.get_bot_names", return_value=["bot-1"])
     @patch("iconfucius.cli.chat.run_chat")
     @patch("iconfucius.skills.executor.execute_tool", return_value={
         "status": "ok", "config_exists": True, "wallet_exists": True,
         "env_exists": True, "has_api_key": True, "ready": True,
     })
-    def test_explicit_chat_command(self, mock_execute, mock_run_chat):
+    def test_explicit_chat_command(self, mock_execute, mock_run_chat,
+                                    mock_get_bot_names):
         """Verify explicit chat command."""
         result = runner.invoke(app, ["chat"])
         assert result.exit_code == 0
@@ -50,12 +52,14 @@ class TestChatCommand:
         args = mock_run_chat.call_args
         assert args.kwargs["persona_name"] == "iconfucius"
 
+    @patch("iconfucius.cli.get_bot_names", return_value=["bot-1", "bot-2"])
     @patch("iconfucius.cli.chat.run_chat")
     @patch("iconfucius.skills.executor.execute_tool", return_value={
         "status": "ok", "config_exists": True, "wallet_exists": True,
         "env_exists": True, "has_api_key": True, "ready": True,
     })
-    def test_chat_with_bot_flag(self, mock_execute, mock_run_chat):
+    def test_chat_with_bot_flag(self, mock_execute, mock_run_chat,
+                                  mock_get_bot_names):
         """Verify chat with bot flag."""
         result = runner.invoke(app, ["chat", "--bot", "bot-2"])
         assert result.exit_code == 0

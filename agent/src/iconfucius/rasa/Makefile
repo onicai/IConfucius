@@ -10,7 +10,8 @@ export RASA_REPHRASER_MODEL     ?= claude-opus-4-6
 export RASA_SUBAGENT_PROVIDER   ?= anthropic
 export RASA_SUBAGENT_MODEL      ?= claude-opus-4-6
 export RASA_SUBAGENT_TOOL_TIMEOUT ?= 120
-export ICONFUCIUS_MCP_URL          ?= http://127.0.0.1:5138/mcp
+export ICONFUCIUS_MCP_PORT         ?= 5138
+export ICONFUCIUS_MCP_URL          ?= http://127.0.0.1:$(ICONFUCIUS_MCP_PORT)/mcp
 export LANGFUSE_HOST               ?= http://localhost:12526
 export LANGFUSE_PUBLIC_KEY         ?= placeholder
 export LANGFUSE_PRIVATE_KEY        ?= placeholder
@@ -18,14 +19,14 @@ export LANGFUSE_PRIVATE_KEY        ?= placeholder
 .PHONY: rasa-inspect rasa-train rasa-train-for-release langfuse-up langfuse-down langfuse-logs
 
 rasa-inspect:
-	@echo "Starting MCP server on port 5138..."
-	@python -c "import uvicorn; from iconfucius.mcp_server import create_mcp_server, create_asgi_app; uvicorn.run(create_asgi_app(create_mcp_server()), host='127.0.0.1', port=5138, log_level='warning')" & \
+	@echo "Starting MCP server on port $(ICONFUCIUS_MCP_PORT)..."
+	@python -c "import os, uvicorn; from iconfucius.mcp_server import create_mcp_server, create_asgi_app; uvicorn.run(create_asgi_app(create_mcp_server()), host='127.0.0.1', port=int(os.environ.get('ICONFUCIUS_MCP_PORT', '5138')), log_level='warning')" & \
 		MCP_PID=$$!; \
+		cleanup() { kill $$MCP_PID 2>/dev/null || true; wait $$MCP_PID 2>/dev/null || true; }; \
+		trap cleanup EXIT; \
 		sleep 2; \
 		LLM_API_HEALTH_CHECK=false rasa inspect; \
 		EXIT_CODE=$$?; \
-		kill $$MCP_PID 2>/dev/null || true; \
-		wait $$MCP_PID 2>/dev/null || true; \
 		exit $$EXIT_CODE
 
 rasa-train:

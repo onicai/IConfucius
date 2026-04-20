@@ -920,11 +920,32 @@ async def _run_tool_loop(backend, messages: list[dict], system: str,
             )
 
             if mcp_session is not None:
-                result = await _call_tool_mcp(
-                    mcp_session, block.name, block.input,
-                    use_spinner=use_spinner,
-                    label=f"Running {block.name}...",
-                )
+                try:
+                    result = await _call_tool_mcp(
+                        mcp_session, block.name, block.input,
+                        use_spinner=use_spinner,
+                        label=f"Running {block.name}...",
+                    )
+                except Exception:
+                    # Per-call transport hiccup — degrade to direct execution
+                    # instead of aborting the turn. MCP stays the preferred
+                    # path for the next tool call.
+                    from iconfucius.logging_config import get_logger
+                    get_logger().debug(
+                        "MCP tool call failed; falling back to direct execution",
+                        exc_info=True,
+                    )
+                    if use_spinner:
+                        result = _run_with_spinner(
+                            f"Running {block.name}...",
+                            execute_tool, block.name, block.input,
+                            persona_name=persona_key,
+                        )
+                    else:
+                        result = execute_tool(
+                            block.name, block.input,
+                            persona_name=persona_key,
+                        )
             elif use_spinner:
                 result = _run_with_spinner(
                     f"Running {block.name}...",
@@ -1342,9 +1363,15 @@ async def _run_chat_async(persona_name: str, bot_name: str, verbose: bool = Fals
     try:
         mcp_task, mcp_uv_server = await start_mcp_server(port=mcp_port)
     except SystemExit:
-        return
+        # Port busy / bind failed: chat still works via direct execute_tool.
+        mcp_task = None
+        mcp_uv_server = None
     except Exception:
-        pass  # MCP not available — fall back to direct execute_tool
+        from iconfucius.logging_config import get_logger
+        get_logger().debug(
+            "MCP server failed to start; falling back to direct tools",
+            exc_info=True,
+        )
 
     try:
         if mcp_task is not None:
