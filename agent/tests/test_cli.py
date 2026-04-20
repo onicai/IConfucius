@@ -969,19 +969,21 @@ class TestOptionPlacement:
 class TestDebugFlag:
     """Verify --debug flag is accepted by all subcommands."""
 
+    def teardown_method(self):
+        # state is module-scoped; reset debug so it can't leak into other tests.
+        state.debug = False
+
     def test_debug_before_config(self, odin_project):
         """Verify --debug before config sets state.debug."""
         result = runner.invoke(app, ["--debug", "config"])
         assert result.exit_code == 0
         assert state.debug is True
-        state.debug = False
 
     def test_debug_after_config(self, odin_project):
         """Verify --debug after config sets state.debug."""
         result = runner.invoke(app, ["config", "--debug"])
         assert result.exit_code == 0
         assert state.debug is True
-        state.debug = False
 
     def test_debug_default_is_false(self, odin_project):
         """Verify --debug defaults to False."""

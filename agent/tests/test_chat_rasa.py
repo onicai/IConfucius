@@ -121,8 +121,12 @@ class TestStartRasaServer:
         assert env["LOG_LEVEL"] == "ERROR"
 
     @patch("subprocess.Popen")
-    def test_debug_mode(self, mock_popen, tmp_path):
+    def test_debug_mode(self, mock_popen, tmp_path, monkeypatch):
         """Debug mode adds --debug flag and doesn't set LOG_LEVEL."""
+        # _start_rasa_server copies os.environ, so inherited log-level vars
+        # would leak into the assertion. Clear them explicitly.
+        monkeypatch.delenv("LOG_LEVEL", raising=False)
+        monkeypatch.delenv("SANIC_LOG_LEVEL", raising=False)
         mock_popen.return_value = MagicMock()
 
         _start_rasa_server(

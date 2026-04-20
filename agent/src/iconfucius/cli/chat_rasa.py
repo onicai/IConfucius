@@ -230,9 +230,15 @@ async def _run_chat_rasa_async(
                     await _wait_for_rasa_ready(rasa_url)
                 except RuntimeError as e:
                     print(f"\nError: {e}")
-                    # Show stderr if available
-                    if rasa_process.stderr:
-                        err = rasa_process.stderr.read()
+                    # Terminate first, then drain stderr — stderr.read() on a
+                    # live subprocess waits for EOF and can hang indefinitely.
+                    if rasa_process is not None:
+                        rasa_process.terminate()
+                        try:
+                            _out, err = rasa_process.communicate(timeout=5)
+                        except subprocess.TimeoutExpired:
+                            rasa_process.kill()
+                            _out, err = rasa_process.communicate()
                         if err:
                             print(err.decode(errors="replace")[-2000:])
                     return

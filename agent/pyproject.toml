@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "iconfucius"
-version = "0.9.0rc7"
+version = "0.9.0rc8"
 description = "IConfucius | Wisdom for Bitcoin Markets"
 readme = "README.md"
 license = "MIT"
@@ -43,6 +43,10 @@ dependencies = [
     "anthropic>=0.40",
     "python-dotenv>=1.0",
     "packaging>=21.0",
+    # Required by iconfucius.mcp_server (imported unconditionally by chat.py)
+    "mcp>=1.0",
+    "starlette>=0.40",
+    "uvicorn>=0.30",
 ]
 
 [project.optional-dependencies]
@@ -85,6 +89,7 @@ iconfucius = [
     "rasa/actions/*.py",
     "rasa/sub_agents/*/config.yml",
     "rasa/sub_agents/*/*.py",
+    "rasa/sub_agents/*/*.jinja2",
     "rasa/models/release-model.tar.gz",
 ]
 

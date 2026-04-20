@@ -387,7 +387,12 @@ def _start_chat():
     # --- Step 2b: Rasa license (only for --rasa mode) ---
     if getattr(state, "rasa", False):
         import os
-        from rasa.utils.licensing import validate_license_from_env
+        try:
+            from rasa.utils.licensing import validate_license_from_env
+        except ImportError as e:
+            print("Error: Rasa Pro is not installed.")
+            print("Install with: pip install 'iconfucius[rasa]'")
+            raise typer.Exit(1) from e
         # Reload .env — it may have just been created/modified during onboarding
         from dotenv import load_dotenv
         load_dotenv(dotenv_path=Path.cwd() / ".env", override=True)

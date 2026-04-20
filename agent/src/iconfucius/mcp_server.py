@@ -53,13 +53,12 @@ def create_mcp_server() -> Server:
             result = await asyncio.to_thread(
                 execute_tool, name, arguments, persona_name="iconfucius",
             )
-        except BaseException as exc:
-            import traceback
-            tb = traceback.format_exc()
-            _log.error("Tool %r crashed in execute_tool: %s", name, tb)
+        except Exception as exc:
+            # Log full traceback server-side; return only the sanitized error
+            # message to the MCP client (traceback can leak local paths).
+            _log.exception("Tool %r crashed in execute_tool", name)
             result = {"status": "error",
-                      "error": f"{type(exc).__name__}: {exc}",
-                      "traceback": tb}
+                      "error": f"{type(exc).__name__}: {exc}"}
         if not isinstance(result, dict):
             result = {"status": "error",
                       "error": f"Tool {name} returned non-dict: {type(result).__name__}"}

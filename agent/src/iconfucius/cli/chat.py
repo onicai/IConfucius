@@ -1358,6 +1358,18 @@ async def _run_chat_async(persona_name: str, bot_name: str, verbose: bool = Fals
                 mcp_session = await _mcp_session_ctx.__aenter__()
                 await mcp_session.initialize()
             except Exception:
+                # Close whichever contexts opened before the failure to avoid
+                # leaking the stream/session resources into the user loop.
+                if mcp_session is not None:
+                    try:
+                        await _mcp_session_ctx.__aexit__(None, None, None)
+                    except Exception:
+                        pass
+                if "_mcp_ctx" in locals():
+                    try:
+                        await _mcp_ctx.__aexit__(None, None, None)
+                    except Exception:
+                        pass
                 from iconfucius.logging_config import get_logger
                 get_logger().debug(
                     "MCP client unavailable; falling back to direct tools",
@@ -1401,7 +1413,7 @@ async def _run_chat_async(persona_name: str, bot_name: str, verbose: bool = Fals
                 print(f"\n\n{goodbye}")
                 break
 
-            if user_input.startswith("/ai"):
+            if user_input == "/ai" or user_input.startswith("/ai "):
                 ai_result = await asyncio.to_thread(
                     _handle_ai_slash_command, user_input, backend, persona,
                 )
@@ -1432,7 +1444,7 @@ async def _run_chat_async(persona_name: str, bot_name: str, verbose: bool = Fals
                     non_default = _is_non_default_ai(persona)
                 continue
 
-            if user_input.startswith("/model"):
+            if user_input == "/model" or user_input.startswith("/model "):
                 await asyncio.to_thread(
                     _handle_model_slash_command, user_input, backend, persona,
                 )
@@ -1450,6 +1462,13 @@ async def _run_chat_async(persona_name: str, bot_name: str, verbose: bool = Fals
             if not user_input:
                 continue
 
+            # Snapshot message count so we can roll back cleanly if the tool
+            # loop raises mid-turn. A plain messages.pop() is wrong when the
+            # tool loop has already appended an assistant tool_use block: it
+            # pops the trailing user message (tool_results or user_input) and
+            # leaves an orphaned tool_use, which Anthropic then 400s on every
+            # subsequent turn ("tool_use ids were found without tool_result").
+            _turn_start = len(messages)
             messages.append({"role": "user", "content": user_input})
 
             try:
@@ -1459,15 +1478,15 @@ async def _run_chat_async(persona_name: str, bot_name: str, verbose: bool = Fals
                 )
             except KeyboardInterrupt:
                 print("\n\nInterrupted.")
-                messages.pop()
+                del messages[_turn_start:]
                 continue
             except SystemExit as e:
                 print(f"\nInternal error (exit code {e.code})\n")
-                messages.pop()
+                del messages[_turn_start:]
                 continue
             except Exception as e:
                 print(f"\n{_format_api_error(e)}\n")
-                messages.pop()
+                del messages[_turn_start:]
                 continue
 
     finally:

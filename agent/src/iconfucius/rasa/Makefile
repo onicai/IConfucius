@@ -19,9 +19,14 @@ export LANGFUSE_PRIVATE_KEY        ?= placeholder
 
 rasa-inspect:
 	@echo "Starting MCP server on port 5138..."
-	@python -c "import uvicorn; from iconfucius.mcp_server import create_mcp_server, create_asgi_app; uvicorn.run(create_asgi_app(create_mcp_server()), host='127.0.0.1', port=5138, log_level='warning')" &
-	@sleep 2
-	@LLM_API_HEALTH_CHECK=false rasa inspect; EXIT_CODE=$$?; kill %1 2>/dev/null; exit $$EXIT_CODE
+	@python -c "import uvicorn; from iconfucius.mcp_server import create_mcp_server, create_asgi_app; uvicorn.run(create_asgi_app(create_mcp_server()), host='127.0.0.1', port=5138, log_level='warning')" & \
+		MCP_PID=$$!; \
+		sleep 2; \
+		LLM_API_HEALTH_CHECK=false rasa inspect; \
+		EXIT_CODE=$$?; \
+		kill $$MCP_PID 2>/dev/null || true; \
+		wait $$MCP_PID 2>/dev/null || true; \
+		exit $$EXIT_CODE
 
 rasa-train:
 	rasa train
