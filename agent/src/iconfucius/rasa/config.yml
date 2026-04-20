@@ -1,0 +1,13 @@
+recipe: default.v1
+language: en
+assistant_id: iconfucius
+
+pipeline:
+  - name: CompactLLMCommandGenerator
+    llm:
+      model_group: command_generator
+    flow_retrieval:
+      active: false
+
+policies:
+  - name: FlowPolicy

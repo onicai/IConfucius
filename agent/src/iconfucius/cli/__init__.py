@@ -16,10 +16,8 @@ from iconfucius.config import (
     find_config,
     fmt_sats,
     get_bot_names,
-    get_bot_persona,
     get_btc_to_usd_rate,
     get_cksigner_canister_id,
-    get_default_persona,
     get_network,
     load_config,
     set_network,
@@ -43,19 +41,15 @@ HELP_TEXT = """\
 IConfucius | Wisdom for Bitcoin Markets
 
 \b
-Setup:
-  mkdir my-bots && cd my-bots
-  iconfucius
-\b
-  The onboarding wizard runs automatically on first launch.
-\b
-AI chat:
-  iconfucius                    Start chat with default persona
+Three modes:
+  iconfucius                    Chat via terminal with IConfucius (default)
   iconfucius chat               Same as above (explicit)
-  iconfucius --persona <name>   Chat with a specific persona
-  iconfucius persona list       List available personas
+  iconfucius chat --rasa        Chat via terminal using Rasa Pro CALM backend
+  iconfucius ui                 Launch the local Web UI
+  iconfucius <command>          Execute individual commands directly
 \b
-How to use your bots:
+Direct commands:
+  (Use when AI backend is unavailable)
   All ckBTC amounts are in sats (1 BTC = 100,000,000 sats).
 \b
   Step 1. Fund your iconfucius wallet:
@@ -66,7 +60,7 @@ How to use your bots:
   Step 2. Check your wallet balance:
           iconfucius wallet balance [--monitor]
 \b
-  Step 3. Fund your bots (deposits ckBTC into Odin.Fun):
+  Step 3. Fund your bots (deposit ckBTC into Odin.Fun):
           iconfucius fund <amount> --bot <name>          # in sats
           iconfucius fund <amount> --all-bots
 \b
@@ -79,12 +73,7 @@ How to use your bots:
 \b
   Step 6. Sell Runes on Odin.Fun:
           iconfucius trade sell <token-id> <amount> --bot <name>
-          iconfucius trade sell <token-id> <amount> --all-bots
-          # to sell all holdings of a token
           iconfucius trade sell <token-id> all --bot <name>
-          iconfucius trade sell <token-id> all --all-bots
-          # to sell all holdings of all tokens
-          iconfucius trade sell all-tokens all --bot <name>
           iconfucius trade sell all-tokens all --all-bots
 \b
   Step 7. Withdraw ckBTC from Odin.Fun back to wallet:
@@ -95,9 +84,12 @@ How to use your bots:
           iconfucius sweep --bot <name>
           iconfucius sweep --all-bots
 \b
-  Step 8. Send ckBTC from wallet to an external ckBTC or BTC account:
+  Step 8. Transfer tokens between Odin.Fun accounts:
+          iconfucius transfer <token-id> <amount> <address> --bot <name>
+\b
+  Step 9. Send ckBTC/BTC from wallet to an external account:
           iconfucius wallet send <amount> <address>      # in sats
-          (supports both ICRC-1 and BTC addresses)
+          (<address> = ICRC-1 ckBTC address or native BTC address)
 """
 
 INSTRUCTIONS_TEXT = """\
@@ -115,7 +107,7 @@ All ckBTC amounts are in sats (1 BTC = 100,000,000 sats).
   Step 2. Check your wallet balance:
           iconfucius wallet balance [--monitor]
 
-  Step 3. Fund your bots (deposits ckBTC into Odin.Fun):
+  Step 3. Fund your bots (deposit ckBTC into Odin.Fun):
           iconfucius fund <amount> --bot <bot-name>          # in sats
           iconfucius fund <amount> --all-bots
 
@@ -128,12 +120,7 @@ All ckBTC amounts are in sats (1 BTC = 100,000,000 sats).
 
   Step 6. Sell Runes on Odin.Fun:
           iconfucius trade sell <token-id> <amount> --bot <bot-name>
-          iconfucius trade sell <token-id> <amount> --all-bots
-          # to sell all holdings of a token
           iconfucius trade sell <token-id> all --bot <bot-name>
-          iconfucius trade sell <token-id> all --all-bots
-          # to sell all holdings of all tokens
-          iconfucius trade sell all-tokens all --bot <bot-name>
           iconfucius trade sell all-tokens all --all-bots
 
   Step 7. Withdraw ckBTC from Odin.Fun back to wallet:
@@ -144,9 +131,12 @@ All ckBTC amounts are in sats (1 BTC = 100,000,000 sats).
           iconfucius sweep --bot <bot-name>
           iconfucius sweep --all-bots
 
-  Step 8. Send ckBTC from wallet to an external ckBTC or BTC account:
+  Step 8. Transfer tokens between Odin.Fun accounts:
+          iconfucius transfer <token-id> <amount> <address> --bot <bot-name>
+
+  Step 9. Send ckBTC/BTC from wallet to an external account:
           iconfucius wallet send <amount> <address>          # in sats
-          (supports both ICRC-1 and BTC addresses)
+          (<address> = ICRC-1 ckBTC address or native BTC address)
 """
 
 app = typer.Typer(
@@ -228,8 +218,8 @@ class State:
     all_bots: bool = False
     verbose: bool = True
     network: str = "prd"
-    persona: Optional[str] = None
-    experimental: bool = False
+    rasa: bool = False
+    debug: bool = False
 
 
 state = State()
@@ -281,25 +271,25 @@ def _version_callback(value: bool):
 def main_callback(
     ctx: typer.Context,
     bot: Optional[str] = typer.Option(
-        None, "--bot", "-b", help="Bot name to use"
+        None, "--bot", help="Bot name to use"
     ),
     all_bots: bool = typer.Option(
         False, "--all-bots", help="Target all bots"
     ),
     verbose: bool = typer.Option(
-        True, "--verbose/--quiet", "-v/-q", help="Show verbose output"
+        True, "--verbose/--quiet", help="Show verbose output"
     ),
     network: str = typer.Option(
         "prd", "--network", help="PoAIW network of ckSigner: prd, testing, development"
     ),
-    persona: Optional[str] = typer.Option(
-        None, "--persona", "-p", help="Persona to use for chat"
+    rasa: bool = typer.Option(
+        False, "--rasa", help="Use Rasa Pro CALM backend instead of direct LLM tool use - faster, cheaper & avoids business logic hallucinations"
     ),
-    experimental: bool = typer.Option(
-        False, "--experimental", "-x", help="Enable experimental features (e.g. /ai command)"
+    debug: bool = typer.Option(
+        False, "--debug", help="Show Rasa debug logs on screen (only with --rasa)"
     ),
     version: bool = typer.Option(
-        False, "--version", "-V", help="Show version and exit",
+        False, "--version", help="Show version and exit",
         callback=_version_callback, is_eager=True,
     ),
 ):
@@ -310,11 +300,13 @@ def main_callback(
     state.all_bots = all_bots
     state.verbose = verbose
     state.network = network
-    state.persona = persona
-    state.experimental = experimental
+    if rasa:
+        state.rasa = rasa
+    if debug:
+        state.debug = debug
     set_network(network)
     if ctx.invoked_subcommand is None:
-        # Bare invocation: start chat with default persona
+        # Bare invocation: start the terminal chat (same as 'iconfucius chat')
         _start_chat()
 
 
@@ -328,50 +320,6 @@ app.add_typer(wallet_app, name="wallet", help="Manage wallet identity and funds"
 
 
 # ---------------------------------------------------------------------------
-# Persona subcommand group
-# ---------------------------------------------------------------------------
-
-persona_app = typer.Typer(help="Manage trading personas")
-app.add_typer(persona_app, name="persona")
-
-
-@persona_app.command("list")
-def persona_list():
-    """List all available personas."""
-    from iconfucius.persona import list_personas
-
-    names = list_personas()
-    default = get_default_persona()
-    if not names:
-        print("No personas found.")
-        return
-    print("Available personas:")
-    for name in names:
-        marker = " (default)" if name == default else ""
-        print(f"  {name}{marker}")
-
-
-@persona_app.command("show")
-def persona_show(
-    name: str = typer.Argument(..., help="Persona name to show"),
-):
-    """Show persona details."""
-    from iconfucius.persona import PersonaNotFoundError, load_persona
-
-    try:
-        p = load_persona(name)
-    except PersonaNotFoundError as e:
-        print(f"Error: {e}")
-        raise typer.Exit(1)
-
-    print(f"Name:        {p.name}")
-    print(f"AI type:     {p.ai_api_type}")
-    print(f"AI model:    {p.ai_model}")
-    if p.ai_base_url:
-        print(f"AI base URL: {p.ai_base_url}")
-
-
-# ---------------------------------------------------------------------------
 # Chat helper
 # ---------------------------------------------------------------------------
 
@@ -380,9 +328,11 @@ def _start_chat():
 
     Onboarding wizard: init → API key → wallet → show address → chat.
     """
+    from iconfucius.cli.chat import _Spinner
     from iconfucius.skills.executor import execute_tool
 
-    setup = execute_tool("setup_status", {})
+    with _Spinner("Checking setup status..."):
+        setup = execute_tool("setup_and_operational_status", {})
 
     # --- Step 1: Project init ---
     if not setup.get("config_exists"):
@@ -398,16 +348,16 @@ def _start_chat():
 
         # Ask how many bots
         try:
-            bots_input = input("How many bots? [3] ").strip()
+            bots_input = input("How many bots? [1] ").strip()
         except (KeyboardInterrupt, EOFError):
             print()
             return
-        num_bots = 3
+        num_bots = 1
         if bots_input:
             try:
                 num_bots = max(1, min(1000, int(bots_input)))
             except ValueError:
-                print("Invalid number, using default (3).")
+                print("Invalid number, using default (1).")
 
         result = execute_tool("init", {"num_bots": num_bots})
         if result.get("status") != "ok":
@@ -417,7 +367,8 @@ def _start_chat():
         print(f"Created project with {num_bots} bot(s): {bot_list}")
         print()
         # Re-check after init
-        setup = execute_tool("setup_status", {})
+        with _Spinner("Checking setup status..."):
+            setup = execute_tool("setup_and_operational_status", {})
 
     # --- Step 2: API key ---
     if not setup.get("has_api_key"):
@@ -436,6 +387,49 @@ def _start_chat():
         print("Saved API key to .env")
         print()
 
+    # --- Step 2b: Rasa license (only for --rasa mode) ---
+    if getattr(state, "rasa", False):
+        import os
+        try:
+            from rasa.utils.licensing import validate_license_from_env
+        except ImportError as e:
+            print("Error: Rasa Pro is not installed.")
+            print("Install with: pip install 'iconfucius[rasa]'")
+            raise typer.Exit(1) from e
+        # Reload .env — it may have just been created/modified during onboarding
+        from dotenv import load_dotenv
+        load_dotenv(dotenv_path=Path.cwd() / ".env", override=True)
+
+        for attempt in range(3):
+            rasa_license = os.environ.get("RASA_LICENSE", "")
+            needs_input = not rasa_license or rasa_license == "your-rasa-license-here"
+            if needs_input or attempt > 0:
+                if attempt == 0:
+                    print("A Rasa Pro license is needed for the CALM backend.")
+                    print("Get your free Developer Edition license at:")
+                    print("  https://rasa.com/rasa-pro-developer-edition-license-key-request\n")
+                try:
+                    license_key = input("Paste your Rasa Pro License: ").strip()
+                except (KeyboardInterrupt, EOFError):
+                    print()
+                    return
+                if not license_key:
+                    print("\nNo license entered. Add RASA_LICENSE to .env and try again.")
+                    return
+                _save_rasa_license(license_key)
+                print("Saved Rasa license to .env\n")
+
+            # Validate license via Rasa
+            try:
+                validate_license_from_env()
+                break  # valid
+            except SystemExit:
+                if attempt < 2:
+                    print("\nInvalid license. Please try again.\n")
+                else:
+                    print("\nFailed to validate Rasa license after 3 attempts.")
+                    return
+
     # --- Step 3: Wallet create ---
     if not setup.get("wallet_exists"):
         try:
@@ -452,40 +446,80 @@ def _start_chat():
             return
         print("Wallet created.")
         print()
-        setup = execute_tool("setup_status", {})
+        with _Spinner("Checking wallet status..."):
+            setup = execute_tool("setup_and_operational_status", {})
 
-    from iconfucius.cli.chat import run_chat
+    persona_name = "iconfucius"
+    configured_bots = get_bot_names()
+    if state.bot_name:
+        bot_name = state.bot_name
+    elif configured_bots:
+        bot_name = configured_bots[0]
+    else:
+        print("No bots are configured yet.")
+        print("Add at least one bot to iconfucius.toml, or run:")
+        print("  iconfucius init --force --bots 1")
+        return
 
-    persona_name = state.persona or get_default_persona()
-    bot_name = state.bot_name or "bot-1"
-    run_chat(persona_name=persona_name, bot_name=bot_name, verbose=state.verbose,
-             experimental=state.experimental)
+    if getattr(state, "rasa", False):
+        from iconfucius.cli.chat_rasa import run_chat_rasa
+        run_chat_rasa(persona_name=persona_name, bot_name=bot_name,
+                      verbose=state.verbose,
+                      debug=getattr(state, "debug", False))
+    else:
+        from iconfucius.cli.chat import run_chat
+        run_chat(persona_name=persona_name, bot_name=bot_name,
+                 verbose=state.verbose)
 
 
-def _save_api_key(api_key: str) -> None:
-    """Write an API key to .env (replace placeholder, update existing, or append)."""
+def _write_env_file(content: str) -> None:
+    """Write `.env` with restrictive (0600) permissions — file holds secrets."""
+    env_path = Path(".env")
+    env_path.write_text(content)
+    try:
+        env_path.chmod(0o600)
+    except OSError:
+        pass
+
+
+def _has_env_key(content: str, key: str) -> bool:
+    """Return True iff .env content defines `key` as an assignment (not a comment)."""
+    import re
+    return re.search(rf"(?m)^\s*{re.escape(key)}\s*=", content) is not None
+
+
+def _save_env_var(key: str, value: str, placeholder: str) -> None:
+    """Write `key=value` to .env (replace placeholder, update existing, or append)."""
     import os
     import re
 
     env_path = Path(".env")
     if env_path.exists():
         content = env_path.read_text()
-        if "your-api-key-here" in content:
-            content = content.replace("your-api-key-here", api_key)
-        elif "ANTHROPIC_API_KEY" in content:
+        if placeholder in content:
+            content = content.replace(placeholder, value)
+        elif _has_env_key(content, key):
             content = re.sub(
-                r"ANTHROPIC_API_KEY=.*",
-                f"ANTHROPIC_API_KEY={api_key}",
+                rf"(?m)^\s*{re.escape(key)}\s*=.*$",
+                f"{key}={value}",
                 content,
             )
         else:
             separator = "" if content.endswith("\n") else "\n"
-            content += f"{separator}ANTHROPIC_API_KEY={api_key}\n"
-        env_path.write_text(content)
+            content += f"{separator}{key}={value}\n"
+        _write_env_file(content)
     else:
-        env_path.write_text(f"ANTHROPIC_API_KEY={api_key}\n")
+        _write_env_file(f"{key}={value}\n")
 
-    os.environ["ANTHROPIC_API_KEY"] = api_key
+    os.environ[key] = value
+
+
+def _save_api_key(api_key: str) -> None:
+    _save_env_var("ANTHROPIC_API_KEY", api_key, "your-api-key-here")
+
+
+def _save_rasa_license(license_key: str) -> None:
+    _save_env_var("RASA_LICENSE", license_key, "your-rasa-license-here")
 
 
 # ---------------------------------------------------------------------------
@@ -505,27 +539,40 @@ GITIGNORE_CONTENT = """\
 
 @app.command()
 def chat(
-    persona: Optional[str] = typer.Option(
-        None, "--persona", "-p", help="Persona to use"
-    ),
-    bot: Optional[str] = typer.Option(None, "--bot", "-b", help="Bot name to use"),
+    bot: Optional[str] = typer.Option(None, "--bot", help="Bot name to use"),
     network: Optional[str] = typer.Option(
         None, "--network", help="PoAIW network of ckSigner: prd, testing, development"
     ),
+    rasa: bool = typer.Option(
+        False, "--rasa", help="Use Rasa Pro CALM backend instead of direct LLM tool use - faster, cheaper & avoids business logic hallucinations"
+    ),
+    debug: bool = typer.Option(
+        False, "--debug", help="Show Rasa debug logs on screen (only with --rasa)"
+    ),
 ):
-    """Start interactive chat with a trading persona."""
+    """Chat from terminal with IConfucius."""
     _resolve_network(network)
-    from iconfucius.cli.chat import run_chat
-
-    persona_name = persona or state.persona or get_default_persona()
-    bot_name = bot or state.bot_name or "bot-1"
-    run_chat(persona_name=persona_name, bot_name=bot_name, verbose=state.verbose,
-             experimental=state.experimental)
+    if bot:
+        state.bot_name = bot
+    if rasa:
+        try:
+            from rasa.utils.licensing import validate_license_from_env  # noqa: F401
+        except ImportError as e:
+            print("Error: Rasa Pro is not installed.")
+            print("Install with: pip install 'iconfucius[rasa]'")
+            raise typer.Exit(1) from e
+        state.rasa = True
+    if debug:
+        state.debug = True
+    _start_chat()
 
 
 ENV_TEMPLATE = (
     "# Get your API key at: https://console.anthropic.com/settings/keys\n"
     "ANTHROPIC_API_KEY=your-api-key-here\n"
+    "\n"
+    "# Get your free Rasa Developer Edition license at: https://rasa.com/rasa-pro-developer-edition-license-key-request\n"
+    "RASA_LICENSE=your-rasa-license-here\n"
 )
 
 
@@ -534,20 +581,37 @@ GITIGNORE_ENTRIES = [".env", ".wallet/", ".cache/", ".memory/", ".logs/"]
 
 
 def _ensure_env_file() -> None:
-    """Create .env if missing, or add ANTHROPIC_API_KEY if not present."""
+    """Create .env if missing, or add ANTHROPIC_API_KEY/RASA_LICENSE if not present."""
     env_path = Path(".env")
     if not env_path.exists():
-        env_path.write_text(ENV_TEMPLATE)
-        print("Created .env with ANTHROPIC_API_KEY placeholder")
+        _write_env_file(ENV_TEMPLATE)
+        print("Created .env with ANTHROPIC_API_KEY and RASA_LICENSE placeholders")
         return
 
     content = env_path.read_text()
-    if "ANTHROPIC_API_KEY" not in content:
+    changed = False
+    if not _has_env_key(content, "ANTHROPIC_API_KEY"):
         separator = "" if content.endswith("\n") else "\n"
-        env_path.write_text(content + separator + ENV_TEMPLATE)
+        content += (
+            f"{separator}"
+            "# Get your API key at: https://console.anthropic.com/settings/keys\n"
+            "ANTHROPIC_API_KEY=your-api-key-here\n"
+        )
+        changed = True
         print("Added ANTHROPIC_API_KEY to .env")
+    if not _has_env_key(content, "RASA_LICENSE"):
+        separator = "" if content.endswith("\n") else "\n"
+        content += (
+            f"{separator}"
+            "# Get your free Rasa Developer Edition license at: https://rasa.com/rasa-pro-developer-edition-license-key-request\n"
+            "RASA_LICENSE=your-rasa-license-here\n"
+        )
+        changed = True
+        print("Added RASA_LICENSE to .env")
+    if changed:
+        _write_env_file(content)
     else:
-        print(".env already contains ANTHROPIC_API_KEY")
+        print(".env already contains ANTHROPIC_API_KEY and RASA_LICENSE")
 
 
 def _ensure_gitignore() -> None:
@@ -616,13 +680,16 @@ def _upgrade_config() -> None:
 
 @app.command()
 def init(
-    force: bool = typer.Option(False, "--force", "-f", help="Overwrite existing config"),
+    force: bool = typer.Option(False, "--force", help="Overwrite existing config"),
     upgrade: bool = typer.Option(
         False, "--upgrade", "-u", help="Upgrade existing project (add new files/settings)"
     ),
-    bots: int = typer.Option(3, "--bots", "-n", help="Number of bots to create (1-1000)"),
+    bots: int = typer.Option(0, "--bots", help="Number of bots to create (0-1000)"),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug logging"),
 ):
     """Initialize or upgrade an iconfucius project."""
+    if debug:
+        state.debug = True
     config_path = Path(CONFIG_FILENAME)
 
     if upgrade:
@@ -650,19 +717,19 @@ def init(
     # Write config
     config_content = create_default_config(num_bots=bots)
     config_path.write_text(config_content)
-    bot_list = ", ".join(f"bot-{i}" for i in range(1, bots + 1))
-    print(f"Created {CONFIG_FILENAME} with bots: {bot_list}")
+    if bots > 0:
+        bot_list = ", ".join(f"bot-{i}" for i in range(1, bots + 1))
+        print(f"Created {CONFIG_FILENAME} with bots: {bot_list}")
+    else:
+        print(f"Created {CONFIG_FILENAME} (no bots — add them after funding)")
 
     print()
     print("Next steps:")
-    print("  1. Get your API key at: https://console.anthropic.com/settings/keys")
-    print("     Add it to .env:")
-    print("     ANTHROPIC_API_KEY=sk-ant-...")
-    print("  2. Create your wallet identity:")
+    print("  1. Create your wallet identity:")
     print("     iconfucius wallet create")
-    print("  3. Fund your wallet:")
+    print("  2. Fund your wallet:")
     print("     iconfucius wallet receive")
-    print("  4. Start chatting:")
+    print("  3. Start chatting:")
     print("     iconfucius")
 
 
@@ -671,8 +738,11 @@ def config(
     network: Optional[str] = typer.Option(
         None, "--network", help="PoAIW network of ckSigner: prd, testing, development"
     ),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug logging"),
 ):
     """Show current configuration."""
+    if debug:
+        state.debug = True
     _resolve_network(network)
     cfg = load_config()
     config_path = find_config()
@@ -692,13 +762,16 @@ def config(
 
 @app.command()
 def instructions(
-    bot: Optional[str] = typer.Option(None, "--bot", "-b", help="Bot name to use"),
+    bot: Optional[str] = typer.Option(None, "--bot", help="Bot name to use"),
     all_bots: bool = typer.Option(False, "--all-bots", help="Show all bots"),
     network: Optional[str] = typer.Option(
         None, "--network", help="PoAIW network of ckSigner: prd, testing, development"
     ),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug logging"),
 ):
     """Show balance and usage instructions."""
+    if debug:
+        state.debug = True
     from iconfucius.cli.balance import run_all_balances
 
     _resolve_network(network)
@@ -712,13 +785,16 @@ def instructions(
 @app.command()
 def fund(
     amount: int = typer.Argument(..., help="Amount in sats to send to each bot"),
-    bot: Optional[str] = typer.Option(None, "--bot", "-b", help="Bot name to use"),
+    bot: Optional[str] = typer.Option(None, "--bot", help="Bot name to use"),
     all_bots: bool = typer.Option(False, "--all-bots", help="Fund all bots"),
     network: Optional[str] = typer.Option(
         None, "--network", help="PoAIW network of ckSigner: prd, testing, development"
     ),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug logging"),
 ):
     """Fund bot(s) and deposit into Odin.Fun trading accounts."""
+    if debug:
+        state.debug = True
     _resolve_network(network)
     from iconfucius.cli.fund import run_fund
 
@@ -743,13 +819,16 @@ def withdraw(
     amount: str = typer.Argument(
         ..., help="Amount in sats, or 'all' for entire balance"
     ),
-    bot: Optional[str] = typer.Option(None, "--bot", "-b", help="Bot name to use"),
+    bot: Optional[str] = typer.Option(None, "--bot", help="Bot name to use"),
     all_bots: bool = typer.Option(False, "--all-bots", help="Withdraw from all bots"),
     network: Optional[str] = typer.Option(
         None, "--network", help="PoAIW network of ckSigner: prd, testing, development"
     ),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug logging"),
 ):
     """Withdraw from Odin.Fun back to the iconfucius wallet."""
+    if debug:
+        state.debug = True
     _resolve_network(network)
     from iconfucius.cli.concurrent import run_per_bot
     from iconfucius.cli.withdraw import run_withdraw
@@ -807,13 +886,16 @@ def trade(
     amount: str = typer.Argument(
         ..., help="Amount in sats (buy), tokens (sell), or 'all' (sell entire balance)"
     ),
-    bot: Optional[str] = typer.Option(None, "--bot", "-b", help="Bot name to use"),
+    bot: Optional[str] = typer.Option(None, "--bot", help="Bot name to use"),
     all_bots: bool = typer.Option(False, "--all-bots", help="Trade with all bots"),
     network: Optional[str] = typer.Option(
         None, "--network", help="PoAIW network of ckSigner: prd, testing, development"
     ),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug logging"),
 ):
     """Buy or sell tokens on Odin.Fun."""
+    if debug:
+        state.debug = True
     _resolve_network(network)
     from iconfucius.cli.concurrent import run_per_bot
     from iconfucius.cli.trade import run_trade
@@ -871,14 +953,17 @@ def transfer(
         ..., help="Amount in raw token sub-units, or 'all' for entire balance"
     ),
     to_address: str = typer.Argument(..., help="Destination address (IC principal, BTC deposit, or BTC wallet address of an Odin.fun account)"),
-    bot: Optional[str] = typer.Option(None, "--bot", "-b", help="Bot name to use"),
+    bot: Optional[str] = typer.Option(None, "--bot", help="Bot name to use"),
     all_bots: bool = typer.Option(False, "--all-bots", help="Transfer from all bots"),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
+    yes: bool = typer.Option(False, "--yes", help="Skip confirmation prompt"),
     network: Optional[str] = typer.Option(
         None, "--network", help="PoAIW network of ckSigner: prd, testing, development"
     ),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug logging"),
 ):
     """Transfer tokens to another Odin.Fun account (irreversible)."""
+    if debug:
+        state.debug = True
     _resolve_network(network)
     from iconfucius.cli.concurrent import run_per_bot
     from iconfucius.cli.transfer import run_transfer
@@ -926,13 +1011,16 @@ def transfer(
 
 @app.command()
 def sweep(
-    bot: Optional[str] = typer.Option(None, "--bot", "-b", help="Bot name to use"),
+    bot: Optional[str] = typer.Option(None, "--bot", help="Bot name to use"),
     all_bots: bool = typer.Option(False, "--all-bots", help="Sweep all bots"),
     network: Optional[str] = typer.Option(
         None, "--network", help="PoAIW network of ckSigner: prd, testing, development"
     ),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug logging"),
 ):
     """Sell all tokens and withdraw all ckBTC back to the wallet."""
+    if debug:
+        state.debug = True
     _resolve_network(network)
     from iconfucius.cli.balance import collect_balances
     from iconfucius.cli.concurrent import run_per_bot
@@ -982,6 +1070,31 @@ def sweep(
                 print(f"{bot_name}: withdraw FAILED — {result.get('error', '')}")
             elif status == "partial":
                 print(f"{bot_name}: withdraw partial — {result.get('error', '')}")
+
+
+@app.command()
+def ui(
+    port: int = typer.Option(55129, "--port", help="Port to serve on"),
+    no_browser: bool = typer.Option(
+        False, "--no-browser", help="Don't open browser automatically"
+    ),
+    network: Optional[str] = typer.Option(
+        None, "--network", help="PoAIW network of ckSigner: prd, testing, development"
+    ),
+    verbose: Optional[bool] = typer.Option(
+        None, "--verbose/--quiet", help="Show verbose output"
+    ),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug logging"),
+):
+    """Launch the web UI."""
+    if debug:
+        state.debug = True
+    _resolve_network(network)
+    if verbose is not None:
+        state.verbose = verbose
+    from iconfucius.client.server import run_server
+
+    run_server(port=port, open_browser=not no_browser)
 
 
 def main():

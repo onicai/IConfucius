@@ -333,6 +333,7 @@ def discover_tokens(sort: str = "volume", limit: int = 20) -> list[dict]:
             "marketcap_sats": msat_to_sats(token.get("marketcap", 0)),
             "volume_24h_sats": msat_to_sats(token.get("volume_24", 0)),
             "holder_count": token.get("holder_count", 0),
+            "power_holder_count": token.get("power_holder_count", 0),
             "bonded": True,
             "twitter_verified": token.get("twitter_verified", False),
             "safety": _safety_note(token, token_id in known_ids),

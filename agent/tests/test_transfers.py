@@ -8,6 +8,8 @@ from iconfucius.transfers import (
     CKBTC_FEE,
     CKBTC_LEDGER_CANISTER_ID,
     IC_HOST,
+    _icrc1_checksum,
+    parse_icrc1_account,
     unwrap_canister_result,
     patch_delegate_sender,
     create_icrc1_canister,
@@ -20,6 +22,68 @@ from iconfucius.transfers import (
     estimate_withdrawal_fee,
     retrieve_btc_withdrawal,
 )
+
+
+# ---------------------------------------------------------------------------
+# _icrc1_checksum
+# ---------------------------------------------------------------------------
+
+class TestIcrc1Checksum:
+    def test_known_checksum(self):
+        """Verify checksum for known principal + subaccount."""
+        from icp_principal import Principal
+        p = Principal.from_str("k3pwi-qyaaa-aaaab-acbrq-cai")
+        sub_hex = "ed7b8190c5714532b566097699c97158" + "0" * 32
+        result = _icrc1_checksum(p.bytes, bytes.fromhex(sub_hex))
+        assert result == "uco74ta"
+
+    def test_checksum_is_7_chars(self):
+        """Verify checksum is always 7 base32 chars."""
+        result = _icrc1_checksum(b"\x00" * 10, b"\x00" * 32)
+        assert len(result) == 7
+
+
+# ---------------------------------------------------------------------------
+# parse_icrc1_account
+# ---------------------------------------------------------------------------
+
+class TestParseIcrc1Account:
+    def test_plain_principal(self):
+        """Verify plain principal returns empty subaccount."""
+        principal_obj, subaccount = parse_icrc1_account("aaaaa-aa")
+        assert subaccount == []
+
+    def test_valid_icrc1_account(self):
+        """Verify valid ICRC-1 principal-checksum.subaccount parses correctly."""
+        sub_hex = "ed7b8190c5714532b566097699c97158" + "0" * 32
+        addr = f"k3pwi-qyaaa-aaaab-acbrq-cai-uco74ta.{sub_hex}"
+        principal_obj, subaccount = parse_icrc1_account(addr)
+        assert str(principal_obj) == "k3pwi-qyaaa-aaaab-acbrq-cai"
+        assert subaccount == [bytes.fromhex(sub_hex)]
+
+    def test_invalid_checksum(self):
+        """Verify invalid checksum raises ValueError."""
+        sub_hex = "ed7b8190c5714532b566097699c97158" + "0" * 32
+        addr = f"k3pwi-qyaaa-aaaab-acbrq-cai-aaaaaaa.{sub_hex}"
+        with pytest.raises(ValueError, match="checksum mismatch"):
+            parse_icrc1_account(addr)
+
+    def test_invalid_hex(self):
+        """Verify invalid hex in subaccount raises ValueError."""
+        addr = "k3pwi-qyaaa-aaaab-acbrq-cai-aaaaaaa.ZZZZ_not_hex"
+        with pytest.raises(ValueError, match="not valid hex"):
+            parse_icrc1_account(addr)
+
+    def test_wrong_subaccount_length(self):
+        """Verify wrong subaccount length raises ValueError."""
+        addr = "k3pwi-qyaaa-aaaab-acbrq-cai-aaaaaaa.aabbccdd"
+        with pytest.raises(ValueError, match="must be 32 bytes"):
+            parse_icrc1_account(addr)
+
+    def test_invalid_principal(self):
+        """Verify invalid principal raises ValueError."""
+        with pytest.raises(ValueError, match="Invalid IC principal"):
+            parse_icrc1_account("not-a-valid-principal")
 
 
 # ---------------------------------------------------------------------------
@@ -172,6 +236,25 @@ class TestTransfer:
         transfer(canister, "to-principal", 5000)
         call_args = canister.icrc1_transfer.call_args[0][0]
         assert call_args["amount"] == 5000
+
+    @patch("iconfucius.transfers.Principal")
+    def test_transfer_without_subaccount(self, MockPrincipal):
+        """Verify plain principal uses empty subaccount."""
+        canister = MagicMock()
+        canister.icrc1_transfer.return_value = [{"value": {"Ok": 1}}]
+        transfer(canister, "some-principal", 1000)
+        call_args = canister.icrc1_transfer.call_args[0][0]
+        assert call_args["to"]["subaccount"] == []
+
+    def test_transfer_with_subaccount(self):
+        """Verify ICRC-1 principal-checksum.subaccount parses correctly."""
+        canister = MagicMock()
+        canister.icrc1_transfer.return_value = [{"value": {"Ok": 1}}]
+        sub_hex = "ed7b8190c5714532b566097699c97158" + "0" * 32
+        addr = f"k3pwi-qyaaa-aaaab-acbrq-cai-uco74ta.{sub_hex}"
+        transfer(canister, addr, 1000)
+        call_args = canister.icrc1_transfer.call_args[0][0]
+        assert call_args["to"]["subaccount"] == [bytes.fromhex(sub_hex)]
 
 
 # ---------------------------------------------------------------------------

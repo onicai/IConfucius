@@ -1,0 +1,7 @@
+# iconfucius project
+.env
+.wallet/
+.cache/
+.memory/
+.logs/
+models/

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "iconfucius"
-version = "0.8.0"
+version = "0.9.0rc8"
 description = "IConfucius | Wisdom for Bitcoin Markets"
 readme = "README.md"
 license = "MIT"
@@ -42,9 +42,15 @@ dependencies = [
     "filelock>=3.0",
     "anthropic>=0.40",
     "python-dotenv>=1.0",
+    "packaging>=21.0",
+    # Required by iconfucius.mcp_server (imported unconditionally by chat.py)
+    "mcp>=1.0",
+    "starlette>=0.40",
+    "uvicorn>=0.30",
 ]
 
 [project.optional-dependencies]
+rasa = ["rasa-pro[monitoring]==3.16.4"]
 dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.24.0",
@@ -64,7 +70,7 @@ Issues = "https://github.com/onicai/IConfucius/issues"
 iconfucius = "iconfucius.cli:main"
 
 [tool.setuptools]
-package-dir = {"" = "src"}
+package-dir = { "" = "src" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -72,7 +78,20 @@ include = ["iconfucius*"]
 exclude = ["canisters*"]
 
 [tool.setuptools.package-data]
-iconfucius = ["py.typed", "*.toml", "personas/**/*.toml", "personas/**/*.md"]
+iconfucius = [
+    "py.typed",
+    "*.toml",
+    "personas/**/*.toml",
+    "personas/**/*.md",
+    "client/dist/**/*",
+    "rasa/*.yml",
+    "rasa/data/*.yml",
+    "rasa/actions/*.py",
+    "rasa/sub_agents/*/config.yml",
+    "rasa/sub_agents/*/*.py",
+    "rasa/sub_agents/*/*.jinja2",
+    "rasa/models/release-model.tar.gz",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

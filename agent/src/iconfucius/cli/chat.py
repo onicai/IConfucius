@@ -1,9 +1,8 @@
 """Interactive chat command for trading personas."""
 
+import asyncio
 import itertools
 import json
-import locale
-import random
 import sys
 import threading
 import time
@@ -11,103 +10,11 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from urllib.request import urlopen
 
 from iconfucius import __version__
-from iconfucius.ai import APIKeyMissingError, create_backend
+from iconfucius.ai import APIKeyMissingError, create_backend, format_api_error
 from iconfucius.persona import DEFAULT_MODEL, Persona, PersonaNotFoundError, load_persona
 from iconfucius.skills.definitions import get_tool_metadata, get_tools_for_anthropic
 from iconfucius.skills.executor import execute_tool
 
-# Topics and icons for IConfucius startup quotes (from IConfucius agent)
-QUOTE_TOPICS = [
-    {"cn": "咖啡", "icon": "☕️", "en": "Coffee"},
-    {"cn": "加密货币", "icon": "📈", "en": "Cryptocurrency"},
-    {"cn": "天空", "icon": "🌤️", "en": "Sky"},
-    {"cn": "花朵", "icon": "🌸", "en": "Flowers"},
-    {"cn": "公正之神", "icon": "⚖️", "en": "Justice"},
-    {"cn": "进步的颠覆性本质", "icon": "🌱", "en": "The disruptive nature of progress"},
-    {"cn": "修养", "icon": "🏋️", "en": "Discipline"},
-    {"cn": "耐心", "icon": "🕰️", "en": "Patience"},
-    {"cn": "和谐", "icon": "☯️", "en": "Harmony"},
-    {"cn": "礼仪", "icon": "🎎", "en": "Ritual and Courtesy"},
-    {"cn": "诚信", "icon": "🤝", "en": "Integrity"},
-    {"cn": "学习", "icon": "📖", "en": "Lifelong Learning"},
-    {"cn": "反思", "icon": "🪞", "en": "Reflection"},
-    {"cn": "顺其自然", "icon": "🍃", "en": "Acceptance of Nature"},
-    {"cn": "简朴", "icon": "🍂", "en": "Simplicity"},
-    {"cn": "平衡", "icon": "⚖️", "en": "Balance"},
-    {"cn": "信任", "icon": "🤠", "en": "Trust"},
-    {"cn": "积累", "icon": "💰", "en": "Accumulation of Wealth"},
-    {"cn": "投资", "icon": "💵", "en": "Investment"},
-    {"cn": "风险", "icon": "⚠️", "en": "Risk"},
-    {"cn": "创新", "icon": "💡", "en": "Innovation"},
-    {"cn": "适应", "icon": "🌌", "en": "Adaptation"},
-    {"cn": "坚韧", "icon": "🗿", "en": "Resilience"},
-    {"cn": "洞察", "icon": "🔍", "en": "Insight"},
-    {"cn": "目标", "icon": "🎯", "en": "Goal Setting"},
-    {"cn": "自由", "icon": "🌈", "en": "Freedom"},
-    {"cn": "责任", "icon": "👷", "en": "Responsibility"},
-    {"cn": "时间", "icon": "⏳", "en": "Time Management"},
-    {"cn": "财富", "icon": "💸", "en": "Wealth"},
-    {"cn": "节制", "icon": "🏋️", "en": "Moderation"},
-    {"cn": "虚拟资产", "icon": "💹", "en": "Digital Assets"},
-    {"cn": "共识", "icon": "🔀", "en": "Consensus"},
-    {"cn": "去中心化", "icon": "🛠️", "en": "Decentralization"},
-    {"cn": "透明", "icon": "👀", "en": "Transparency"},
-    {"cn": "智慧", "icon": "🤔", "en": "Wisdom"},
-    {"cn": "信用", "icon": "📈", "en": "Credit"},
-    {"cn": "安全", "icon": "🔒", "en": "Security"},
-    {"cn": "机遇", "icon": "🍀", "en": "Opportunity"},
-    {"cn": "成长", "icon": "🌱", "en": "Growth"},
-    {"cn": "合作", "icon": "🤝", "en": "Collaboration"},
-    {"cn": "选择", "icon": "🔀", "en": "Choice"},
-    {"cn": "敬业", "icon": "💼", "en": "Professionalism"},
-    {"cn": "审慎", "icon": "📊", "en": "Prudence"},
-    {"cn": "理性", "icon": "🤖", "en": "Rationality"},
-    {"cn": "契约", "icon": "📑", "en": "Contract"},
-    {"cn": "区块链", "icon": "🛠️", "en": "Blockchain"},
-    {"cn": "匿名", "icon": "🔎", "en": "Anonymity"},
-    {"cn": "竞争", "icon": "🏆", "en": "Competition"},
-    {"cn": "领导", "icon": "👑", "en": "Leadership"},
-    {"cn": "市场", "icon": "🏢", "en": "Market"},
-    {"cn": "社区", "icon": "🏞️", "en": "Community"},
-    {"cn": "自我实现", "icon": "🌟", "en": "Self-Actualization"},
-    {"cn": "善良", "icon": "💖", "en": "Kindness"},
-    {"cn": "信念", "icon": "✨", "en": "Belief"},
-    {"cn": "忠诚", "icon": "🦁", "en": "Loyalty"},
-    {"cn": "美德", "icon": "🌿", "en": "Virtue"},
-    {"cn": "远见", "icon": "🔮", "en": "Vision"},
-    {"cn": "成就", "icon": "🌟", "en": "Achievement"},
-    {"cn": "共享", "icon": "👥", "en": "Sharing"},
-    {"cn": "交流", "icon": "📢", "en": "Communication"},
-    {"cn": "执行力", "icon": "🔄", "en": "Execution"},
-    {"cn": "算法", "icon": "🔢", "en": "Algorithm"},
-    {"cn": "冷静", "icon": "🌧️", "en": "Calmness"},
-    {"cn": "奋斗", "icon": "⚔️", "en": "Struggle"},
-    {"cn": "信号", "icon": "📶", "en": "Signal"},
-    {"cn": "贪婪", "icon": "💶", "en": "Greed"},
-    {"cn": "慈善", "icon": "💜", "en": "Charity"},
-    {"cn": "艺术", "icon": "🎨", "en": "Art"},
-    {"cn": "科技", "icon": "📱", "en": "Technology"},
-    {"cn": "策略", "icon": "🔫", "en": "Strategy"},
-    {"cn": "耐力", "icon": "🌼", "en": "Endurance"},
-    {"cn": "梦想", "icon": "🌟", "en": "Dreams"},
-    {"cn": "节奏", "icon": "🎵", "en": "Rhythm"},
-    {"cn": "健康", "icon": "🏥", "en": "Health"},
-    {"cn": "家庭", "icon": "🏡", "en": "Family"},
-    {"cn": "教育", "icon": "🎓", "en": "Education"},
-    {"cn": "旅行", "icon": "🛰", "en": "Travel"},
-    {"cn": "幸福", "icon": "🎉", "en": "Happiness"},
-    {"cn": "机密", "icon": "🔒", "en": "Confidentiality"},
-    {"cn": "原则", "icon": "🔄", "en": "Principles"},
-    {"cn": "法律", "icon": "🏛️", "en": "Law"},
-    {"cn": "效率", "icon": "⏳", "en": "Efficiency"},
-    {"cn": "反脆弱", "icon": "💪", "en": "Antifragility"},
-    {"cn": "道德", "icon": "📍", "en": "Morality"},
-    {"cn": "灵感", "icon": "💡", "en": "Inspiration"},
-    {"cn": "公平", "icon": "⚖️", "en": "Fairness"},
-    {"cn": "未来", "icon": "🌟", "en": "Future"},
-    {"cn": "传统", "icon": "🎐", "en": "Tradition"},
-    {"cn": "关系", "icon": "👨‍👨‍👦", "en": "Relationships"},
-]
 
 
 
@@ -181,6 +88,49 @@ def _run_with_spinner(label: str, func, *args, **kwargs):
             set_status_callback(None)
 
 
+async def _call_tool_mcp(mcp_session, name, arguments, use_spinner=False, label=""):
+    """Execute a tool via MCP client, optionally with spinner + progress."""
+    from iconfucius.cli.concurrent import set_progress_callback, set_status_callback
+
+    if use_spinner:
+        with _Spinner(label) as sp:
+            def _on_progress(done, total):
+                w = 20
+                filled = int(w * done / total)
+                bar = "\u2588" * filled + "\u2591" * (w - filled)
+                sp.update(f"{label} [{bar}] {done}/{total}")
+
+            def _on_status(msg):
+                sp.update(f"{label} {msg}")
+
+            set_progress_callback(_on_progress)
+            set_status_callback(_on_status)
+            try:
+                mcp_result = await mcp_session.call_tool(name, arguments)
+            finally:
+                set_progress_callback(None)
+                set_status_callback(None)
+    else:
+        mcp_result = await mcp_session.call_tool(name, arguments)
+
+    # Defensive: an empty/missing content block means the MCP server died
+    # mid-request. Surface it as a structured error instead of raising
+    # json.JSONDecodeError: Expecting value: line 1 column 1 (char 0).
+    if not mcp_result.content:
+        return {"status": "error",
+                "error": f"MCP tool {name!r} returned no content (server likely crashed)."}
+    text = getattr(mcp_result.content[0], "text", "") or ""
+    if not text.strip():
+        return {"status": "error",
+                "error": f"MCP tool {name!r} returned empty text content."}
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as exc:
+        return {"status": "error",
+                "error": f"MCP tool {name!r} returned non-JSON content: {exc}",
+                "raw_text": text[:500]}
+
+
 class _CliWizardIO:
     """CLI implementation of WizardIO — input(), _Spinner, print()."""
 
@@ -201,14 +151,6 @@ class _CliWizardIO:
     def display(self, text):
         print(text)
 
-
-def _get_language_code() -> str:
-    """Detect system language. Returns 'cn' for Chinese, 'en' otherwise."""
-    try:
-        lang = locale.getlocale()[0] or ""
-    except ValueError:
-        lang = ""
-    return "cn" if lang.startswith("zh") else "en"
 
 
 def _prompt_increase_timeout() -> str:
@@ -295,33 +237,26 @@ def _persist_ai_timeout(timeout: int) -> None:
 
 
 def _format_api_error(e: Exception) -> str:
-    """Return a user-friendly error message for API errors."""
+    """Return a user-friendly error message for API errors (CLI version).
+
+    Delegates to the shared ``format_api_error`` in ``ai.py`` and adds the
+    CLI-only interactive timeout prompt when applicable.
+    """
     msg = str(e).lower()
-    if "credit balance" in msg or "purchase credits" in msg:
-        return (
-            "Your Anthropic API credit balance is too low.\n"
-            "Add credits at: https://console.anthropic.com/settings/plans"
-        )
-    if "api_key" in msg or "auth" in msg:
-        return "Authentication failed. Check your ANTHROPIC_API_KEY in .env"
-    if "rate" in msg and "limit" in msg:
-        return "Rate limited. Please wait a moment and try again."
-    if "overloaded" in msg:
-        return "The API is temporarily overloaded. Please try again."
     if "timed out" in msg or "timeout" in msg:
-        return f"{e}\n" + _prompt_increase_timeout()
-    return str(e)
+        return format_api_error(e) + "\n" + _prompt_increase_timeout()
+    return format_api_error(e)
 
 
-def _generate_startup(backend, persona, lang: str) -> tuple[str, str]:
+def _generate_startup(backend, persona) -> tuple[str, str]:
     """Generate greeting and goodbye in one API call.
 
     Uses the persona's greeting_prompt and goodbye_prompt templates.
     Returns (greeting_text, goodbye_text).
     """
-    entry = random.choice(QUOTE_TOPICS)
-    icon = entry["icon"]
-    topic = entry[lang]
+    result = execute_tool("greeting_topic", {})
+    icon = result["icon"]
+    topic = result["topic"]
 
     # Build greeting prompt from persona template
     greeting_prompt = persona.greeting_prompt.format(icon=icon, topic=topic)
@@ -604,6 +539,50 @@ def _handle_ai_interactive(backend, persona) -> tuple:
     return None
 
 
+def _handle_ai_slash_command(user_input, backend, persona):
+    """Handle /ai command synchronously. Returns ai_result tuple or None."""
+    parts = user_input.split(maxsplit=1)
+    if len(parts) == 1:
+        return _handle_ai_interactive(backend, persona)
+    arg = parts[1].strip()
+    if arg == "reset":
+        from iconfucius.persona import DEFAULT_MODEL as _dm
+        _persist_ai_config()
+        print(f"\n  Reset to default: claude / {_dm}\n")
+        return ("claude", _dm, "")
+    if arg.startswith("model "):
+        new_model = arg[6:].strip()
+    else:
+        new_model = arg
+    if not new_model:
+        print("\n  Usage: /ai model <model-name>\n")
+        return None
+    backend.model = new_model
+    persona.ai_model = new_model
+    _persist_ai_model(new_model)
+    print(f"\n  Model changed to: {new_model}\n")
+    return None
+
+
+def _handle_model_slash_command(user_input, backend, persona):
+    """Handle /model command synchronously."""
+    parts = user_input.split(maxsplit=1)
+    if len(parts) == 1:
+        old_model = backend.model
+        _handle_model_interactive(backend)
+        if backend.model != old_model:
+            persona.ai_model = backend.model
+    else:
+        new_model = parts[1].strip()
+        if not new_model:
+            print("\n  Usage: /model <model-name>\n")
+            return
+        backend.model = new_model
+        persona.ai_model = new_model
+        _persist_ai_model(new_model)
+        print(f"\n  Model changed to: {new_model}\n")
+
+
 _MAX_TOOL_ITERATIONS = 10
 
 
@@ -745,9 +724,10 @@ def _describe_tool_call(name: str, tool_input: dict) -> str:
     return f"{name}({json.dumps(tool_input)})"
 
 
-def _run_tool_loop(backend, messages: list[dict], system: str,
-                   tools: list[dict], persona_name: str,
-                   *, persona_key: str = "") -> None:
+async def _run_tool_loop(backend, messages: list[dict], system: str,
+                         tools: list[dict], persona_name: str,
+                         *, persona_key: str = "",
+                         mcp_session=None) -> None:
     """Run the tool use loop until a text-only response is produced.
 
     Modifies messages in-place (appends assistant + tool_result messages).
@@ -757,11 +737,14 @@ def _run_tool_loop(backend, messages: list[dict], system: str,
 
     Args:
         persona_key: Persona identifier for memory operations (e.g. "iconfucius").
+        mcp_session: MCP client session for routing tool calls through MCP.
     """
     unconfirmed_iterations = 0
     while unconfirmed_iterations < _MAX_TOOL_ITERATIONS:
         with _Spinner(f"{persona_name} is thinking..."):
-            response = backend.chat_with_tools(messages, system, tools)
+            response = await asyncio.to_thread(
+                backend.chat_with_tools, messages, system, tools,
+            )
 
         # Check if response has any tool_use blocks
         has_tool_use = any(
@@ -811,6 +794,16 @@ def _run_tool_loop(backend, messages: list[dict], system: str,
         # Pre-convert amount_usd → amount (sats) so the rest of the flow
         # works uniformly with sats and fmt_sats shows the USD value.
         # Skip trade_sell: it converts USD to tokens, not sats.
+        # Coerce to the tool's declared amount type (int vs str) — the MCP
+        # server rejects mismatched types with "Input validation error".
+        from iconfucius.skills.definitions import TOOLS as _TOOLS
+        _amount_schema_type = {
+            t["name"]: (
+                t.get("input_schema", {}).get("properties", {})
+                .get("amount", {}).get("type", "integer")
+            )
+            for t in _TOOLS
+        }
         for b in tool_blocks:
             if b.name == "trade_sell":
                 continue
@@ -821,7 +814,10 @@ def _run_tool_loop(backend, messages: list[dict], system: str,
                     from iconfucius.units import usd_to_sats
                     rate = get_btc_to_usd_rate()
                     sats = usd_to_sats(float(usd), rate)
-                    b.input["amount"] = sats
+                    if _amount_schema_type.get(b.name) == "string":
+                        b.input["amount"] = str(sats)
+                    else:
+                        b.input["amount"] = sats
                     del b.input["amount_usd"]
                 except Exception:
                     pass  # handler will convert or report error
@@ -840,7 +836,9 @@ def _run_tool_loop(backend, messages: list[dict], system: str,
                     confirm_blocks[0].name, confirm_blocks[0].input,
                 )
                 try:
-                    answer = input(f"\n  {desc} [Y/n] ").strip().lower()
+                    answer = (await asyncio.to_thread(
+                        input, f"\n  {desc} [Y/n] ",
+                    )).strip().lower()
                 except (KeyboardInterrupt, EOFError):
                     answer = "n"
                 if answer in ("n", "no"):
@@ -851,9 +849,10 @@ def _run_tool_loop(backend, messages: list[dict], system: str,
                     desc = _describe_tool_call(b.name, b.input)
                     print(f"    • {desc}")
                 try:
-                    answer = input(
-                        f"\n  Proceed with all {len(confirm_blocks)}? [Y/n] "
-                    ).strip().lower()
+                    answer = (await asyncio.to_thread(
+                        input,
+                        f"\n  Proceed with all {len(confirm_blocks)}? [Y/n] ",
+                    )).strip().lower()
                 except (KeyboardInterrupt, EOFError):
                     answer = "n"
                 if answer in ("n", "no"):
@@ -917,9 +916,37 @@ def _run_tool_loop(backend, messages: list[dict], system: str,
                 "wallet_monitor", "token_lookup", "token_price",
                 "token_discover", "account_lookup", "public_balance",
                 "security_status", "install_blst",
+                "setup_and_operational_status",
             )
 
-            if use_spinner:
+            if mcp_session is not None:
+                try:
+                    result = await _call_tool_mcp(
+                        mcp_session, block.name, block.input,
+                        use_spinner=use_spinner,
+                        label=f"Running {block.name}...",
+                    )
+                except Exception:
+                    # Per-call transport hiccup — degrade to direct execution
+                    # instead of aborting the turn. MCP stays the preferred
+                    # path for the next tool call.
+                    from iconfucius.logging_config import get_logger
+                    get_logger().debug(
+                        "MCP tool call failed; falling back to direct execution",
+                        exc_info=True,
+                    )
+                    if use_spinner:
+                        result = _run_with_spinner(
+                            f"Running {block.name}...",
+                            execute_tool, block.name, block.input,
+                            persona_name=persona_key,
+                        )
+                    else:
+                        result = execute_tool(
+                            block.name, block.input,
+                            persona_name=persona_key,
+                        )
+            elif use_spinner:
                 result = _run_with_spinner(
                     f"Running {block.name}...",
                     execute_tool, block.name, block.input,
@@ -985,12 +1012,10 @@ def _check_pypi_version() -> tuple[str | None, str]:
         (latest_version, release_notes) — version is None when up-to-date.
     """
     try:
+        from packaging.version import Version
         with urlopen("https://pypi.org/pypi/iconfucius/json", timeout=3) as resp:
             latest = json.loads(resp.read())["info"]["version"]
-        def _ver_tuple(v: str) -> tuple:
-            """Parse a version string into a comparable tuple."""
-            return tuple(int(x) for x in v.split("."))
-        if _ver_tuple(latest) <= _ver_tuple(__version__):
+        if Version(latest) <= Version(__version__):
             return None, ""
         # Fetch release notes from GitHub (best-effort)
         notes = ""
@@ -1041,16 +1066,19 @@ def _is_non_default_ai(persona: Persona) -> bool:
     )
 
 
-def run_chat(persona_name: str, bot_name: str, verbose: bool = False,
-             experimental: bool = False) -> None:
+def run_chat(persona_name: str, bot_name: str, verbose: bool = False) -> None:
     """Run interactive chat with a trading persona.
 
     Args:
         persona_name: Name of the persona to load.
         bot_name: Default bot for trading context.
         verbose: Show verbose output.
-        experimental: Enable experimental features (/ai command).
     """
+    asyncio.run(_run_chat_async(persona_name, bot_name, verbose))
+
+
+async def _run_chat_async(persona_name: str, bot_name: str, verbose: bool = False) -> None:
+    """Async implementation of run_chat."""
     from iconfucius.config import set_verbose
     set_verbose(verbose)
 
@@ -1070,7 +1098,9 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False,
         print(f"    Model:    {persona.ai_model}")
         print()
         try:
-            answer = input("  Continue with this configuration? [Y/n] ").strip().lower()
+            answer = (await asyncio.to_thread(
+                input, "  Continue with this configuration? [Y/n] ",
+            )).strip().lower()
         except (KeyboardInterrupt, EOFError):
             print()
             return
@@ -1093,10 +1123,11 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False,
 
     from iconfucius.ai import LoggingBackend
     from iconfucius.conversation_log import ConversationLogger
-    conv_logger = ConversationLogger()
+    from iconfucius.logging_config import get_session_stamp
+    conv_logger = ConversationLogger(stamp=get_session_stamp())
     backend = LoggingBackend(backend, conv_logger)
 
-    # One-time migration: trades.md → trades.jsonl
+    # One-time migration: trades.md -> trades.jsonl
     from iconfucius.memory import migrate_trades_md_to_jsonl
     migrate_trades_md_to_jsonl(persona_name)
 
@@ -1104,7 +1135,8 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False,
     system = persona.system_prompt
 
     # Inject setup status so the persona can guide users through setup
-    setup = execute_tool("setup_status", {})
+    with _Spinner("Checking setup and service status..."):
+        setup = await asyncio.to_thread(execute_tool, "setup_and_operational_status", {})
     if not setup.get("ready"):
         system += "\n\n## Setup Status\n"
         system += (
@@ -1122,7 +1154,6 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False,
         "\n- memory_read_learnings — read your accumulated trading learnings"
         "\n- memory_read_trades — read recent trade history"
         "\n- token_lookup — resolve token names/tickers to IDs before trading"
-        "\n- enable_experimental — enable experimental features (AI model configuration)"
     )
 
     from iconfucius.config import get_bot_names
@@ -1149,19 +1180,18 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False,
         wallet_future = _bg_pool.submit(run_wallet_balance, ckbtc_minter=False)
 
     # Verify API access with a startup greeting (also caches goodbye)
-    lang = _get_language_code()
     try:
         with _Spinner(f"{persona.name} is thinking..."):
-            greeting, goodbye = _generate_startup(backend, persona, lang)
+            greeting, goodbye = await asyncio.to_thread(
+                _generate_startup, backend, persona,
+            )
     except Exception as e:
         print(f"\n{_format_api_error(e)}")
         return
 
     print(f"\n{greeting}\n")
 
-    # Determine if /ai is active for this session
-    from iconfucius.skills.executor import _experimental_enabled
-    ai_active = experimental or _experimental_enabled or non_default
+    ai_active = True
 
     print(f"\033[2miconfucius v{__version__} · exit to quit · Ctrl+C to interrupt\033[0m")
     ai_parts = [persona.ai_api_type, str(backend.model)]
@@ -1172,13 +1202,7 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False,
         print(f"\033[2mAI: {ai_desc} · /ai to change\033[0m")
     else:
         print(f"\033[2mAI: {ai_desc}\033[0m")
-    if experimental:
-        from iconfucius.skills.executor import EXPERIMENTAL_ENABLED, EXPERIMENTAL_RISK_WARNING
-        print(f"\033[2m\n{EXPERIMENTAL_ENABLED}\033[0m")
-        if backend.model != DEFAULT_MODEL:
-            print(f"\033[2mNote: recommended model is {DEFAULT_MODEL}\033[0m")
-        print(f"\033[2m\n{EXPERIMENTAL_RISK_WARNING}\033[0m")
-    elif backend.model != DEFAULT_MODEL:
+    if backend.model != DEFAULT_MODEL:
         print(f"\033[2mNote: recommended model is {DEFAULT_MODEL}\033[0m")
 
     # Check PyPI for newer version (non-blocking, best-effort)
@@ -1224,15 +1248,17 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False,
             from iconfucius.wizard import Wizard
             wiz = Wizard(_CliWizardIO())
 
-            check_bots = wiz.ask("Check bot balances?", default_yes=False)
-            check_minter = wiz.ask(
-                "Check ckBTC minter status for in/out BTC?",
-                default_yes=False,
+            check_bots = await asyncio.to_thread(
+                wiz.ask, "Check bot balances?", False,
+            )
+            check_minter = await asyncio.to_thread(
+                wiz.ask, "Check ckBTC minter status for in/out BTC?", False,
             )
 
             if check_bots:
                 try:
-                    startup_balance_result = wiz.run(
+                    startup_balance_result = await asyncio.to_thread(
+                        wiz.run,
                         "Checking bot balances...",
                         execute_tool, "wallet_balance",
                         {"ckbtc_minter": check_minter},
@@ -1247,7 +1273,8 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False,
                     logger.debug("Bot balance check failed", exc_info=True)
             elif check_minter:
                 try:
-                    minter_data = wiz.run(
+                    minter_data = await asyncio.to_thread(
+                        wiz.run,
                         "Checking ckBTC minter...",
                         run_wallet_balance, ckbtc_minter=True,
                     )
@@ -1322,136 +1349,186 @@ def run_chat(persona_name: str, bot_name: str, verbose: bool = False,
             ],
         })
 
-    # If balance data has a next_step, trigger an automatic AI response
-    if (startup_balance_result
-            and startup_balance_result.get("next_step")
-            and messages):
-        try:
-            _run_tool_loop(backend, messages, system, tools, persona.name,
-                           persona_key=persona_name)
-        except Exception:
-            from iconfucius.logging_config import get_logger
-            get_logger().debug("Startup auto next_step failed", exc_info=True)
+    # Start MCP server so tool calls route through it
+    import os
+    from iconfucius.mcp_server import MCP_DEFAULT_PORT, start_mcp_server
 
-    def _prompt_banner() -> None:
-        """Print separator lines with optional upgrade notice."""
-        print("\033[2m" + "─" * 60 + "\033[0m")
-        if latest_version:
-            print(f"\033[2mv{latest_version} available · /upgrade to install\033[0m")
-            print("\033[2m" + "─" * 60 + "\033[0m")
+    mcp_port = int(os.environ.get("ICONFUCIUS_MCP_PORT", str(MCP_DEFAULT_PORT)))
+    mcp_url = f"http://127.0.0.1:{mcp_port}/mcp"
 
-    # Enable readline for input history (up/down arrows) and line editing
+    mcp_task = None
+    mcp_uv_server = None
+    mcp_session = None
+
     try:
-        import readline  # noqa: F401
-    except ImportError:
-        pass
+        mcp_task, mcp_uv_server = await start_mcp_server(port=mcp_port)
+    except SystemExit:
+        # Port busy / bind failed: chat still works via direct execute_tool.
+        mcp_task = None
+        mcp_uv_server = None
+    except Exception:
+        from iconfucius.logging_config import get_logger
+        get_logger().debug(
+            "MCP server failed to start; falling back to direct tools",
+            exc_info=True,
+        )
 
-    while True:
+    try:
+        if mcp_task is not None:
+            try:
+                from mcp.client.session import ClientSession
+                from mcp.client.streamable_http import streamablehttp_client
+
+                _mcp_ctx = streamablehttp_client(mcp_url)
+                read, write, _ = await _mcp_ctx.__aenter__()
+                _mcp_session_ctx = ClientSession(read, write)
+                mcp_session = await _mcp_session_ctx.__aenter__()
+                await mcp_session.initialize()
+            except Exception:
+                # Close whichever contexts opened before the failure to avoid
+                # leaking the stream/session resources into the user loop.
+                if mcp_session is not None:
+                    try:
+                        await _mcp_session_ctx.__aexit__(None, None, None)
+                    except Exception:
+                        pass
+                if "_mcp_ctx" in locals():
+                    try:
+                        await _mcp_ctx.__aexit__(None, None, None)
+                    except Exception:
+                        pass
+                from iconfucius.logging_config import get_logger
+                get_logger().debug(
+                    "MCP client unavailable; falling back to direct tools",
+                    exc_info=True,
+                )
+                mcp_session = None
+
+        # If balance data has a next_step, trigger an automatic AI response
+        if (startup_balance_result
+                and startup_balance_result.get("next_step")
+                and messages):
+            try:
+                await _run_tool_loop(
+                    backend, messages, system, tools, persona.name,
+                    persona_key=persona_name, mcp_session=mcp_session,
+                )
+            except Exception:
+                from iconfucius.logging_config import get_logger
+                get_logger().debug("Startup auto next_step failed", exc_info=True)
+
+        def _prompt_banner() -> None:
+            """Print separator lines with optional upgrade notice."""
+            print("\033[2m" + "\u2500" * 60 + "\033[0m")
+            if latest_version:
+                print(f"\033[2mv{latest_version} available · /upgrade to install\033[0m")
+                print("\033[2m" + "\u2500" * 60 + "\033[0m")
+
+        # Enable readline for input history (up/down arrows) and line editing
         try:
-            _prompt_banner()
-            user_input = input(f"\033[2mv{__version__}\033[0m > ").strip()
-        except (KeyboardInterrupt, EOFError):
-            print(f"\n\n{goodbye}")
-            break
+            import readline  # noqa: F401
+        except ImportError:
+            pass
 
-        if user_input.startswith("/ai"):
-            # Re-check ai_active (enable_experimental may have been called)
-            from iconfucius.skills.executor import _experimental_enabled
-            ai_active = experimental or _experimental_enabled or non_default
-            if not ai_active:
-                print("\n  /ai is an experimental feature. Start with: iconfucius --experimental\n")
-                continue
-            parts = user_input.split(maxsplit=1)
-            ai_result = None
-            if len(parts) == 1:
-                ai_result = _handle_ai_interactive(backend, persona)
-            elif parts[1].strip() == "reset":
-                from iconfucius.persona import DEFAULT_MODEL as _dm
-                _persist_ai_config()
-                print(f"\n  Reset to default: claude / {_dm}\n")
-                ai_result = ("claude", _dm, "")
-            elif parts[1].strip().startswith("model "):
-                new_model = parts[1].strip()[6:].strip()
-                backend.model = new_model
-                persona.ai_model = new_model
-                _persist_ai_model(new_model)
-                print(f"\n  Model changed to: {new_model}\n")
-            else:
-                new_model = parts[1].strip()
-                backend.model = new_model
-                persona.ai_model = new_model
-                _persist_ai_model(new_model)
-                print(f"\n  Model changed to: {new_model}\n")
-            # Hot-swap backend when api_type or base_url changed
-            if ai_result is not None:
-                new_api_type, new_model, new_base_url = ai_result
-                prev_api_type = persona.ai_api_type
-                prev_model = persona.ai_model
-                prev_base_url = persona.ai_base_url
-                persona.ai_api_type = new_api_type
-                persona.ai_model = new_model
-                persona.ai_base_url = new_base_url
-                try:
-                    new_backend = create_backend(persona)
-                except Exception as exc:
-                    print(f"\n  Error applying AI configuration: {exc}\n")
-                    persona.ai_api_type = prev_api_type
-                    persona.ai_model = prev_model
-                    persona.ai_base_url = prev_base_url
-                    _persist_ai_config(
-                        api_type=prev_api_type,
-                        model=prev_model,
-                        base_url=prev_base_url,
-                        keep_timeout=True,
-                    )
-                    continue
-                backend = LoggingBackend(new_backend, conv_logger)
-                non_default = _is_non_default_ai(persona)
-            continue
+        while True:
+            try:
+                _prompt_banner()
+                user_input = (await asyncio.to_thread(
+                    input, f"\033[2mv{__version__}\033[0m > ",
+                )).strip()
+            except (KeyboardInterrupt, EOFError):
+                print(f"\n\n{goodbye}")
+                break
 
-        if user_input.startswith("/model"):
-            parts = user_input.split(maxsplit=1)
-            if len(parts) == 1:
-                old_model = backend.model
-                _handle_model_interactive(backend)
-                if backend.model != old_model:
-                    persona.ai_model = backend.model
+            if user_input == "/ai" or user_input.startswith("/ai "):
+                ai_result = await asyncio.to_thread(
+                    _handle_ai_slash_command, user_input, backend, persona,
+                )
+                # Hot-swap backend when api_type or base_url changed
+                if ai_result is not None:
+                    new_api_type, new_model, new_base_url = ai_result
+                    prev_api_type = persona.ai_api_type
+                    prev_model = persona.ai_model
+                    prev_base_url = persona.ai_base_url
+                    persona.ai_api_type = new_api_type
+                    persona.ai_model = new_model
+                    persona.ai_base_url = new_base_url
+                    try:
+                        new_backend = create_backend(persona)
+                    except Exception as exc:
+                        print(f"\n  Error applying AI configuration: {exc}\n")
+                        persona.ai_api_type = prev_api_type
+                        persona.ai_model = prev_model
+                        persona.ai_base_url = prev_base_url
+                        _persist_ai_config(
+                            api_type=prev_api_type,
+                            model=prev_model,
+                            base_url=prev_base_url,
+                            keep_timeout=True,
+                        )
+                        continue
+                    backend = LoggingBackend(new_backend, conv_logger)
                     non_default = _is_non_default_ai(persona)
-            else:
-                new_model = parts[1].strip()
-                backend.model = new_model
-                persona.ai_model = new_model
-                _persist_ai_model(new_model)
+                continue
+
+            if user_input == "/model" or user_input.startswith("/model "):
+                await asyncio.to_thread(
+                    _handle_model_slash_command, user_input, backend, persona,
+                )
                 non_default = _is_non_default_ai(persona)
-                print(f"\n  Model changed to: {new_model}\n")
-            continue
+                continue
 
-        if user_input.lower() == "/upgrade":
-            _handle_upgrade()
-            # If _handle_upgrade returns, the upgrade failed — continue chatting
-            continue
+            if user_input.lower() == "/upgrade":
+                _handle_upgrade()
+                continue
 
-        if user_input.lower() in ("exit", "quit", "/exit", "/quit"):
-            print(f"\n{goodbye}")
-            break
+            if user_input.lower() in ("exit", "quit", "/exit", "/quit"):
+                print(f"\n{goodbye}")
+                break
 
-        if not user_input:
-            continue
+            if not user_input:
+                continue
 
-        messages.append({"role": "user", "content": user_input})
+            # Snapshot message count so we can roll back cleanly if the tool
+            # loop raises mid-turn. A plain messages.pop() is wrong when the
+            # tool loop has already appended an assistant tool_use block: it
+            # pops the trailing user message (tool_results or user_input) and
+            # leaves an orphaned tool_use, which Anthropic then 400s on every
+            # subsequent turn ("tool_use ids were found without tool_result").
+            _turn_start = len(messages)
+            messages.append({"role": "user", "content": user_input})
 
-        try:
-            _run_tool_loop(backend, messages, system, tools, persona.name,
-                          persona_key=persona_name)
-        except KeyboardInterrupt:
-            print("\n\nInterrupted.")
-            messages.pop()
-            continue
-        except SystemExit as e:
-            print(f"\nInternal error (exit code {e.code})\n")
-            messages.pop()
-            continue
-        except Exception as e:
-            print(f"\n{_format_api_error(e)}\n")
-            messages.pop()  # Remove the failed user message
-            continue
+            try:
+                await _run_tool_loop(
+                    backend, messages, system, tools, persona.name,
+                    persona_key=persona_name, mcp_session=mcp_session,
+                )
+            except KeyboardInterrupt:
+                print("\n\nInterrupted.")
+                del messages[_turn_start:]
+                continue
+            except SystemExit as e:
+                print(f"\nInternal error (exit code {e.code})\n")
+                del messages[_turn_start:]
+                continue
+            except Exception as e:
+                print(f"\n{_format_api_error(e)}\n")
+                del messages[_turn_start:]
+                continue
+
+    finally:
+        # Clean up MCP client
+        if mcp_session is not None:
+            try:
+                await _mcp_session_ctx.__aexit__(None, None, None)
+                await _mcp_ctx.__aexit__(None, None, None)
+            except Exception:
+                pass
+        # Shut down MCP server
+        if mcp_uv_server is not None:
+            mcp_uv_server.should_exit = True
+        if mcp_task is not None:
+            try:
+                await mcp_task
+            except Exception:
+                pass

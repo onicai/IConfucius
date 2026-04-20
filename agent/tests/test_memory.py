@@ -35,6 +35,31 @@ class TestMemoryDir:
         assert d1 == d2
 
 
+class TestMemoryDirNetworkAware:
+    def test_prd_no_suffix(self, tmp_path, monkeypatch):
+        """prd network uses bare persona name (backward compatible)."""
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        monkeypatch.setattr(cfg, "_network", "prd")
+        d = get_memory_dir("test-persona")
+        assert d == tmp_path / ".memory" / "test-persona"
+
+    def test_testing_suffix(self, tmp_path, monkeypatch):
+        """testing network appends -testing suffix."""
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        monkeypatch.setattr(cfg, "_network", "testing")
+        d = get_memory_dir("test-persona")
+        assert d == tmp_path / ".memory" / "test-persona-testing"
+        assert d.exists()
+
+    def test_development_suffix(self, tmp_path, monkeypatch):
+        """development network appends -development suffix."""
+        monkeypatch.setenv("ICONFUCIUS_ROOT", str(tmp_path))
+        monkeypatch.setattr(cfg, "_network", "development")
+        d = get_memory_dir("test-persona")
+        assert d == tmp_path / ".memory" / "test-persona-development"
+        assert d.exists()
+
+
 class TestTrades:
     def test_read_empty(self, tmp_path, monkeypatch):
         """Verify read empty."""

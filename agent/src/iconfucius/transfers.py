@@ -6,8 +6,10 @@ This module provides common functionality for ICRC-1 token transfers.
 Works with any ICRC-1 compatible token (ckBTC, ckETH, etc.).
 """
 
+import base64
 import hashlib
 import types
+import zlib
 
 from icp_agent import Agent, Client
 from icp_canister import Canister
@@ -28,6 +30,72 @@ CKBTC_FEE = 10
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _icrc1_checksum(principal_bytes: bytes, subaccount_bytes: bytes) -> str:
+    """Compute ICRC-1 CRC-32 checksum as 7 lowercase base32 chars."""
+    crc = zlib.crc32(principal_bytes + subaccount_bytes) & 0xFFFFFFFF
+    return base64.b32encode(crc.to_bytes(4, "big")).decode().lower().rstrip("=")
+
+
+def parse_icrc1_account(account_str: str) -> tuple:
+    """Parse ICRC-1 textual account into (Principal, subaccount_list).
+
+    Accepts:
+      - "principal"
+      - "principal-checksum.subaccount_hex"  (ICRC-1 format)
+
+    Returns:
+        (Principal_obj, subaccount_list) where subaccount_list is [] or [bytes].
+    """
+    if "." not in account_str:
+        # Plain principal, no subaccount
+        try:
+            return Principal.from_str(account_str), []
+        except Exception as e:
+            raise ValueError(f"Invalid IC principal: {e}") from e
+
+    # ICRC-1 format: principal-checksum.subaccount_hex
+    left, subaccount_hex = account_str.split(".", 1)
+
+    # Validate subaccount hex
+    try:
+        subaccount_bytes = bytes.fromhex(subaccount_hex)
+    except ValueError:
+        raise ValueError(
+            "Invalid ICRC-1 address: subaccount is not valid hex"
+        )
+    if len(subaccount_bytes) != 32:
+        raise ValueError(
+            f"Invalid ICRC-1 address: subaccount must be 32 bytes "
+            f"(64 hex chars), got {len(subaccount_bytes)}"
+        )
+
+    # Split principal from checksum: last '-' separated segment is the checksum
+    dash_idx = left.rfind("-")
+    if dash_idx == -1:
+        raise ValueError(
+            "Invalid ICRC-1 address: missing checksum separator"
+        )
+    principal_str = left[:dash_idx]
+    got_checksum = left[dash_idx + 1:]
+
+    # Parse principal
+    try:
+        principal_obj = Principal.from_str(principal_str)
+    except Exception as e:
+        raise ValueError(f"Invalid IC principal: {e}") from e
+
+    # Verify checksum
+    expected = _icrc1_checksum(principal_obj.bytes, subaccount_bytes)
+    if got_checksum != expected:
+        raise ValueError(
+            f"Invalid ICRC-1 address: checksum mismatch "
+            f"(expected '{expected}', got '{got_checksum}'). "
+            f"Please verify the address."
+        )
+
+    return principal_obj, [subaccount_bytes]
+
 
 def unwrap_canister_result(raw):
     """Extract value from icp-py-core canister response."""
@@ -139,24 +207,24 @@ def get_balance(canister: Canister, owner_principal: str) -> int:
 
 def transfer(
     canister: Canister,
-    to_principal: str,
+    to_account: str,
     amount: int,
 ) -> dict:
     """Execute an ICRC-1 transfer.
 
     Args:
         canister: Authenticated ICRC-1 canister instance
-        to_principal: Recipient principal ID
+        to_account: Recipient as "principal" or ICRC-1 "principal-checksum.subaccount_hex"
         amount: Amount to transfer (in smallest unit, e.g., satoshis for ckBTC)
 
     Returns:
         dict with either {"Ok": block_index} or {"Err": error_details}
     """
-    to_principal_obj = Principal.from_str(to_principal)
+    to_principal_obj, subaccount = parse_icrc1_account(to_account)
 
     result_raw = canister.icrc1_transfer(
         {
-            "to": {"owner": to_principal_obj, "subaccount": []},
+            "to": {"owner": to_principal_obj, "subaccount": subaccount},
             "amount": amount,
             "fee": [],  # Use ledger default
             "memo": [],

@@ -1,0 +1,34 @@
+action_endpoint:
+  actions_module: "actions"
+
+mcp_servers:
+  - name: iconfucius_tools
+    url: ${ICONFUCIUS_MCP_URL}
+    type: http
+
+nlg:
+  type: rephrase
+  llm:
+    model_group: response_rephraser
+
+tracing:
+  - type: langfuse
+    host: ${LANGFUSE_HOST}
+    public_key: ${LANGFUSE_PUBLIC_KEY}
+    private_key: ${LANGFUSE_PRIVATE_KEY}
+
+model_groups:
+  - id: command_generator
+    models:
+      - provider: ${RASA_LLM_PROVIDER}
+        model: ${RASA_LLM_MODEL}
+  - id: response_rephraser
+    models:
+      - provider: ${RASA_REPHRASER_PROVIDER}
+        model: ${RASA_REPHRASER_MODEL}
+  - id: sub_agent_llm
+    models:
+      - provider: ${RASA_SUBAGENT_PROVIDER}
+        model: ${RASA_SUBAGENT_MODEL}
+        timeout: 120
+        max_completion_tokens: 4096

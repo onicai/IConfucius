@@ -39,6 +39,7 @@ node_modules/
 dist/
 .svelte-kit/
 
+
 # environment variables
 .env
 **/.env
@@ -57,3 +58,6 @@ out/
 
 # PyPI
 .pypirc
+
+# Rasa trained models (built during release)
+rasa/models/

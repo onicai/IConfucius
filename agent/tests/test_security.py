@@ -4,6 +4,7 @@ These tests verify that financial operations handle edge cases safely
 and never silently send wrong amounts or to wrong addresses.
 """
 
+import asyncio
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -456,11 +457,13 @@ class TestPreConversionSecurity:
         backend.chat_with_tools.side_effect = [resp_tool, resp_text]
 
         with patch("builtins.input", return_value="y"):
-            _run_tool_loop(backend, [], "system", [], "TestBot")
+            asyncio.run(_run_tool_loop(backend, [], "system", [], "TestBot"))
 
         call_args = mock_exec.call_args[0]
         assert call_args[0] == "withdraw"
-        assert call_args[1]["amount"] == 10_000
+        # withdraw declares amount: string in the MCP schema, so the pre-converter
+        # coerces the sats value to a string to match.
+        assert call_args[1]["amount"] == "10000"
         assert "amount_usd" not in call_args[1]
 
     @patch("iconfucius.config.get_btc_to_usd_rate", return_value=100_000.0)
@@ -476,7 +479,7 @@ class TestPreConversionSecurity:
         backend.chat_with_tools.side_effect = [resp_tool, resp_text]
 
         with patch("builtins.input", return_value="y"):
-            _run_tool_loop(backend, [], "system", [], "TestBot")
+            asyncio.run(_run_tool_loop(backend, [], "system", [], "TestBot"))
 
         call_args = mock_exec.call_args[0]
         assert call_args[1]["amount"] == 20_000
@@ -494,7 +497,7 @@ class TestPreConversionSecurity:
         backend.chat_with_tools.side_effect = [resp_tool, resp_text]
 
         with patch("builtins.input", return_value="y"):
-            _run_tool_loop(backend, [], "system", [], "TestBot")
+            asyncio.run(_run_tool_loop(backend, [], "system", [], "TestBot"))
 
         call_args = mock_exec.call_args[0]
         assert call_args[1]["amount_usd"] == 10.0
@@ -514,7 +517,7 @@ class TestPreConversionSecurity:
         backend.chat_with_tools.side_effect = [resp_tool, resp_text]
 
         with patch("builtins.input", return_value="y"):
-            _run_tool_loop(backend, [], "system", [], "TestBot")
+            asyncio.run(_run_tool_loop(backend, [], "system", [], "TestBot"))
 
         call_args = mock_exec.call_args[0]
         # Pre-conversion failed, so amount_usd still present
@@ -533,7 +536,7 @@ class TestPreConversionSecurity:
         backend.chat_with_tools.side_effect = [resp_tool, resp_text]
 
         with patch("builtins.input", return_value="y"):
-            _run_tool_loop(backend, [], "system", [], "TestBot")
+            asyncio.run(_run_tool_loop(backend, [], "system", [], "TestBot"))
 
         call_args = mock_exec.call_args[0]
         assert call_args[1]["amount"] == 3000  # not overwritten to 10,000
@@ -598,7 +601,7 @@ class TestConfirmationSecurity:
         backend.chat_with_tools.side_effect = [resp_tool, resp_text]
 
         with patch("builtins.input", return_value="n"):
-            _run_tool_loop(backend, [], "system", [], "TestBot")
+            asyncio.run(_run_tool_loop(backend, [], "system", [], "TestBot"))
 
         mock_exec.assert_not_called()
 
@@ -613,7 +616,7 @@ class TestConfirmationSecurity:
         backend.chat_with_tools.side_effect = [resp_tool, resp_text]
 
         with patch("builtins.input", return_value="n"):
-            _run_tool_loop(backend, [], "system", [], "TestBot")
+            asyncio.run(_run_tool_loop(backend, [], "system", [], "TestBot"))
 
         mock_exec.assert_not_called()
 
@@ -629,7 +632,7 @@ class TestConfirmationSecurity:
         backend.chat_with_tools.side_effect = [resp_tool, resp_text]
 
         with patch("builtins.input", return_value="n"):
-            _run_tool_loop(backend, [], "system", [], "TestBot")
+            asyncio.run(_run_tool_loop(backend, [], "system", [], "TestBot"))
 
         mock_exec.assert_not_called()
 
@@ -644,7 +647,7 @@ class TestConfirmationSecurity:
         backend.chat_with_tools.side_effect = [resp_tool, resp_text]
 
         with patch("builtins.input", return_value="n"):
-            _run_tool_loop(backend, [], "system", [], "TestBot")
+            asyncio.run(_run_tool_loop(backend, [], "system", [], "TestBot"))
 
         mock_exec.assert_not_called()
 
@@ -660,7 +663,7 @@ class TestConfirmationSecurity:
         backend.chat_with_tools.side_effect = [resp_tool, resp_text]
 
         with patch("builtins.input", return_value="n"):
-            _run_tool_loop(backend, [], "system", [], "TestBot")
+            asyncio.run(_run_tool_loop(backend, [], "system", [], "TestBot"))
 
         mock_exec.assert_not_called()
 
@@ -871,7 +874,7 @@ class TestTerminalOutputSecurity:
         backend.chat_with_tools.side_effect = [resp_tool, resp_text]
 
         messages = []
-        _run_tool_loop(backend, messages, "system", [], "TestBot")
+        asyncio.run(_run_tool_loop(backend, messages, "system", [], "TestBot"))
 
         # Terminal output was printed
         captured = capsys.readouterr()
@@ -939,7 +942,7 @@ class TestMaxIterationsGuard:
         backend.chat_with_tools.return_value = resp
 
         messages = []
-        _run_tool_loop(backend, messages, "system", [], "TestBot")
+        asyncio.run(_run_tool_loop(backend, messages, "system", [], "TestBot"))
 
         # Should have stopped at the max
         assert mock_exec.call_count <= _MAX_TOOL_ITERATIONS
@@ -978,7 +981,7 @@ class TestBatchConfirmationSecurity:
         backend.chat_with_tools.side_effect = [resp1, resp2]
 
         with patch("builtins.input", return_value="n"):
-            _run_tool_loop(backend, [], "system", [], "TestBot")
+            asyncio.run(_run_tool_loop(backend, [], "system", [], "TestBot"))
 
         mock_exec.assert_not_called()
 
@@ -1002,6 +1005,6 @@ class TestBatchConfirmationSecurity:
         backend.chat_with_tools.side_effect = [resp1, resp2]
 
         with patch("builtins.input", return_value="y"):
-            _run_tool_loop(backend, [], "system", [], "TestBot")
+            asyncio.run(_run_tool_loop(backend, [], "system", [], "TestBot"))
 
         assert mock_exec.call_count == 2

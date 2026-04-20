@@ -10,6 +10,7 @@ The tests verify that:
 3. Pre-conversion doesn't silently corrupt amounts
 """
 
+import asyncio
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -343,7 +344,7 @@ class TestPreConversionExposesHallucinations:
         backend.chat_with_tools.side_effect = [resp_tool, resp_text]
 
         with patch("builtins.input", return_value="y"):
-            _run_tool_loop(backend, [], "system", [], "TestBot")
+            asyncio.run(_run_tool_loop(backend, [], "system", [], "TestBot"))
 
         call_args = mock_exec.call_args[0]
         # $5000 at $100k/BTC = 5,000,000 sats — clearly wrong
@@ -367,7 +368,7 @@ class TestPreConversionExposesHallucinations:
         backend.chat_with_tools.side_effect = [resp_tool, resp_text]
 
         with patch("builtins.input", return_value="y"):
-            _run_tool_loop(backend, [], "system", [], "TestBot")
+            asyncio.run(_run_tool_loop(backend, [], "system", [], "TestBot"))
 
         call_args = mock_exec.call_args[0]
         assert call_args[1]["amount"] == 10  # $0.01 = 10 sats

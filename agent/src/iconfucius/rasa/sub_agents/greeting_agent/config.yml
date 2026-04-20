@@ -1,0 +1,15 @@
+agent:
+  name: greeting_agent
+  description: >
+    Generate a wisdom greeting in the IConfucius voice.
+
+connections:
+  mcp_servers:
+    - name: iconfucius_tools
+      include_tools:
+        - greeting_topic
+
+configuration:
+  llm:
+    model_group: sub_agent_llm
+  prompt_template: sub_agents/greeting_agent/prompt_template.jinja2

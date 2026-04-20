@@ -1,10 +1,22 @@
 """Shared fixtures for iconfucius tests."""
 
 import os
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 import iconfucius.config as cfg
+
+
+@pytest.fixture(autouse=True)
+def _mock_mcp_server():
+    """Prevent MCP server from binding a real port during tests."""
+    with patch(
+        "iconfucius.mcp_server.start_mcp_server",
+        new_callable=AsyncMock,
+        side_effect=Exception("MCP disabled in tests"),
+    ):
+        yield
 
 
 @pytest.fixture
