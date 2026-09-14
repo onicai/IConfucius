@@ -18,7 +18,13 @@ const idlFactory = ({ IDL }) => {
     StatusCode: IDL.Nat16,
     InsuffientCycles: IDL.Nat, // sic — must match the backend spelling
   });
-  const QuoteLanguage = IDL.Variant({ English: IDL.Null, Chinese: IDL.Null });
+  const QuoteLanguage = IDL.Variant({
+    English: IDL.Null,
+    Chinese: IDL.Null,
+    Dutch: IDL.Null,
+    German: IDL.Null,
+    Hindi: IDL.Null,
+  });
   const TextResult = IDL.Variant({ Ok: IDL.Text, Err: ApiError });
   const StatusCodeRecordResult = IDL.Variant({
     Ok: IDL.Record({ status_code: IDL.Nat16 }),
@@ -59,6 +65,24 @@ const ERROR_STRINGS = {
     statusCode: (code) => `容器返回状态码 ${code}。`,
     insufficientCycles: 'IConfucius 的 cycles 已耗尽，请稍后再试。',
     unexpected: (variant) => `意外错误：${variant}`,
+  },
+  Dutch: {
+    unauthorized: 'De canister heeft deze aanroeper geweigerd.',
+    statusCode: (code) => `De canister gaf status ${code} terug.`,
+    insufficientCycles: 'IConfucius heeft geen cycles meer. Probeer het later opnieuw.',
+    unexpected: (variant) => `Onverwachte fout: ${variant}`,
+  },
+  German: {
+    unauthorized: 'Der Canister hat diesen Aufrufer abgelehnt.',
+    statusCode: (code) => `Der Canister gab Status ${code} zurück.`,
+    insufficientCycles: 'IConfucius hat keine Cycles mehr. Bitte später erneut versuchen.',
+    unexpected: (variant) => `Unerwarteter Fehler: ${variant}`,
+  },
+  Hindi: {
+    unauthorized: 'कैनिस्टर ने इस कॉलर को अस्वीकार कर दिया।',
+    statusCode: (code) => `कैनिस्टर ने स्थिति ${code} लौटाई।`,
+    insufficientCycles: 'IConfucius के cycles समाप्त हो गए हैं। कृपया बाद में पुनः प्रयास करें।',
+    unexpected: (variant) => `अप्रत्याशित त्रुटि: ${variant}`,
   },
 };
 

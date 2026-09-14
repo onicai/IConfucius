@@ -26,7 +26,51 @@ const STRINGS = {
     attribution: (topic) => `——IConfucius，论${topic}`,
     callFailed: (msg) => `调用失败——请重试。（${msg}）`,
   },
+  Dutch: {
+    htmlLang: 'nl',
+    tagline: 'On-chain wijsheid, gegenereerd door een LLM op de Internet Computer',
+    paused: 'IConfucius is gepauzeerd voor onderhoud. Kom later terug.',
+    placeholder: 'Een onderwerp, bijv. crypto',
+    generate: 'IConfucius zegt…',
+    generating: 'Genereren…',
+    meditating: (elapsed) => `IConfucius mediteert over je onderwerp… ${elapsed}s verstreken`,
+    hint: 'Het citaat wordt token voor token geschreven door een on-chain LLM — dit duurt meestal 30–90 seconden.',
+    attribution: (topic) => `— IConfucius, over ${topic}`,
+    callFailed: (msg) => `Aanroep mislukt — probeer het opnieuw. (${msg})`,
+  },
+  German: {
+    htmlLang: 'de',
+    tagline: 'On-Chain-Weisheit, generiert von einem LLM auf dem Internet Computer',
+    paused: 'IConfucius ist wegen Wartung pausiert. Bitte später wiederkommen.',
+    placeholder: 'Ein Thema, z. B. Krypto',
+    generate: 'IConfucius sagt…',
+    generating: 'Generiere…',
+    meditating: (elapsed) => `IConfucius meditiert über dein Thema… ${elapsed}s vergangen`,
+    hint: 'Das Zitat wird Token für Token von einem On-Chain-LLM geschrieben — das dauert in der Regel 30–90 Sekunden.',
+    attribution: (topic) => `— IConfucius, über ${topic}`,
+    callFailed: (msg) => `Aufruf fehlgeschlagen — bitte erneut versuchen. (${msg})`,
+  },
+  Hindi: {
+    htmlLang: 'hi',
+    tagline: 'ऑन-चेन ज्ञान, इंटरनेट कंप्यूटर पर चल रहे LLM द्वारा जनित',
+    paused: 'IConfucius रखरखाव के लिए रुका हुआ है। कृपया बाद में आएं।',
+    placeholder: 'एक विषय, जैसे क्रिप्टो',
+    generate: 'IConfucius कहते हैं…',
+    generating: 'बना रहे हैं…',
+    meditating: (elapsed) => `IConfucius आपके विषय पर मनन कर रहे हैं… ${elapsed} सेकंड बीते`,
+    hint: 'सूक्ति ऑन-चेन LLM द्वारा टोकन-दर-टोकन लिखी जाती है — इसमें आमतौर पर 30–90 सेकंड लगते हैं।',
+    attribution: (topic) => `— IConfucius, ${topic} पर`,
+    callFailed: (msg) => `कॉल विफल — कृपया पुनः प्रयास करें। (${msg})`,
+  },
 };
+
+const LANGUAGES = [
+  { key: 'English', label: 'English' },
+  { key: 'Chinese', label: '中文' },
+  { key: 'Dutch', label: 'Nederlands' },
+  { key: 'German', label: 'Deutsch' },
+  { key: 'Hindi', label: 'हिन्दी' },
+];
 
 export default function App() {
   const [language, setLanguage] = useState('English');
@@ -90,20 +134,16 @@ export default function App() {
   return (
     <div className="app">
       <div className="segmented">
-        <button
-          type="button"
-          className={language === 'English' ? 'active' : ''}
-          onClick={() => setLanguage('English')}
-        >
-          English
-        </button>
-        <button
-          type="button"
-          className={language === 'Chinese' ? 'active' : ''}
-          onClick={() => setLanguage('Chinese')}
-        >
-          中文
-        </button>
+        {LANGUAGES.map(({ key, label }) => (
+          <button
+            key={key}
+            type="button"
+            className={language === key ? 'active' : ''}
+            onClick={() => setLanguage(key)}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       <header>

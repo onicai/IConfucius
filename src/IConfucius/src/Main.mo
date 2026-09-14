@@ -378,8 +378,9 @@ persistent actor class IConfuciusCtrlbCanister() {
         let language : Text = switch (quoteLanguage) {
             case (#English) { "en" };
             case (#Chinese) { "cn" };
-            // case (#Dutch) { "nl" };
-            // case (#German) { "de" };
+            case (#Dutch) { "nl" };
+            case (#German) { "de" };
+            case (#Hindi) { "hi" };
         };
         let generatedQuoteResult : Types.GeneratedQuoteResult = await generateQuote(language, ?topic);
         switch (generatedQuoteResult) {
@@ -496,13 +497,25 @@ persistent actor class IConfuciusCtrlbCanister() {
             systemPrompt := "Du bist Konfuzius, der antike Philosoph. Du beendest Zitate auf eine tiefgründige und mitfühlende Weise.";
             userPromptRepetitive := "Schreibe ein tiefgründiges und nachdenkliches Zitat über ";
             userPromptVarying := quoteTopic # ". Gib nur das Zitat an, nichts anderes.";
-        
+
             promptRepetitive := "<|im_start|>system\n" # systemPrompt # "<|im_end|>\n" #
             "<|im_start|>user\n" # userPromptRepetitive;
-            prompt := promptRepetitive # userPromptVarying # 
-            "<|im_end|>\n" # 
+            prompt := promptRepetitive # userPromptVarying #
+            "<|im_end|>\n" #
             "<|im_start|>assistant\n" #
             "<think>\n\n</think>\n\n"; // Qwen3 non-thinking mode: pre-filled empty think block
+        } else if (quoteLanguage == "hi") {
+            systemPrompt := "आप कन्फ्यूशियस हैं, प्राचीन दार्शनिक। आप उद्धरणों को गहन और करुणामय ढंग से पूर्ण करते हैं।";
+            userPromptRepetitive := "इस विषय पर एक गहन और विचारोत्तेजक सूक्ति लिखिए: ";
+            userPromptVarying := quoteTopic # "। केवल सूक्ति दीजिए, और कुछ नहीं।";
+
+            promptRepetitive := "<|im_start|>system\n" # systemPrompt # "<|im_end|>\n" #
+            "<|im_start|>user\n" # userPromptRepetitive;
+            prompt := promptRepetitive # userPromptVarying #
+            "<|im_end|>\n" #
+            "<|im_start|>assistant\n" #
+            "<think>\n\n</think>\n\n"; // Qwen3 non-thinking mode: pre-filled empty think block
+        } else {
             return #Err(#Other("Unsupported language: " # quoteLanguage));
         };
         
