@@ -7,9 +7,9 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # Install minimal dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl=7.81.0-1ubuntu1.21 \
-    ca-certificates=20240203~22.04.1 \
-    git=1:2.34.1-1ubuntu1.15 \
+    curl=7.81.0-1ubuntu1.27 \
+    ca-certificates=20260601~22.04.1 \
+    git=1:2.34.1-1ubuntu1.17 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js 20.x from NodeSource (pin major version)

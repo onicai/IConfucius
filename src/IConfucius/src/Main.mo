@@ -468,7 +468,8 @@ persistent actor class IConfuciusCtrlbCanister() {
             "<|im_start|>user\n" # userPromptRepetitive;
             prompt := promptRepetitive # userPromptVarying # 
             "<|im_end|>\n" # 
-            "<|im_start|>assistant\n";
+            "<|im_start|>assistant\n" #
+            "<think>\n\n</think>\n\n"; // Qwen3 non-thinking mode: pre-filled empty think block
         } else if (quoteLanguage == "cn") {
             systemPrompt := "你是孔子，古代哲学家。你以一种深刻而富有同情心的方式结束引用。";
             userPromptRepetitive := "写一句关于 ";
@@ -478,7 +479,8 @@ persistent actor class IConfuciusCtrlbCanister() {
             "<|im_start|>user\n" # userPromptRepetitive;
             prompt := promptRepetitive # userPromptVarying # 
             "<|im_end|>\n" # 
-            "<|im_start|>assistant\n";
+            "<|im_start|>assistant\n" #
+            "<think>\n\n</think>\n\n"; // Qwen3 non-thinking mode: pre-filled empty think block
         } else if (quoteLanguage == "nl") {
             systemPrompt := "Je bent Confucius, de oude filosoof. Je eindigt citaten op een diepgaande en medelevende manier.";
             userPromptRepetitive := "Schrijf een diepzinnig en inspirerend citaat over ";
@@ -488,7 +490,8 @@ persistent actor class IConfuciusCtrlbCanister() {
             "<|im_start|>user\n" # userPromptRepetitive;
             prompt := promptRepetitive # userPromptVarying # 
             "<|im_end|>\n" # 
-            "<|im_start|>assistant\n";
+            "<|im_start|>assistant\n" #
+            "<think>\n\n</think>\n\n"; // Qwen3 non-thinking mode: pre-filled empty think block
         } else if (quoteLanguage == "de") {
             systemPrompt := "Du bist Konfuzius, der antike Philosoph. Du beendest Zitate auf eine tiefgründige und mitfühlende Weise.";
             userPromptRepetitive := "Schreibe ein tiefgründiges und nachdenkliches Zitat über ";
@@ -498,7 +501,8 @@ persistent actor class IConfuciusCtrlbCanister() {
             "<|im_start|>user\n" # userPromptRepetitive;
             prompt := promptRepetitive # userPromptVarying # 
             "<|im_end|>\n" # 
-            "<|im_start|>assistant\n";
+            "<|im_start|>assistant\n" #
+            "<think>\n\n</think>\n\n"; // Qwen3 non-thinking mode: pre-filled empty think block
             return #Err(#Other("Unsupported language: " # quoteLanguage));
         };
         
@@ -519,6 +523,7 @@ persistent actor class IConfuciusCtrlbCanister() {
         let temp : Float = 0.7;
         let repeat_penalty : Float = 1.1;
         let cache_type_k = "q8_0";
+        let cache_type_v = "q8_0";
 
         var promptRepetitive : Text = "";
         var prompt : Text = "";  
@@ -617,6 +622,10 @@ persistent actor class IConfuciusCtrlbCanister() {
             let args : [Text] = [
                 "--prompt-cache",
                 promptCache,
+                "--cache-type-k",
+                cache_type_k,
+                "--cache-type-v",
+                cache_type_v,
             ];
             let inputRecord : Types.InputRecord = { args = args };
             D.print("IConfucius: calling new_chat...");
@@ -687,6 +696,8 @@ persistent actor class IConfuciusCtrlbCanister() {
                     Float.toText(repeat_penalty),
                     "--cache-type-k",
                     cache_type_k,
+                    "--cache-type-v",
+                    cache_type_v,
                     "-p",
                     prompt,
                 ];

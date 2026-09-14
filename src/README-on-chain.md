@@ -1,13 +1,13 @@
 # IConfucius on-chain
 
 ## Fully on-chain capabilities
-IConfucius is a deployed [llama_cpp_canister](https://github.com/onicai/llama_cpp_canister), loaded with the Qwen 2.5 model, and controlled by a Motoko canister designed to turn the Qwen2.5 LLM into Confucius, the ancient Chinese philosopher. When prompted, it will generate profound quotes about topics.
+IConfucius is a deployed [llama_cpp_canister](https://github.com/onicai/llama_cpp_canister), loaded with the Qwen3 model, and controlled by a Motoko canister designed to turn the Qwen3 LLM into Confucius, the ancient Chinese philosopher. When prompted, it will generate profound quotes about topics.
 
 There are two canisters:
 
 - a Motoko bot canister, in `src/IConfucius`
 - a C++ LLM canister, in `llms/IConfucius`.
-  - The LLM is loaded with the [qwen2.5-0.5b-instruct-q8_0.gguf](https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF) model
+  - The LLM is loaded with the [Qwen3-0.6B-Q8_0.gguf](https://huggingface.co/Qwen/Qwen3-0.6B-GGUF) model
 
 ### Reproducible Builds
 
@@ -68,17 +68,20 @@ conda activate IConfucius
 pip install -r requirements.txt
 ```
 
-### Download the Qwen2.5 LLM model
+### Download the Qwen3 LLM model
 
-Download qwen2.5-0.5b-instruct-q8_0.gguf from https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF
+Download Qwen3-0.6B-Q8_0.gguf from https://huggingface.co/Qwen/Qwen3-0.6B-GGUF
 
-Place it in this location: `llms/models/Qwen/Qwen2.5-0.5B-Instruct-GGUF/qwen2.5-0.5b-instruct-q8_0.gguf`
+Models live in the shared models folder of a sibling checkout of
+[onicai/llama_cpp_canister](https://github.com/onicai/llama_cpp_canister).
+
+Place it in this location: `../llama_cpp_canister/models/Qwen/Qwen3-0.6B-GGUF/Qwen3-0.6B-Q8_0.gguf`
 
 Verify it is in correct location:
 
 ```bash
 # From root folder:
-ls llms/models/Qwen/Qwen2.5-0.5B-Instruct-GGUF/qwen2.5-0.5b-instruct-q8_0.gguf
+ls ../llama_cpp_canister/models/Qwen/Qwen3-0.6B-GGUF/Qwen3-0.6B-Q8_0.gguf
 ```
 
 ### mops

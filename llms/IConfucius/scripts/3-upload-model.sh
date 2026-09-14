@@ -22,8 +22,10 @@ export PYTHONPATH="${PYTHONPATH}:$(realpath $LLAMA_CPP_CANISTER_PATH)"
 NETWORK_TYPE="local"
 NUM_LLMS_DEPLOYED=1
 
-# The gguf model file to upload (Relative to root folder)
-MODEL="../models/Qwen/Qwen2.5-0.5B-Instruct-GGUF/qwen2.5-0.5b-instruct-q8_0.gguf"
+# The gguf model file to upload (Relative to the vendored llama_cpp_canister
+# root folder). Models live in the shared models folder of a sibling checkout
+# of onicai/llama_cpp_canister: ~/github/repos/llama_cpp_canister/models
+MODEL="../../../llama_cpp_canister/models/Qwen/Qwen3-0.6B-GGUF/Qwen3-0.6B-Q8_0.gguf"
 
 # Parse command line arguments for network type
 while [ $# -gt 0 ]; do
@@ -56,8 +58,8 @@ else
     UPSTREAM_NETWORK_TYPE="production"
 fi
 
-# sha256 of qwen2.5-0.5b-instruct-q8_0.gguf, from HuggingFace
-HF_SHA256="ca59ca7f13d0e15a8cfa77bd17e65d24f6844b554a7b6c12e07a5f89ff76844e"
+# sha256 of Qwen3-0.6B-Q8_0.gguf, from HuggingFace
+HF_SHA256="9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031"
 
 #######################################################################
 echo " "
@@ -88,7 +90,11 @@ do
     # exists in our dfx.json); --filetype gguf is required so the canister
     # initializes inference (the upstream default is "other").
     CANISTER_ID=$(dfx canister id llm_$i --network $NETWORK_TYPE)
-    python -m scripts.upload --network $UPSTREAM_NETWORK_TYPE --canister-id $CANISTER_ID --filetype gguf --canister-filename models/model.gguf --hf-sha256 $HF_SHA256 $MODEL
+    # Run from the llama_cpp_canister folder: scripts.upload shells out to
+    # `icp network status`, which requires the icp.yaml project manifest in
+    # the current working directory. MODEL stays valid — upload.py resolves
+    # it against its own repo root, not the CWD.
+    (cd $LLAMA_CPP_CANISTER_PATH && python -m scripts.upload --network $UPSTREAM_NETWORK_TYPE --canister-id $CANISTER_ID --filetype gguf --canister-filename models/model.gguf --hf-sha256 $HF_SHA256 $MODEL)
 
     if [ $? -ne 0 ]; then
         echo "scripts.upload for llm_$i exited with an error."

@@ -57,8 +57,11 @@ do
     echo " "
     echo "--------------------------------------------------"
     echo "Calling load_model for llm_$i"
+    # ctx-size 2048 (not the upstream 16384): quotes only need a short context,
+    # and at 16384 with the dual q8_0 cache a 25-token run_update exceeds the
+    # 40B instruction limit (IC0522). At 2048 max_tokens 25 fits comfortably.
     output=$(dfx canister call llm_$i load_model \
-            '(record { args = vec {"--model"; "models/model.gguf"; "--cache-type-k"; "q8_0"} })' \
+            '(record { args = vec {"--model"; "models/model.gguf"; "--cache-type-k"; "q8_0"; "--cache-type-v"; "q8_0"; "--batch-size"; "64"; "--ubatch-size"; "64"; "--ctx-size"; "2048"} })' \
             --network "$NETWORK_TYPE")
 
     if ! echo "$output" | grep -q " Ok "; then

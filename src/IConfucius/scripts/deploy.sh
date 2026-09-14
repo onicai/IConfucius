@@ -66,7 +66,7 @@ if [ "$NETWORK_TYPE" = "prd" ] || [ "$NETWORK_TYPE" = "testing" ] || [ "$NETWORK
     echo "Building wasm with Docker (reproducible build)..."
     make docker-build-wasm
 
-    WASM_FILE="out/out_Linux_x86_64.wasm"
+    WASM_FILE="out/iconfucius_ctrlb_canister.wasm"
     if [ ! -f "$WASM_FILE" ]; then
         echo "ERROR: Docker build failed - wasm file not found: $WASM_FILE"
         exit 1
