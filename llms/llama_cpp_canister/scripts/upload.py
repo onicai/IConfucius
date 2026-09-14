@@ -16,7 +16,7 @@ import time
 from pathlib import Path
 from typing import Generator
 from .calculate_sha256 import calculate_sha256
-from .ic_py_canister import get_canister, run_dfx_command
+from .ic_py_canister import extract_variant, get_canister, run_icp_command
 from .parse_args_upload import parse_args
 
 ROOT_PATH = Path(__file__).parent.parent
@@ -66,11 +66,11 @@ def main() -> int:
     chunksize = args.chunksize
     hf_sha256 = args.hf_sha256
 
-    dfx_json_path = ROOT_PATH / "dfx.json"
+    icp_yaml_path = ROOT_PATH / "icp.yaml"
 
     if canister_id == "":
-        canister_id = run_dfx_command(
-            f"dfx canister --network {network} id {canister_name} "
+        canister_id = run_icp_command(
+            f"icp canister status {canister_name} -e {network} --id-only"
         )
 
     print(
@@ -82,19 +82,20 @@ def main() -> int:
         f"\n - network             = {network}"
         f"\n - canister            = {canister_name}"
         f"\n - canister_id         = {canister_id}"
-        f"\n - dfx_json_path       = {dfx_json_path}"
+        f"\n - icp_yaml_path       = {icp_yaml_path}"
         f"\n - candid_path         = {candid_path}"
         f"\n - hf_sha256           = {hf_sha256}"
     )
 
     # ---------------------------------------------------------------------------
-    # get ic-py based Canister instance
+    # get icp-py-core based Canister instance
     canister_instance = get_canister(canister_name, candid_path, network, canister_id)
 
     # check health (liveness)
     print("--\nChecking liveness of canister (did we deploy it!)")
     response = canister_instance.health()
-    if "Ok" in response[0].keys():
+    result = extract_variant(response)
+    if "Ok" in result:
         print("Ok!")
     else:
         print("Not OK, response is:")
@@ -163,7 +164,8 @@ def main() -> int:
                             "chunk": chunk,
                             "chunksize": chunksize,
                             "offset": offset,
-                        }
+                        },
+                        verify_certificate=False,
                     )  # pylint: disable=no-member
                 else:
                     response = canister_instance.file_upload_chunk(
@@ -172,7 +174,8 @@ def main() -> int:
                             "chunk": chunk,
                             "chunksize": chunksize,
                             "offset": offset,
-                        }
+                        },
+                        verify_certificate=False,
                     )  # pylint: disable=no-member
 
                 break  # Exit the loop if the request is successful
@@ -187,24 +190,25 @@ def main() -> int:
                 print(f"Retrying in {retry_delay} seconds...")
                 time.sleep(retry_delay)  # Wait before retrying
 
-        if "Ok" in response[0].keys():
+        result = extract_variant(response)
+        if "Ok" in result:
             if DEBUG_VERBOSE == 0:
                 pass
             elif DEBUG_VERBOSE == 1:
                 # print only every 10th chunk or if it is the last chunk
                 if i % 10 == 0 or (offset + len(chunk)) >= len(file_bytes):
                     print(
-                        f"OK! filesize = {response[0]['Ok']['filesize']}, "
-                        f"filesha256 = {response[0]['Ok']['filesha256']}"
+                        f"OK! filesize = {result['Ok']['filesize']}, "
+                        f"filesha256 = {result['Ok']['filesha256']}"
                     )
             else:
                 print(
-                    f"OK! filesize = {response[0]['Ok']['filesize']}, "
-                    f"filesha256 = {response[0]['Ok']['filesha256']}"
+                    f"OK! filesize = {result['Ok']['filesize']}, "
+                    f"filesha256 = {result['Ok']['filesha256']}"
                 )
 
-            canister_filesize = response[0]["Ok"]["filesize"]
-            canister_filesha256 = response[0]["Ok"]["filesha256"]
+            canister_filesize = result["Ok"]["filesize"]
+            canister_filesha256 = result["Ok"]["filesha256"]
         else:
             print("Something went wrong:")
             print(response)
@@ -245,14 +249,15 @@ def main() -> int:
             {"filename": canister_filename}
         )
 
-    if "Ok" in response[0].keys():
+    result = extract_variant(response)
+    if "Ok" in result:
         print(
-            f"OK! filesize = {response[0]['Ok']['filesize']}, "
-            f"filesha256 = {response[0]['Ok']['filesha256']}"
+            f"OK! filesize = {result['Ok']['filesize']}, "
+            f"filesha256 = {result['Ok']['filesha256']}"
         )
 
-        canister_filesize = response[0]["Ok"]["filesize"]
-        canister_filesha256 = response[0]["Ok"]["filesha256"]
+        canister_filesize = result["Ok"]["filesize"]
+        canister_filesha256 = result["Ok"]["filesha256"]
 
         if (canister_filesize != local_file_size) or (
             canister_filesha256 != local_file_sha256

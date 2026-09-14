@@ -1,19 +1,17 @@
 [![llama_cpp_canister](https://github.com/onicai/llama_cpp_canister/actions/workflows/cicd-mac.yml/badge.svg)](https://github.com/onicai/llama_cpp_canister/actions/workflows/cicd-mac.yml)
 
-# llama.cpp for the Internet Computer.
+# llama.cpp for the Internet Computer
 
 ![llama](https://user-images.githubusercontent.com/1991296/230134379-7181e485-c521-4d23-a0d6-f7b3b61ba524.png)
 
-`llama_cpp_canister` allows you to deploy [ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) as a Smart Contract on the Internet Computer,
-and run an LLM on-chain as the brain for your on-chain AI Agents.
+`llama_cpp_canister` lets you deploy [ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) as a Smart Contract on the Internet Computer and run an LLM fully on-chain — the verifiable brain for your on-chain AI agents. Our recommended default is **Qwen3-0.6B**, run in non-thinking mode for **multi-turn conversations** with up to a ~12K-word context.
 
-- Run any LLM on-chain via the gguf format 🔥
-- Solves your cybersecurity problem 🔐
-- MIT open source 🧑‍💻
-- Well documented 📝
-- Fully QA'd via CI/CD ✅
-- Easy to build, test & deploy 🚧
-- Smoke testing framework using pytest 🚬
+# Capabilities 🔥
+
+- **Run any LLM on-chain** via the gguf format — we recommend **Qwen3-0.6B** ([Qwen/Qwen3-0.6B-GGUF](https://huggingface.co/Qwen/Qwen3-0.6B-GGUF)).
+- **Multi-turn, verifiable inference** — long back-and-forth conversations, entirely on-chain.
+- MIT open source 🧑‍💻 · Well documented 📝 · Fully QA'd via CI/CD ✅
+- Easy to build, test & deploy 🚧 · Smoke-testing framework using pytest 🚬
 
 # In the wild
 
@@ -21,24 +19,16 @@ llama_cpp_canister is used as the on-chain LLM brain inside the following projec
 
 _(Issue a PR to get your project listed)_
 
-| Project    | Description/Tagline                                                 | GitHub                                                 | X                                                 | Token                                      | URL                                               |
-| ---------- | ------------------------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------- | ------------------------------------------ | ------------------------------------------------- |
-| funnAI     | Truly Open AI with Bitcoin Tokenomics, plus much more! | -     | [@onicaiHQ](https://x.com/onicaiHQ) | $FUNNAI | [funnai.onicai.com](https://funnai.onicai.com) |
-| IConfucius | Wisdom fueled by Cycles<br>_Fully on chain AI tokenized on Bitcoin_ | [IConfucius](https://github.com/onicai/IConfucius)     | [@IConfucius_odin](https://x.com/IConfucius_odin) | [$ICONFUCIUS](https://odin.fun/token/29m8) | [onicai.com](https://www.onicai.com/#/iconfucius) |
-| ICGPT      | on-chain LLMs<br>_Chat with on-chain LLMs_                          | [icgpt](https://github.com/icppWorld/icgpt)            | [@onicaiHQ](https://x.com/onicaiHQ)               | -                                          | [icgpt.onicai.com](https://icgpt.onicai.com)      |
+| Project    | Description/Tagline                                                                                       | GitHub                                             | X                                                 | Token                                      | URL                                               |
+| ---------- | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------- | ------------------------------------------------- | ------------------------------------------ | ------------------------------------------------- |
+| funnAI     | Truly Open AI with Bitcoin Tokenomics, plus much more!                                                    | -                                                  | [@onicaiHQ](https://x.com/onicaiHQ)               | $FUNNAI                                    | [funnai.onicai.com](https://funnai.onicai.com)    |
+| ICGPT      | On-chain Prompt Studio<br>_Optimize your prompts against LLMs running inside Internet Computer canisters_ | [icgpt](https://github.com/icppWorld/icgpt)        | [@onicaiHQ](https://x.com/onicaiHQ)               | -                                          | [icgpt.onicai.com](https://icgpt.onicai.com)      |
+| IConfucius | Wisdom fueled by Cycles<br>_Fully on chain AI tokenized on Bitcoin_                                       | [IConfucius](https://github.com/onicai/IConfucius) | [@IConfucius_odin](https://x.com/IConfucius_odin) | [$ICONFUCIUS](https://odin.fun/token/29m8) | [onicai.com](https://www.onicai.com/#/iconfucius) |
 
 # Need help or have feedback? ❤️
 
 - [OpenChat C++ community](https://oc.app/community/cklkv-3aaaa-aaaar-ar7uq-cai/?ref=6e3y2-4yaaa-aaaaf-araya-cai)
 - [Forum: Llama.cpp on the Internet Computer](https://forum.dfinity.org/t/llama-cpp-on-the-internet-computer/33471?u=icpp)
-
-# Capabilities 🔥
-
-- Deploy any LLM available as a gguf file.
-
-  _(The model must be able to produce at least 1 token per update call)_
-
-- Our largest so far is DeepSeek-R1 1.5B (See [X](https://x.com/onicaiHQ/status/1884339580851151089)).
 
 # Using the release
 
@@ -49,32 +39,51 @@ You can just grab the latest [release](https://github.com/onicai/llama_cpp_canis
 
 # Set up
 
-- Install dfx:
+- Install icp-cli (and ic-wasm). Requires [Node.js](https://nodejs.org/) >= 22:
 
   ```bash
-  sh -ci "$(curl -fsSL https://internetcomputer.org/install.sh)"
+  npm install -g @icp-sdk/icp-cli @icp-sdk/ic-wasm
 
-  # Configure your shell
-  source "$HOME/.local/share/dfx/env"
+  # Verify it is installed
+  icp --version
   ```
+
+  > **Note:** icp-cli replaces the deprecated `dfx`. This project was built and
+  > tested against **icp-cli 1.2.0**.
 
 - Clone the repo and it's children:
 
   _(skip when using the [release](https://github.com/onicai/llama_cpp_canister/releases))_
 
-  ```bash
-  # Clone this repo
-  git clone git@github.com:onicai/llama_cpp_canister.git
+  Approach 1: HTTPS — no GitHub SSH keys required
 
-  # Clone llama_cpp_onicai_fork, our forked version of llama.cpp
-  # Into the ./src folder
+  ```bash
+  # Clone this repository
+  git clone https://github.com/onicai/llama_cpp_canister.git
+  cd llama_cpp_canister
+
+  # Clone llama_cpp_onicai_fork (our fork of llama.cpp) into ./src
+  cd src
+  git clone https://github.com/onicai/llama_cpp_onicai_fork.git
+  ```
+
+  Approach 2: SSH — requires a configured GitHub SSH key
+  ```bash
+  # Clone this repository
+  git clone git@github.com:onicai/llama_cpp_canister.git
+  cd llama_cpp_canister
+
+  # Clone llama_cpp_onicai_fork into ./src
   cd src
   git clone git@github.com:onicai/llama_cpp_onicai_fork.git
   ```
 
+  Note: If you see Permission denied (publickey) errors, use the HTTPS method above or configure an SSH key in your GitHub account.
+
+
 - Create a Python environment with dependencies installed
 
-  ❗❗❗ Use Python 3.11 _(This is needed for binaryen.py dependency)_ ❗❗❗
+  ❗❗❗ Use Python 3.11 _(the version CI builds and tests against)_ ❗❗❗
 
   ```bash
   # We use MiniConda
@@ -90,7 +99,23 @@ You can just grab the latest [release](https://github.com/onicai/llama_cpp_canis
 
   _(skip when using the [release](https://github.com/onicai/llama_cpp_canister/releases))_
 
-  - Compile & link to WebAssembly (wasm):
+  - Reproducible build (what a release ships) — needs only Docker:
+
+    ```bash
+    make docker-build-base   # once; the pinned toolchain image
+    make docker-build-wasm   # builds out/llama_cpp.wasm and prints its sha256
+    ```
+
+    This builds inside a pinned `linux/amd64` image, so the same commit produces
+    the same sha256 on any machine. It also copies the hashed artifact into
+    `build/`, which is where `icp deploy` picks it up. The llama.cpp fork commit
+    is pinned in [`version_fork.env`](version_fork.env), and the toolchain
+    versions in [`docker/docker-compose.yml`](docker/docker-compose.yml).
+
+    On Apple Silicon this runs under emulation and is slow. That is deliberate:
+    pinning the platform is what makes the hash match everywhere.
+
+  - Local development build — faster, but *not* the reproducible one:
 
     ```bash
     make build-info-cpp-wasm
@@ -99,7 +124,14 @@ You can just grab the latest [release](https://github.com/onicai/llama_cpp_canis
 
     Notes:
 
-    - The build of the wasm must be done on a `Mac` !
+    - This path needs a local toolchain (`icpp install-wasi-sdk`,
+      `icpp install-rust`) and currently only works on a `Mac`: `binaryen.py`
+      ships a *static* `libbinaryen.a` for Linux and then `dlopen()`s it, so
+      `icpp build-wasm` fails at the `post_wasm_function` step there. The Docker
+      image works around it by re-linking that archive into a shared object.
+    - Its output will not have the same hash as a release, because the absolute
+      source paths differ (they are baked in via `GGML_ABORT`/`__FILE__`). Use
+      the Docker build whenever the hash matters.
     - Instead of building the wasm, you can also grab the latest [release](https://github.com/onicai/llama_cpp_canister/releases) and unzip it.
 
 - Deploy the wasm to a canister on the local network:
@@ -107,21 +139,32 @@ You can just grab the latest [release](https://github.com/onicai/llama_cpp_canis
   - Start the local network:
 
     ```bash
-    dfx start --clean
+    icp network start -d
     ```
+
+    > **Note:** icp-cli runs one local network **per project** and (with
+    > `gateway.port: 0` in `icp.yaml`) assigns a **random ephemeral port** on every
+    > start, so parallel projects never collide. Never hardcode `localhost:8000`;
+    > read the port back with `icp network status -e local --json`.
 
   - Deploy the wasm to a canister on the local network:
 
+    `icp.yaml` defines two canisters that share the same wasm: **`llama_cpp`** (the
+    default, serving **Qwen3-0.6B** — the steps below) and **`llama_cpp_qwen25`** (the
+    previous default, **Qwen2.5-0.5B** — see [README-qwen2.5.md](README-qwen2.5.md)).
+    Deploy just the one you need by naming it:
+
     ```bash
-    dfx deploy
+    icp deploy llama_cpp -e local -y
 
     # When upgrading the code in the canister, use:
-    dfx deploy -m upgrade
+    icp deploy llama_cpp -m upgrade -e local -y
     ```
 
-  - Check the health endpoint of the `llama_cpp` canister:
+  - Check the health endpoint of the `llama_cpp` canister (calling a canister by
+    name requires naming its environment with `-e`):
     ```bash
-    $ dfx canister call llama_cpp health
+    $ icp canister call llama_cpp health '()' -e local --query
     (variant { Ok = record { status_code = 200 : nat16 } })
     ```
 
@@ -130,44 +173,63 @@ You can just grab the latest [release](https://github.com/onicai/llama_cpp_canis
   The LLM upload and inference calls consume cycles. You can add with:
 
   ```bash
-  # Add 20 trillion cycles
-  dfx ledger fabricate-cycles --canister llama_cpp --t 20
+  # Add 20 trillion cycles (drawn from your local identity's seeded balance)
+  icp canister top-up llama_cpp --amount 20000000000000 -e local
+  ```
+
+- Raise the canister's wasm memory limit (needed for larger models)
+
+  The default reference model, Qwen3-0.6B, runs close to the wasm heap ceiling. Set
+  the `wasm_memory_limit` to 3.75 GiB (wasm32 cannot address a full 4 GiB) with
+  `icp canister settings update`:
+
+  ```bash
+  icp canister settings update llama_cpp --wasm-memory-limit 4026531840 -e local
+
+  # verify
+  icp canister status llama_cpp -e local | grep "Wasm memory limit"
   ```
 
 - Upload gguf file
 
-  The canister is now up & running, and ready to be loaded with a gguf file. In
-  this example we use the powerful `qwen2.5-0.5b-instruct-q8_0.gguf` model, but
-  you can use any model availabe in gguf format.
+  The canister is now up & running, and ready to be loaded with a gguf file. Our
+  default reference model is **Qwen3-0.6B** (q8_0) — a state-of-the-art small LLM
+  that we run in **non-thinking** mode for clean, multi-turn on-chain inference
+  (see the chat steps below). You can use any model available in gguf format.
 
-  - Download the model from huggingface: https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF
+  _(For the previous default, Qwen2.5-0.5B, see [README-qwen2.5.md](README-qwen2.5.md).)_
 
-    Store it in: `models/Qwen/Qwen2.5-0.5B-Instruct-GGUF/qwen2.5-0.5b-instruct-q8_0.gguf`
+  _(For a larger, stronger model — noticeably better at instruction-following,
+  negation, and secret-keeping — see [README-qwen3-1.7B.md](README-qwen3-1.7B.md).)_
+
+  - Download the model from huggingface: https://huggingface.co/Qwen/Qwen3-0.6B-GGUF
+
+    Store it in: `models/Qwen/Qwen3-0.6B-GGUF/Qwen3-0.6B-Q8_0.gguf`
 
     ```bash
-    mkdir -p models/Qwen/Qwen2.5-0.5B-Instruct-GGUF
+    mkdir -p models/Qwen/Qwen3-0.6B-GGUF
     wget -c \
-      -O models/Qwen/Qwen2.5-0.5B-Instruct-GGUF/qwen2.5-0.5b-instruct-q8_0.gguf \
-      https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q8_0.gguf
+      -O models/Qwen/Qwen3-0.6B-GGUF/Qwen3-0.6B-Q8_0.gguf \
+      https://huggingface.co/Qwen/Qwen3-0.6B-GGUF/resolve/main/Qwen3-0.6B-Q8_0.gguf
     ```
 
     After download, verify the sha256 hash:
 
     ```bash
-    $ sha256sum models/Qwen/Qwen2.5-0.5B-Instruct-GGUF/qwen2.5-0.5b-instruct-q8_0.gguf
-    ca59ca7f13d0e15a8cfa77bd17e65d24f6844b554a7b6c12e07a5f89ff76844e
+    $ sha256sum models/Qwen/Qwen3-0.6B-GGUF/Qwen3-0.6B-Q8_0.gguf
+    9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031
     ```
 
   - Upload the gguf file to the canister:
 
     ```bash
     python -m scripts.upload \
-      --network local \
+      -e local \
       --canister llama_cpp \
       --canister-filename models/model.gguf \
       --filetype gguf \
-      --hf-sha256 "ca59ca7f13d0e15a8cfa77bd17e65d24f6844b554a7b6c12e07a5f89ff76844e" \
-      models/Qwen/Qwen2.5-0.5B-Instruct-GGUF/qwen2.5-0.5b-instruct-q8_0.gguf
+      --hf-sha256 "9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031" \
+      models/Qwen/Qwen3-0.6B-GGUF/Qwen3-0.6B-Q8_0.gguf
     ```
 
     NOTEs:
@@ -175,22 +237,22 @@ You can just grab the latest [release](https://github.com/onicai/llama_cpp_canis
     - In C++, files are stored in stable memory of the canister. They will survive a code upgrade.
     - The --hf-sha256 argument is optional but highly recommended:
       - The upload process will check if the file on disk has the same sha256 as the one you downloaded from HuggingFace.
-      - The --hf-sha256 for our sample model can be found at https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/blob/main/qwen2.5-0.5b-instruct-q8_0.gguf
+      - The --hf-sha256 for our sample model can be found at https://huggingface.co/Qwen/Qwen3-0.6B-GGUF/blob/main/Qwen3-0.6B-Q8_0.gguf
 
   - Check the filesize & sha256 of the uploaded gguf file in the canister
 
     ```bash
-    dfx canister call llama_cpp uploaded_file_details '(record {
+    icp canister call llama_cpp -e local uploaded_file_details '(record {
       filename = "models/model.gguf"
     })'
 
-    # Which returns the following for the Qwen2.5-0.5B-Instruct-GGUF model
+    # Which returns the following for the Qwen3-0.6B-GGUF model
     (
       variant {
         Ok = record {
           filename = "models/model.gguf";
-          filesize = 675_710_816 : nat64;
-          filesha256 = "ca59ca7f13d0e15a8cfa77bd17e65d24f6844b554a7b6c12e07a5f89ff76844e";
+          filesize = 639_446_688 : nat64;
+          filesha256 = "9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031";
         }
       },
     )
@@ -199,39 +261,63 @@ You can just grab the latest [release](https://github.com/onicai/llama_cpp_canis
 - Optional: You can now run a pytest based QA, using the icpp-pro smoketesting framework:
 
   ```bash
-  pytest -vv test/test_qwen2.py
+  pytest -vv --network local --identity "$(icp identity default)" test/test_qwen3.py
   ```
+
+  See [Smoke testing the deployed LLM](#smoke-testing-the-deployed-llm) for what
+  `--identity` is and why it is required.
 
 - Load the gguf file into Orthogonal Persisted (OP) working memory
 
   ```bash
-  dfx canister call llama_cpp load_model '(record {
+  icp canister call llama_cpp -e local load_model '(record {
     args = vec {
       "--model"; "models/model.gguf";
       "--cache-type-k"; "q8_0";
+      "--cache-type-v"; "q8_0";
+      "--batch-size"; "64";
+      "--ubatch-size"; "64";
+      "--ctx-size"; "16384";
     }
   })'
   ```
+
+  **Why these args for Qwen3-0.6B?** Two levers keep a large context inside the wasm
+  heap. First, we quantize **both** the K and V caches (`q8_0`), which halves the KV
+  cache. Second — the key one — we set a small **`--batch-size 64 --ubatch-size 64`**.
+  llama.cpp's compute buffers scale with batch size (the output/logits buffer is
+  `batch × vocab` ≈ **1.2 GiB** at the default batch of 2048 for Qwen3's ~152K vocab; the
+  attention buffer is `ubatch × ctx`). A canister serves one request at a time and is
+  instruction-limited on the IC, so a large batch buys nothing here but costs GiBs of
+  heap — shrinking it to 64 frees ~2 GiB. That leaves the KV cache as the only thing that
+  grows with context, which is how we run **`--ctx-size 16384`** (~12K words of
+  conversation) at ~1.76 GiB heap, ~2 GiB under the 3.75 GiB `wasm_memory_limit`. See
+  [Context size & memory](#appendix-b-context-size--memory) for the full mechanism, levers, and
+  **risks**. This assumes you raised the `wasm_memory_limit` to 3.75 GiB (see the
+  `update-settings` step above); watch live usage with the `get_memory_status` query.
 
 - Set the max_tokens for this model, to avoid it hits the IC's instruction limit
 
   _(See Appendix A for values of others models.)_
 
   ```bash
-  dfx canister call llama_cpp set_max_tokens '(record {
+  icp canister call llama_cpp -e local set_max_tokens '(record {
     max_tokens_query = 1 : nat64;
-    max_tokens_update = 12 : nat64
+    max_tokens_update = 20 : nat64
   })'
 
-  dfx canister call llama_cpp get_max_tokens
+  icp canister call llama_cpp -e local get_max_tokens
   ```
+
+  For Qwen3-0.6B the first-call ceiling is ~25–29 tokens; we use **20** to leave
+  headroom as the context grows across a multi-turn conversation.
 
 - Chat with the LLM
 
   - Ensure the canister is ready for Inference, with the model loaded
 
     ```bash
-    dfx canister call llama_cpp ready
+    icp canister call llama_cpp -e local ready
     ```
 
   - Chat with the LLM:
@@ -239,13 +325,21 @@ You can just grab the latest [release](https://github.com/onicai/llama_cpp_canis
     Details how to use the Qwen models with llama.cpp:
     https://qwen.readthedocs.io/en/latest/run_locally/llama.cpp.html
 
+    **Running Qwen3 in non-thinking mode.** Qwen3 is a hybrid *thinking* model.
+    To disable thinking (no `<think>` tokens, lower cost) we end the assistant turn
+    with an empty `<think>\n\n</think>\n\n` block — this is exactly what the official
+    chat template emits for `enable_thinking=false`. All prompts below use that form.
+    (Thinking mode _is_ possible but not recommended on this 0.6B under the canister's
+    memory limits: it rambles, often does not terminate, and costs ~10x more tokens.)
+
     Start a new chat
 
     ```bash
-    dfx canister call llama_cpp new_chat '(record {
+    icp canister call llama_cpp -e local new_chat '(record {
       args = vec {
         "--prompt-cache"; "prompt.cache";
         "--cache-type-k"; "q8_0";
+        "--cache-type-v"; "q8_0";
       }
     })'
     ```
@@ -255,19 +349,21 @@ You can just grab the latest [release](https://github.com/onicai/llama_cpp_canis
     Ingest the prompt:
 
     Repeat this call until `prompt_remaining` in the response is empty.
-    This ingest the prompt into the prompt-cache, using multiple update calls:
+    This ingests the prompt into the prompt-cache, using multiple update calls:
     (-) Keep sending the full prompt
     (-) Use `"-n"; "1"`, so it does not generate new tokens
+    (-) The assistant turn ends with the empty `<think>\n\n</think>\n\n` block, so
+        Qwen3 runs in non-thinking mode
 
     ```bash
-    dfx canister call llama_cpp run_update '(record {
+    icp canister call llama_cpp -e local run_update '(record {
       args = vec {
         "--prompt-cache"; "prompt.cache"; "--prompt-cache-all";
-        "--cache-type-k"; "q8_0";
+        "--cache-type-k"; "q8_0"; "--cache-type-v"; "q8_0";
         "--repeat-penalty"; "1.1";
         "--temp"; "0.6";
         "-sp";
-        "-p"; "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\ngive me a short introduction to LLMs.<|im_end|>\n<|im_start|>assistant\n";
+        "-p"; "<|im_start|>user\ngive me a short introduction to LLMs.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
         "-n"; "1"
       }
     })'
@@ -283,10 +379,10 @@ You can just grab the latest [release](https://github.com/onicai/llama_cpp_canis
     (-) Use `"-n"; "512"`, so it will now generate new tokens
 
     ```bash
-    dfx canister call llama_cpp run_update '(record {
+    icp canister call llama_cpp -e local run_update '(record {
       args = vec {
         "--prompt-cache"; "prompt.cache"; "--prompt-cache-all";
-        "--cache-type-k"; "q8_0";
+        "--cache-type-k"; "q8_0"; "--cache-type-v"; "q8_0";
         "--repeat-penalty"; "1.1";
         "--temp"; "0.6";
         "-sp";
@@ -298,16 +394,15 @@ You can just grab the latest [release](https://github.com/onicai/llama_cpp_canis
 
     ***
 
-    Once `generated_eog` in the response is `true`, the LLM is done generating
-
-    This is the response after several update calls and it has reached eog:
+    Once `generated_eog` in the response is `true`, the LLM is done generating.
+    The generated `output` contains **no `<think>` tokens** — a clean, direct answer:
 
     ```bash
     (
       variant {
         Ok = record {
-          output = " level of complexity than the original text.<|im_end|>";
-          conversation = "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\ngive me a short introduction to LLMs.<|im_end|>\n<|im_start|>assistant\nLLMs are large language models, or generative models, that can generate text based on a given input. These models are trained on a large corpus of text and are able to generate text that is similar to the input. They can be used for a wide range of applications, such as language translation, question answering, and text generation for various tasks. LLMs are often referred to as \"artificial general intelligence\" because they can generate text that is not only similar to the input but also has a higher level of complexity than the original text.<|im_end|>";
+          output = " from answering questions to generating creative content.<|im_end|>";
+          conversation = "<|im_start|>user\ngive me a short introduction to LLMs.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nA Large Language Model (LLM) is a type of artificial intelligence model that can understand and generate human-like text. These models are trained on vast amounts of text data and are capable of understanding and responding to natural language in a variety of ways, from answering questions to generating creative content.<|im_end|>";
           error = "";
           status_code = 200 : nat16;
           prompt_remaining = "";
@@ -319,10 +414,59 @@ You can just grab the latest [release](https://github.com/onicai/llama_cpp_canis
 
     ***
 
+    **Exact token accounting.** Every `run_update` / `run_query` **success** record
+    also carries five `opt nat64` fields with the exact token counts for that call
+    (they decode to `null` on non-run records such as `new_chat` / `load_model`):
+
+    | Field                       | Meaning                                                    |
+    | --------------------------- | ---------------------------------------------------------- |
+    | `n_prompt_tokens`           | total prompt tokens presented this call                    |
+    | `n_prompt_tokens_cached`    | prompt-cache prefix reused for free (the cache-break offset)|
+    | `n_prompt_tokens_decoded`   | prompt tokens actually decoded this call                   |
+    | `n_tokens_generated`        | tokens generated this call                                 |
+    | `n_prompt_tokens_remaining` | prompt suffix left for the next call                       |
+
+    They always reconcile: `cached + decoded + remaining == n_prompt_tokens`, and
+    `n_tokens_generated` is `0` until the prompt is fully ingested
+    (`n_prompt_tokens_remaining == 0`). This lets a caller measure the exact
+    ingest-vs-generate split and the prompt-cache break offset per call. Being
+    `opt`, they are upgrade-safe: a client built against the older `.did` simply
+    ignores them.
+
+    ***
+
+    **Multi-turn conversation.** Qwen3 handles back-and-forth conversations well. To
+    continue a chat, send the **full accumulated conversation** as the prompt each
+    turn — the prompt-cache reuses the shared prefix, so only the new turn is
+    processed. Here, turn 2 asks the model to recall facts stated in turn 1
+    (`new_chat` first, then ingest with `-n 1` until `prompt_remaining` is empty,
+    then generate with an empty `-p` until `generated_eog=true`):
+
+    ```bash
+    icp canister call llama_cpp -e local run_update '(record {
+      args = vec {
+        "--prompt-cache"; "prompt.cache"; "--prompt-cache-all";
+        "--cache-type-k"; "q8_0"; "--cache-type-v"; "q8_0";
+        "--temp"; "0.6"; "-sp";
+        "-p"; "<|im_start|>user\nMy name is Sam and I have 3 cats named Milo, Coco, and Ziggy.<|im_end|>\n<|im_start|>assistant\nNice to meet you, Sam! You have three cats: Milo, Coco, and Ziggy.<|im_end|>\n<|im_start|>user\nHow many cats do I have, what are their names, and what is my name?<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
+        "-n"; "1"
+      }
+    })'
+    ```
+
+    The assistant correctly recalls turn 1:
+
+    ```
+    You have 3 cats: Milo, Coco, and Ziggy.
+    Your name is Sam.
+    ```
+
+    ***
+
     Remove the prompt cache when done - this keeps stable memory usage at a minimum
 
     ```bash
-    dfx canister call llama_cpp remove_prompt_cache '(record {
+    icp canister call llama_cpp -e local remove_prompt_cache '(record {
       args = vec {
         "--prompt-cache"; "prompt.cache"
       }
@@ -330,20 +474,20 @@ You can just grab the latest [release](https://github.com/onicai/llama_cpp_canis
     ```
 
     Note: The sequence of update calls to the canister is required because the Internet Computer has a limitation
-    on the number of instructions it allows per call. For this model, 13 tokens can be generated per update call.
+    on the number of instructions it allows per call. For Qwen3-0.6B, ~20 tokens are generated per update call (first-call ceiling ~25-29 before a call traps).
 
     This sequence of update calls is equivalent to using the [ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp)
     repo directly and running the `llama-cli` locally, with the command:
 
     ```bash
     <path-to>/llama-cli \
-      -m /models/Qwen/Qwen2.5-0.5B-Instruct-GGUF/qwen2.5-0.5b-instruct-q8_0.gguf \
+      -m /models/Qwen/Qwen3-0.6B-GGUF/Qwen3-0.6B-Q8_0.gguf \
       --prompt-cache prompt.cache --prompt-cache-all \
-      --cache-type-k q8_0 \
+      --cache-type-k q8_0 --cache-type-v q8_0 --batch-size 64 --ubatch-size 64 --ctx-size 16384 \
       --repeat-penalty 1.1 \
       --temp 0.6 \
       -sp \
-      -p "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\ngive me a short introduction to LLMs.<|im_end|>\n<|im_start|>assistant\n" \
+      -p "<|im_start|>user\ngive me a short introduction to LLMs.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n" \
       -n 512
     ```
 
@@ -352,15 +496,15 @@ You can just grab the latest [release](https://github.com/onicai/llama_cpp_canis
     This functionality is off by default. You can turn it on/off with:
 
     ```bash
-    dfx canister call llama_cpp chats_resume
-    dfx canister call llama_cpp chats_pause
+    icp canister call llama_cpp -e local chats_resume
+    icp canister call llama_cpp -e local chats_pause
     ```
 
     When on, up to 3 chats per principal are saved.
     The `get_chats` method retrieves them for the principal of the caller.
 
     ```
-    dfx canister call llama_cpp get_chats
+    icp canister call llama_cpp -e local get_chats
     ```
 
 # log_pause & log_resume
@@ -370,10 +514,10 @@ turn the logging off and back on with these commands:
 
 ```bash
 # turn off logging
-dfx canister call llama_cpp log_pause
+icp canister call llama_cpp -e local log_pause
 
 # turn on logging
-dfx canister call llama_cpp log_resume
+icp canister call llama_cpp -e local log_resume
 ```
 
 # Logging to a file
@@ -386,7 +530,7 @@ Afterwards, you can download the `main.log` file from the canister with:
 
 ```bash
 python -m scripts.download \
-  --network local \
+  -e local \
   --canister llama_cpp \
   --local-filename main.log main.log
 ```
@@ -394,13 +538,13 @@ python -m scripts.download \
 You can cleanup by deleting both the log & prompt.cache files in the canister:
 
 ```bash
-dfx canister call llama_cpp remove_prompt_cache '(record {
+icp canister call llama_cpp -e local remove_prompt_cache '(record {
   args = vec {
     "--prompt-cache"; "prompt.cache"
     }
 })'
 
-dfx canister call llama_cpp remove_log_file '(record {
+icp canister call llama_cpp -e local remove_log_file '(record {
   args = vec {
     "--log-file"; "main.log"
   }
@@ -411,16 +555,51 @@ dfx canister call llama_cpp remove_log_file '(record {
 
 You can run a smoketest on the deployed LLM:
 
-- Deploy Qwen2.5 model as described above
+- Deploy the Qwen3-0.6B model as described above
 
-- Run the smoketests for the Qwen2.5 LLM deployed to your local IC network:
+- Tell pytest which icp identity to run as. Since icpp-pro 6.0.0 this is
+  required: the tests never pick up the machine-wide active identity by
+  themselves, because any other process can change it mid-run. Most endpoints
+  are controller-only, so it must be **the identity you deployed the canister
+  with** — if you followed the steps above, that is your active identity:
+
+  ```bash
+  icp identity default    # prints the name to pass as --identity
+  ```
+
+  It must not be password protected: icpp-pro exports the key to sign the calls
+  locally, which a password-protected identity cannot do non-interactively.
+
+  Pass the name as `--identity <name>` (as below), or export
+  `ICPP_PRO_TEST_IDENTITY=<name>` once per shell.
+
+- Run the smoketests for the Qwen3-0.6B LLM deployed to your local IC network:
 
   ```
   # First test the canister functions, like 'health'
-  pytest -vv test/test_canister_functions.py
+  pytest -vv --network local --identity "$(icp identity default)" test/test_canister_functions.py
 
-  # Then run the inference tests
-  pytest -vv test/test_qwen2.py
+  # Then run the inference tests (multi-turn, non-thinking)
+  pytest -vv --network local --identity "$(icp identity default)" test/test_qwen3.py
+  ```
+
+  _(The previous default, Qwen2.5-0.5B, is still covered by `test/test_qwen2.py`.)_
+
+  `test/test_files.py` additionally needs a SECOND identity that is *not* a
+  controller, to verify that the filesystem endpoints deny an authenticated but
+  unauthorized caller. It defaults to `llama-cpp-other-user` and is overridden
+  with `$ICPP_PRO_TEST_IDENTITY_NON_CONTROLLER`:
+
+  ```bash
+  icp identity new llama-cpp-other-user --storage plaintext
+  ```
+
+- Or let the full QA do all of it for you — it creates the two identities
+  (`llama-cpp-testing` and `llama-cpp-other-user`), deploys as the first, and
+  runs every suite, without ever changing your active identity:
+
+  ```bash
+  make test-llm-wasm
   ```
 
 # Prompt Caching
@@ -433,14 +612,14 @@ Each caller of the llama_cpp_canister has it's own cache folder, and has the fol
 
 ```bash
 # Remove a prompt cache file from the caller's cache folder
-dfx canister call llama_cpp remove_prompt_cache '(record {
+icp canister call llama_cpp -e local remove_prompt_cache '(record {
   args = vec {
     "--prompt-cache"; "prompt.cache"
   }
 })'
 
 # Copy a prompt cache file within the caller's cache folder
-dfx canister call llama_cpp copy_prompt_cache '(record {
+icp canister call llama_cpp -e local copy_prompt_cache '(record {
   from = "prompt.cache";
   to = "prompt-save.cache"
 })'
@@ -450,7 +629,7 @@ dfx canister call llama_cpp copy_prompt_cache '(record {
 # Note: chunksize of 5 bytes is for demo only.
 #       -> use 200_000 or higher (2_000_000 max) in actual download
 #       -> experiment what chunksize results in fastest download
-dfx canister call llama_cpp download_prompt_cache_chunk '(record {
+icp canister call llama_cpp -e local download_prompt_cache_chunk '(record {
   promptcache = "prompt.cache";
   chunksize = 5 : nat64;
   offset = 0 : nat64;
@@ -470,7 +649,7 @@ dfx canister call llama_cpp download_prompt_cache_chunk '(record {
 
 # --
 # Then call it again to download the next chunk of bytes
-dfx canister call llama_cpp download_prompt_cache_chunk '(record {
+icp canister call llama_cpp -e local download_prompt_cache_chunk '(record {
   promptcache = "prompt.cache";
   chunksize = 5 : nat64;
   offset = 5 : nat64;
@@ -495,7 +674,7 @@ dfx canister call llama_cpp download_prompt_cache_chunk '(record {
 # Using a small chunksize goes faster !
 #
 python -m scripts.download \
-    --network local \
+    -e local \
     --canister llama_cpp \
     --filetype promptcache \
     --chunksize 2000000 \
@@ -506,7 +685,7 @@ python -m scripts.download \
 # Note: chunksize of 5 bytes is for demo only.
 #       -> use 200_000 or higher (2_000_000 max) in actual download
 #       -> experiment what chunksize results in fastest download
-dfx canister call llama_cpp upload_prompt_cache_chunk '(record {
+icp canister call llama_cpp -e local upload_prompt_cache_chunk '(record {
   promptcache = "prompt.cache";
   chunk = blob "\47\47\55\46\03";
   chunksize = 5 : nat64;
@@ -525,7 +704,7 @@ dfx canister call llama_cpp upload_prompt_cache_chunk '(record {
 
 # --
 # Then call it again to upload the next chunk of bytes
-dfx canister call llama_cpp upload_prompt_cache_chunk '(record {
+icp canister call llama_cpp -e local upload_prompt_cache_chunk '(record {
   promptcache = "prompt.cache";
   chunk = blob "\08\33\41\43\04";
   chunksize = 5 : nat64;
@@ -544,7 +723,7 @@ dfx canister call llama_cpp upload_prompt_cache_chunk '(record {
 
 # --
 # You can check the filesize & sha256 of the uploaded prompt cache file in the canister
-dfx canister call llama_cpp uploaded_prompt_cache_details '(record {
+icp canister call llama_cpp -e local uploaded_prompt_cache_details '(record {
   promptcache = "prompt.cache";
 })'
 # -> this will return
@@ -561,7 +740,7 @@ dfx canister call llama_cpp uploaded_prompt_cache_details '(record {
 # --
 # You can wrap the upload call in a loop, as in scripts/upload.py
 python -m scripts.upload \
-    --network local \
+    -e local \
     --canister llama_cpp \
     --canister-filename prompt.cache \
     --filetype promptcache \
@@ -583,15 +762,15 @@ You can open up the inference endpoints using the following command:
 #
 # 0 = only controllers
 # 1 = all except anonymous
-dfx canister call llama_cpp set_access '(record {
+icp canister call llama_cpp -e local set_access '(record {
   level = 1 : nat16
 })'
 
 # Verify it worked
-dfx canister call llama_cpp get_access
+icp canister call llama_cpp -e local get_access
 
 # A caller can check it's access rights with
-dfx canister call llama_cpp check_access
+icp canister call llama_cpp -e local check_access
 ```
 
 # File Management
@@ -604,21 +783,183 @@ For example, you can explore what is stored in the `.canister_cache` folder:
 
 ```bash
 # Query call to list all files & directories in a folder
-dfx canister call llama_cpp recursive_dir_content_query '(record {dir = ".canister_cache"; max_entries = 0 : nat64})' --output json
+icp canister call llama_cpp -e local recursive_dir_content_query '(record {dir = ".canister_cache"; max_entries = 0 : nat64})' --output json
 # Update call in case you hit the instruction limit
-dfx canister call llama_cpp recursive_dir_content_update '(record {dir = ".canister_cache"; max_entries = 0 : nat64})' --output json
+icp canister call llama_cpp -e local recursive_dir_content_update '(record {dir = ".canister_cache"; max_entries = 0 : nat64})' --output json
 # Update call to get eg. the first 5000 entries, in case you still hit the instruction limit
-dfx canister call llama_cpp recursive_dir_content_update '(record {dir = ".canister_cache"; max_entries = 5000 : nat64})' --output json
+icp canister call llama_cpp -e local recursive_dir_content_update '(record {dir = ".canister_cache"; max_entries = 5000 : nat64})' --output json
 
 # Get the size of a file in bytes
-dfx canister call llama_cpp filesystem_file_size '(record {filename = "<filename>"})' --output json
+icp canister call llama_cpp -e local filesystem_file_size '(record {filename = "<filename>"})' --output json
 
 # Get the creation timestamp of a file in nanoseconds (also returns age of file in seconds)
-dfx canister call llama_cpp get_creation_timestamp_ns '(record {filename = "<filename>"})' --output json
+icp canister call llama_cpp -e local get_creation_timestamp_ns '(record {filename = "<filename>"})' --output json
 
 # remove a file or empty directory
-dfx canister call llama_cpp filesystem_remove '(record {filename = "<filename>"})'
+icp canister call llama_cpp -e local filesystem_remove '(record {filename = "<filename>"})'
 ```
+
+# Prompt-Cache Cleanup Timer
+
+The canister can self-maintain its prompt-cache directory on a recurring
+schedule, deleting files in `.canister_cache/<principal>/sessions/` whose
+`mtime` is older than a configurable Time to Live (TTL). Once you start the
+timer, the canister handles prompt-cache hygiene on its own.
+
+**Defaults:**
+- period: 600 seconds (10 minutes between cleanup ticks)
+- TTL: 21600 seconds (6 hours — older files are deleted)
+- per-tick cap: 256 files (caps work-per-tick to stay under the IC's
+  per-message instruction budget; the next tick continues)
+
+**Operator-driven lifecycle.** The timer is **not** auto-armed in
+`canister_init` or `canister_post_upgrade`. After every install / upgrade
+you must explicitly call `cache_cleanup_start_timer`. Timer state is
+in-memory only and does not survive an upgrade.
+
+All endpoints below require **admin role**:
+- `cache_cleanup_start_timer`, `cache_cleanup_stop_timer`,
+  `cache_cleanup_now`, `set_cache_cleanup_config` need `AdminUpdate` role
+  (controller or whitelisted via `assignAdminRole`).
+- `get_cache_cleanup_stats` needs `AdminQuery` role.
+
+```bash
+# ------------------------------------------------------------------
+# Arm the recurring timer (REQUIRED after every install / upgrade)
+icp canister call llama_cpp -e local cache_cleanup_start_timer '()'
+# -> (variant { Ok = record { ok = true; is_running = true } })
+
+# Stop the recurring timer
+icp canister call llama_cpp -e local cache_cleanup_stop_timer '()'
+# -> (variant { Ok = record { ok = true; is_running = false } })
+
+# Trigger one cleanup pass immediately (independent of the timer state)
+icp canister call llama_cpp -e local cache_cleanup_now '()'
+# -> (variant { Ok = record { runs = ...; files_examined = ...;
+#                             files_deleted = ...; files_failed = ...;
+#                             last_run_ns = ...; period_seconds = 600;
+#                             ttl_seconds = 21_600;
+#                             max_files_per_run = 256;
+#                             is_running = ... } })
+
+# Inspect stats (query, fast). `runs` and `last_run_ns` are lifetime
+# counters; `files_examined`, `files_deleted`, `files_failed` reflect the
+# MOST RECENT cleanup run only.
+icp canister call llama_cpp -e local get_cache_cleanup_stats '()'
+
+# Adjust config (each field is `opt nat64`; null = no change).
+#   - period_seconds: must be > 0; opt 0 is silently rejected.
+#   - ttl_seconds   : 0 is valid ("delete every file under sessions/").
+#   - max_files_per_run: clamped to [1, 10000].
+# If the timer is already running, the new period is applied transparently.
+icp canister call llama_cpp -e local set_cache_cleanup_config '(record {
+  period_seconds    = opt (300 : nat64);
+  ttl_seconds       = opt (3600 : nat64);
+  max_files_per_run = opt (128 : nat64)
+})'
+
+# Same call to update only the TTL, leaving period and cap unchanged
+icp canister call llama_cpp -e local set_cache_cleanup_config '(record {
+  period_seconds    = null;
+  ttl_seconds       = opt (3600 : nat64);
+  max_files_per_run = null
+})'
+```
+
+# Cycle Balance Monitoring
+
+The canister can track its own cycle balance on a recurring schedule. An
+hourly timer refreshes a cached snapshot of the balance (via the IC's
+`canister_cycle_balance128` system call), which admins read cheaply through
+the `get_cycle_balance` query — no need for a live system call on every check.
+
+**Defaults:**
+- period: 3600 seconds (refreshed once per hour)
+
+**Operator-driven lifecycle.** The timer is **not** auto-armed in
+`canister_init` or `canister_post_upgrade`. After every install / upgrade you
+must explicitly call `cycle_balance_start_timer`. Timer state and the cached
+balance are in-memory only and do not survive an upgrade. While tracking is
+off, `get_cycle_balance` returns a clear error instead of a stale value.
+
+All endpoints below require **admin role**:
+- `cycle_balance_start_timer`, `cycle_balance_stop_timer` need `AdminUpdate`
+  role (controller or whitelisted via `assignAdminRole`).
+- `get_cycle_balance` needs `AdminQuery` role.
+
+```bash
+# ------------------------------------------------------------------
+# Turn ON cycle-balance tracking (REQUIRED after every install / upgrade).
+# Refreshes the balance once immediately, then re-reads it hourly.
+icp canister call llama_cpp -e local cycle_balance_start_timer '()'
+# -> (variant { Ok = record { status_code = 200 : nat16 } })
+
+# Read the cached balance (admin query, fast). updated_at_ns is the
+# IC_API::time() at which the snapshot was taken.
+icp canister call llama_cpp -e local get_cycle_balance '()'
+# -> (variant { Ok = record { cycle_balance = ... : nat; updated_at_ns = ... : nat64 } })
+
+# If tracking is OFF, the query returns a clear error instead of a stale value:
+# -> (variant { Err = variant { Other = "cycle balance tracking is off — an admin must call cycle_balance_start_timer" } })
+
+# Turn OFF cycle-balance tracking
+icp canister call llama_cpp -e local cycle_balance_stop_timer '()'
+# -> (variant { Ok = record { status_code = 200 : nat16 } })
+```
+
+# Memory Status
+
+Larger models (e.g. Qwen3-0.6B) run close to the canister's wasm memory limit.
+The `get_memory_status` query lets you watch usage — the `wasm_heap_bytes` value is
+the number that climbs toward the `wasm_memory_limit` and, when it reaches it,
+causes `heap out of bounds` (IC0502) traps during `load_model` / generation.
+
+Access: **non-anonymous** callers only (anonymous callers get an access-denied error).
+
+```bash
+icp canister call llama_cpp -e local get_memory_status
+# ->
+(
+  variant {
+    Ok = record {
+      wasm_heap_bytes = 1_758_068_736 : nat64;   # linear-memory high-water-mark (~1.76 GiB at ctx 16384)
+      stable_bytes = 1_132_527_616 : nat64;      # model file + virtual filesystem
+    }
+  },
+)
+```
+
+The `wasm_memory_limit` itself is set with `icp canister settings update llama_cpp
+--wasm-memory-limit 4026531840` (see the setup steps) — it cannot go in `icp.yaml`'s
+`initialization_values` when the canister is created through a cycles wallet. Check it
+with `icp canister status llama_cpp`. If `wasm_heap_bytes` approaches the limit, lower
+`--batch-size`/`--ubatch-size` (biggest win), reduce `--ctx-size`, and/or quantize the KV
+cache (`--cache-type-k`/`-v q8_0`) when loading — see [Context size & memory](#appendix-b-context-size--memory).
+
+# Wasm Verification
+
+Every release is built by the reproducible Docker build in [`docker/`](docker/), so anyone
+can rebuild a release from source and confirm a deployed canister is running exactly that
+wasm. Each GitHub release shows the commit it was built from and the sha256 it produced.
+
+Rebuild a release and compare it against a live canister in one step:
+
+```bash
+git checkout <the commit shown on the release page>
+make docker-build-base
+make docker-verify-wasm VERIFY_CANISTER=<canister-id>
+```
+
+Or just read the deployed module hash. This needs no special rights, because
+`dfx canister info` reads the public read-state path:
+
+```bash
+dfx canister --network ic info <canister-id>   # prints "Module hash: 0x..."
+```
+
+Note that `make docker-verify-wasm` uses `icp canister status`, which is a
+controller-only management call and fails with `IC0542` for anyone else. Use the
+`dfx canister info` form above when you do not control the canister.
 
 # Appendix A: max_tokens
 
@@ -629,26 +970,100 @@ The instruction limit is 40 billion instructions per update call
 
 We tested several LLM models available on HuggingFace:
 
-| Model                                                                                                                    | # weights | file size | quantization   | --cache-type-k | max*tokens<br> *(ingestion)\_ | max*tokens<br> *(generation)\_ |
-| ------------------------------------------------------------------------------------------------------------------------ | --------- | --------- | -------------- | -------------- | ----------------------------- | ------------------------------ |
-| [SmolLM2-135M-Instruct-Q8_0.gguf](https://huggingface.co/tensorblock/SmolLM2-135M-Instruct-GGUF)                         | 135 M     | 0.15 GB   | q8_0           | f16            | -                             | 40                             |
-| [qwen2.5-0.5b-instruct-q4_k_m.gguf](https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF)                              | 630 M     | 0.49 GB   | q4_k_m         | f16            | -                             | 14                             |
-| [qwen2.5-0.5b-instruct-q8_0.gguf](https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF)                                | 630 M     | 0.68 GB   | q8_0           | q8_0           | -                             | 12                             |
-| [Llama-3.2-1B-Instruct-Q4_K_M.gguf](https://huggingface.co/unsloth/Llama-3.2-1B-Instruct-GGUF)                           | 1.24 B    | 0.81 GB   | q4_k_m         | q5_0           | 5                             | 4                              |
-| [qwen2.5-1.5b-instruct-q4_k_m.gguf](https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF)                              | 1.78 B    | 1.10 GB   | q4_k_m         | q8_0           | -                             | 3                              |
-| [DeepSeek-R1-Distill-Qwen-1.5B-NexaQuant.gguf](https://huggingface.co/NexaAIDev/DeepSeek-R1-Distill-Qwen-1.5B-NexaQuant) | 1.78 B    | 1.34 GB   | NexaQuant-4Bit | f16            | 4                             | 3                              |
-| [DeepSeek-R1-Distill-Qwen-1.5B-Q6_K.gguf](https://huggingface.co/unsloth/DeepSeek-R1-Distill-Qwen-1.5B-GGUF)             | 1.78 B    | 1.46 GB   | q6_k           | q8_0           | 4                             | 3                              |
-| [DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf](https://huggingface.co/unsloth/DeepSeek-R1-Distill-Qwen-1.5B-GGUF)           | 1.78 B    | 1.12 GB   | q4_k_m         | q8_0           | 4                             | 3                              |
-| [DeepSeek-R1-Distill-Qwen-1.5B-Q2_K.gguf](https://huggingface.co/unsloth/DeepSeek-R1-Distill-Qwen-1.5B-GGUF)             | 1.78 B    | 0.75 GB   | q2_k           | q8_0           | 2                             | 2                              |
+| Model                                                                                           | # weights | file size | quantization | --cache-type-k | max*tokens<br> *(ingestion)\_ | max*tokens<br> *(generation)\_ |
+| ----------------------------------------------------------------------------------------------- | --------- | --------- | ------------ | -------------- | ----------------------------- | ------------------------------ |
+| [gemma-3-270m-it-Q8_0.gguf](https://huggingface.co/unsloth/gemma-3-270m-it-GGUF) (tiniest)      | 270 M     | 0.29 GB   | q8_0         | q8_0           | -                             | 44                             |
+| [Qwen3-0.6B-Q8_0.gguf](https://huggingface.co/Qwen/Qwen3-0.6B-GGUF) (default)                   | 600 M     | 0.64 GB   | q8_0         | q8_0           | -                             | 25                             |
+| [qwen2.5-0.5b-instruct-q8_0.gguf](https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF)       | 630 M     | 0.68 GB   | q8_0         | q8_0           | -                             | 25                             |
+| [LFM2.5-1.2B-Instruct-Q4_K_M.gguf](https://huggingface.co/LiquidAI/LFM2.5-1.2B-Instruct-GGUF) ‡ | 1.2 B     | 0.73 GB   | Q4_K_M       | q8_0           | 11                            | 9                              |
+| [Qwen3-1.7B-Q4_K_M.gguf](https://huggingface.co/unsloth/Qwen3-1.7B-GGUF) ‡                      | 1.7 B     | 1.11 GB   | Q4_K_M       | q8_0           | 8                             | 6                              |
+| [LFM2.5-2.6B-Q4_K_M.gguf](https://huggingface.co/LiquidAI/LFM2.5-2.6B-GGUF) ‡                   | 2.7 B     | 1.67 GB   | Q4_K_M       | q8_0           | 4                             | 4                              |
+
+‡ The three bottom rows are the **larger models**, and their numbers were measured
+with **`--ctx-size 4096 --batch-size 8 --ubatch-size 8`** — not the `--batch-size 64
+--ctx-size 16384` used for the rows above, so they are not directly comparable.
+
+**A larger `--ctx-size` costs you tokens per call.** Qwen3-1.7B drops from 6
+tokens/call at `-c 4096` to 5 at `-c 16384`. The reason: every update call gets
+the same 40 B instruction budget, and part of it is spent *before* the first
+token is produced, on housekeeping the KV cache.
+
+`--ctx-size` is chosen **once, at `load_model`**, and the KV cache is allocated
+in full right then — for the entire context you asked for. Every call afterwards
+pays the same housekeeping cost over that whole allocation, whether the
+conversation is 20 tokens or 4000 tokens long. So it is a **flat tax on every
+call, fixed by the number you picked at load time** — it does not creep up as a
+conversation grows.
+
+Measured on mainnet for Qwen3-1.7B, on two separately loaded models:
+
+| `--ctx-size` | spent before the first token | per generated token | tokens/call |
+| ------------ | ---------------------------- | ------------------- | ----------- |
+| 4096         | 1.4 B instructions           | 6.4 B instructions  | 6           |
+| 24576        | 7.0 B instructions           | 6.4 B instructions  | 5           |
+
+So pick the smallest `--ctx-size` your conversations actually need: the unused
+part of the context is not free.
+
+_(We have benchmarked other models too — SmolLM2, Llama-3.2, DeepSeek-R1 1.5B, and other Qwen2.5 quants — but their pre-b10076 numbers must be re-measured before we list them here.)_
 
 NOTEs:
 
+- To experiment with prompt design and determine their exact costs, use [ICGPT](https://icgpt.onicai.com/docs)
+- **`gemma-3-270m-it-Q8_0` is the smallest model we tested** — the b10076 fork loads the `gemma3` architecture. With a **q8_0 KV cache** the measured **generation ceiling is ~55 tokens/call** (55 OK / 60 traps at short context, on a local replica whose instruction limit is the same 40 B as mainnet; ~50 with the default f16 cache), so `max_tokens_update = 44` is a safe value. Use `--temp 0.7` — greedy decoding can end a turn immediately. Its heap peaks at only ~0.9 GiB after load, so the **default `wasm_memory_limit` is enough** (no 3.75 GiB bump). See [README-gemma-3.md](README-gemma-3.md) for the full recipe.
+- **`qwen2.5-0.5b-instruct-q8_0 is an older model**: 25 tokens/call sustained, 28 first-call ceiling. This is the current model in [funnAI](https://funnai.onicai.com).
+- **`Qwen3-0.6B-Q8_0`**: ~25 tokens/call generation, first-call ceiling ~25-29. It needs `--cache-type-k q8_0 --cache-type-v q8_0 --batch-size 64 --ubatch-size 64 --ctx-size 16384` and a `wasm_memory_limit` of 3.75 GiB; the small batch shrinks the compute buffers so a 16K context fits with ~2 GiB headroom — see [Context size & memory](#appendix-b-context-size--memory) for the mechanism, levers, and risks.
+- **`LFM2.5-1.2B-Instruct-Q4_K_M` is the fastest model that still passes our word-guessing quality gate** — Liquid AI's hybrid architecture (only 6 of 16 blocks are attention; the other 10 are short convolutions). Measured on mainnet at `-c 4096`: **9 tokens/call generation, 11 ingestion**, and **12.4 B cycles per `run_update` versus Qwen3-1.7B's 26.8 B — 2.16x cheaper per call** at 34 % less disk. Note it needs one word ("small") removed from the word-game example prompt, or it copies it into its hints. See [README-LFM2.5-1.2B.md](README-LFM2.5-1.2B.md).
+- **`Qwen3-1.7B-Q4_K_M` is the largest model we tested on-chain so far.** Use Q4_K_M, not Q8_0: a single message can read at most ~2 GiB from stable memory and the Q8_0 gguf (~1.83 GB) trips `IC0524` on load. It needs `--batch-size 8 --ubatch-size 8` and a 3.75 GiB `wasm_memory_limit`, and `--ctx-size 16384` requires v0.16.4 or later. See [README-qwen3-1.7B.md](README-qwen3-1.7B.md).
 - During prompt ingestion phase, the max_tokens before hitting the instruction limit is higher as during the generation phase.
 - We use `"--temp"; "0.6"; "--repeat-penalty"; "1.1";`, as recommended on several model cards
 - For each model, we selected a `--cache-type-k` that gives the highest max_tokens while still providing good results.
-- The python notebook [scripts/promt-design.ipynb](./scripts/prompt-design.ipynb) allows you to try out these models w/o using an IC canister, to decide what model will work best for your on-chain AI agent
 
-# Appendix B: heap-out-of-bounds
+# Appendix B: Context size & memory
+
+Qwen3-0.6B runs in a **wasm32 linear heap capped by `wasm_memory_limit`** (we set 3.75
+GiB — wasm32 cannot address a full 4 GiB). Weights, KV cache, and compute buffers all live
+in that heap, so context length is ultimately a memory-budget question. Here is the
+mechanism, the levers, and the risks.
+
+### Where the heap goes
+
+- **Weights (~0.64 GiB)** — the q8_0 model, read into the heap at `load_model`.
+- **KV cache (scales with context)** — preallocated for the *entire* `--ctx-size` at
+  `load_model`, committed whether or not the conversation ever fills it. With dual-q8_0
+  caching this is ~50 KB per context token for Qwen3-0.6B (8 KV heads × 28 layers).
+- **Compute buffers (scale with batch)** — allocated for the forward pass. Two matter:
+  the **output/logits buffer ≈ `batch × vocab`** (at the default `--batch-size 2048` and
+  Qwen3's ~152K vocab that alone is **~1.2 GiB**) and the **attention buffer ≈
+  `ubatch × ctx`**. With a small batch these become negligible and stop dominating.
+
+### The levers
+
+| Lever | Effect | Cost on the IC |
+| --- | --- | --- |
+| `--batch-size` / `--ubatch-size` | Shrinks the compute buffers. 2048/512 → **64/64** frees ~2 GiB. | ≈none — a canister serves one request at a time and prefill is already instruction-limited, so large batches buy nothing here. |
+| `--cache-type-k` / `--cache-type-v` `q8_0` | Halves the KV cache vs f16. | Negligible quality impact. |
+| `--ctx-size` | Sets conversation length **and** the preallocated KV cache. | Longer context = more KV heap. |
+| `wasm_memory_limit` | The ceiling itself (≤ 3.75 GiB on wasm32). | Set via `update-settings`. |
+
+With `--batch-size 64 --ubatch-size 64` the compute buffers stop scaling with context, so
+the **KV cache is the only thing that grows with `--ctx-size`**. Measured with full prefill
++ multi-turn generation (16384 on mainnet; larger sizes from the local batch-64 sweep):
+
+| `--ctx-size` | ≈ words | wasm heap (peak) | headroom to 3.75 GiB |
+| ------------ | ------- | ---------------- | -------------------- |
+| 1024 (old default) | ~750 | ~1.0 GiB | ~2.7 GiB |
+| **16384** *(default)* | **~12K** | **1.76 GiB** | **~2.0 GiB** |
+| 32768 | ~24K | ~2.6 GiB | ~1.1 GiB |
+| 40960 (native max) | ~30K | ~3.0 GiB | ~0.7 GiB |
+
+Our default is **`--ctx-size 16384` with `--batch-size 64 --ubatch-size 64`**: ~12,000 words of
+conversation (16× the old ctx-1024 default) with a comfortable ~2 GiB safety margin,
+verified end-to-end on mainnet. You can push `--ctx-size` toward the native 40960 (~30K
+words) if you accept a tighter margin.
+
+
+# Appendix C: heap-out-of-bounds
 
 If you encounter a `heap out of bounds` error during `load_model`, this is likely a stack overflow in disguise. The WebAssembly runtime cannot distinguish between stack and heap memory violations.
 
@@ -665,3 +1080,12 @@ For larger models, increase further (e.g., 16MB: `16777216`, 32MB: `33554432`).
 Then rebuild with `icpp build-wasm`.
 
 **Reference:** [DFINITY Forum discussion](https://forum.dfinity.org/t/heap-out-of-bounds-error-code-some-ic0502-on-c-code-run/25289)
+
+# Acknowledgments
+
+The b10076 upgrade — recovering ~2.8x generation throughput for Q8_0 models — was motivated and informed by the work of **Julien Aerni** (Meotis Sàrl), **Siméon Fluck** (Kaizen Corp SA), and **Dustin Becker** (ORIGYN Foundation):
+
+- Their [forum analysis](https://forum.dfinity.org/t/on-chain-llm-inference-under-instruction-budgets-measured-live-on-icp-mainnet/74709) diagnosed that the previous build ran the `ggml_vec_dot_q8_0_q8_0` matmul kernel without a hand-written WASM SIMD path — the deficiency this upgrade fixes.
+- We adapted their **WASI shim strategy** (no-op `<thread>`/`<mutex>`/`<future>`/`<condition_variable>` plus exception/dl stubs) for building recent llama.cpp on ICP, replacing the earlier per-file patching approach.
+
+Their preprint: _On-Chain LLM Inference Under Instruction Budgets: An Instruction-Budget Cost Model, Ternary Floor Evidence, and Session Costs_ (2026), DOI [10.5281/zenodo.20607598](https://doi.org/10.5281/zenodo.20607598). The companion artifact is MIT-licensed.

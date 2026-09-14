@@ -18,7 +18,16 @@ type RunOutputRecord = record {
   conversation : text;
   error : text;
   prompt_remaining : text;
-  generated_eog : bool
+  generated_eog : bool;
+  // Exact token accounting, populated only on a run_update / run_query success
+  // record; `opt` so other OutputRecordResult producers (errors, new_chat,
+  // load_model, ...) may omit them (they decode as null). See the "Exact
+  // token accounting" note in the README run_update section.
+  n_prompt_tokens : opt nat64;
+  n_prompt_tokens_cached : opt nat64;
+  n_prompt_tokens_decoded : opt nat64;
+  n_tokens_generated : opt nat64;
+  n_prompt_tokens_remaining : opt nat64
 };
 type OutputRecordResult = variant {
   Ok : RunOutputRecord;
@@ -94,7 +103,7 @@ type GetChatsRecordResult = variant {
 };
 type GetChatsRecord = record {
   chats : vec record {
-    timestamp_ns : text;
+    timestamp : text;
     chat : text
   }
 };
@@ -243,6 +252,75 @@ type FileEntry = record {
 };
 
 // -----------------------------------------------------
+// Recurring prompt-cache cleanup timer
+type CacheCleanupResult = variant {
+  Err : ApiError;
+  Ok : CacheCleanupActionRecord
+};
+type CacheCleanupActionRecord = record {
+  ok : bool;
+  is_running : bool
+};
+
+type CacheCleanupStatsResult = variant {
+  Err : ApiError;
+  Ok : CacheCleanupStatsRecord
+};
+type CacheCleanupStatsRecord = record {
+  runs : nat64;
+  files_examined : nat64;
+  files_deleted : nat64;
+  files_failed : nat64;
+  last_run_ns : nat64;       // host-clock timestamp via IC_API::time(); reporting only
+  period_seconds : nat64;
+  ttl_seconds : nat64;
+  max_files_per_run : nat64;
+  is_running : bool
+};
+
+type CacheCleanupConfigInput = record {
+  // Each opt: null = no change.
+  // period_seconds : opt 0 silently rejected (preserves prior).
+  // ttl_seconds    : opt 0 valid ("delete everything older than 0 ns").
+  // max_files_per_run : opt 0 clamped to floor (1).
+  period_seconds : opt nat64;
+  ttl_seconds : opt nat64;
+  max_files_per_run : opt nat64
+};
+type CacheCleanupConfigResult = variant {
+  Err : ApiError;
+  Ok : CacheCleanupConfigRecord
+};
+type CacheCleanupConfigRecord = record {
+  period_seconds : nat64;
+  ttl_seconds : nat64;
+  max_files_per_run : nat64;
+  is_running : bool
+};
+
+// -----------------------------------------------------
+// Recurring cycle-balance monitor
+type CycleBalanceRecord = record {
+  cycle_balance : nat;       // cached canister cycle balance (128-bit)
+  updated_at_ns : nat64      // IC_API::time() when the snapshot was taken
+};
+type CycleBalanceRecordResult = variant {
+  Err : ApiError;            // includes "tracking is off" when timer not armed
+  Ok : CycleBalanceRecord
+};
+
+// -----------------------------------------------------
+// Memory-status report (non-anonymous callers)
+type MemoryStatusRecord = record {
+  wasm_heap_bytes : nat64;   // wasm linear-memory high-water-mark (approaches wasm_memory_limit)
+  stable_bytes : nat64       // stable memory: uploaded model file + virtual filesystem
+};
+type MemoryStatusRecordResult = variant {
+  Err : ApiError;            // includes access-denied for anonymous callers
+  Ok : MemoryStatusRecord
+};
+
+// -----------------------------------------------------
 // The endpoint services of our canister
 service : {
   // canister
@@ -277,6 +355,21 @@ service : {
   get_creation_timestamp_ns : (FilesystemTimestampInputRecord) -> (FilesystemTimestampRecordResult) query;
   recursive_dir_content_query : (DirContentInputRecord) -> (DirContentRecordResult) query;
   recursive_dir_content_update : (DirContentInputRecord) -> (DirContentRecordResult);
+
+  // Recurring prompt-cache cleanup timer (admin-only)
+  cache_cleanup_start_timer : () -> (CacheCleanupResult);
+  cache_cleanup_stop_timer : () -> (CacheCleanupResult);
+  cache_cleanup_now : () -> (CacheCleanupStatsResult);
+  get_cache_cleanup_stats : () -> (CacheCleanupStatsResult) query;
+  set_cache_cleanup_config : (CacheCleanupConfigInput) -> (CacheCleanupConfigResult);
+
+  // Recurring cycle-balance monitor (admin-only)
+  cycle_balance_start_timer : () -> (StatusCodeRecordResult);
+  cycle_balance_stop_timer : () -> (StatusCodeRecordResult);
+  get_cycle_balance : () -> (CycleBalanceRecordResult) query;
+
+  // Memory-status report (non-anonymous callers)
+  get_memory_status : () -> (MemoryStatusRecordResult) query;
 
   // Logging endpoints
   remove_log_file : (InputRecord) -> (OutputRecordResult);

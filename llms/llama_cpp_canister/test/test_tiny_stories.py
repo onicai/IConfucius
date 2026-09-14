@@ -2,15 +2,15 @@
 
 First deploy the canister:
 $ icpp build-wasm
-$ dfx deploy --network local
+$ icp deploy -e local -y
 
 Then upload the model:
 $ python -m scripts.upload --network local --canister llama_cpp --canister-filename models/tiny.gguf --filetype gguf models/stories260Ktok512.gguf
 
 Then run the tests for this model::
-$ pytest -vv --network local test/test_tiny_stories.py
+$ pytest -vv --network local --identity "$(icp identity default)" test/test_tiny_stories.py
 
-To run it against a deployment to the IC, just replace `local` with `ic` in the commands above.
+To run it against a deployment to the IC, just replace `local` with `production` in the commands above.
 
 """
 # pylint: disable=missing-function-docstring, unused-import, wildcard-import, unused-wildcard-import, line-too-long
@@ -18,13 +18,18 @@ To run it against a deployment to the IC, just replace `local` with `ic` in the 
 from pathlib import Path
 from typing import Dict
 import pytest
-from icpp.smoketest import call_canister_api, dict_to_candid_text
+from .candid_compat import (
+    call_canister_api,
+    dict_to_candid_text,
+    norm,
+    strip_token_accounting,
+)
 import inspect
 
-# Path to the dfx.json file
-DFX_JSON_PATH = Path(__file__).parent / "../dfx.json"
+# Path to the icp.yaml file
+ICP_YAML_PATH = Path(__file__).parent / "../icp.yaml"
 
-# Canister in the dfx.json file we want to test
+# Canister in the icp.yaml file we want to test
 CANISTER_NAME = "llama_cpp"
 
 # Helper function to get the current function name
@@ -40,7 +45,7 @@ PRINT_RESPONSE = True
 
 def test__chats_resume(network: str) -> None:
     response = call_canister_api(
-        dfx_json_path=DFX_JSON_PATH,
+        icp_yaml_path=ICP_YAML_PATH,
         canister_name=CANISTER_NAME,
         canister_method="chats_resume",
         canister_argument='()',
@@ -49,11 +54,11 @@ def test__chats_resume(network: str) -> None:
     if PRINT_RESPONSE:
         print(f"{current_func_name()}: response: {response}")
     expected_response = '(variant { Ok = record { status_code = 200 : nat16;} })'
-    assert response == expected_response
+    assert response == norm(expected_response)
 
 def test__log_pause(network: str) -> None:
     response = call_canister_api(
-        dfx_json_path=DFX_JSON_PATH,
+        icp_yaml_path=ICP_YAML_PATH,
         canister_name=CANISTER_NAME,
         canister_method="log_pause",
         canister_argument='()',
@@ -62,11 +67,11 @@ def test__log_pause(network: str) -> None:
     if PRINT_RESPONSE:
         print(f"{current_func_name()}: response: {response}")
     expected_response = '(variant { Ok = record { status_code = 200 : nat16;} })'
-    assert response == expected_response
+    assert response == norm(expected_response)
 
 def test__load_model(network: str) -> None:
     response = call_canister_api(
-        dfx_json_path=DFX_JSON_PATH,
+        icp_yaml_path=ICP_YAML_PATH,
         canister_name=CANISTER_NAME,
         canister_method="load_model",
         canister_argument='(record { args = vec {"--model"; "models/tiny.gguf";} })',
@@ -78,7 +83,7 @@ def test__load_model(network: str) -> None:
 
 def test__uploaded_file_details(network: str) -> None:
     response = call_canister_api(
-        dfx_json_path=DFX_JSON_PATH,
+        icp_yaml_path=ICP_YAML_PATH,
         canister_name=CANISTER_NAME,
         canister_method="uploaded_file_details",
         canister_argument='(record { filename = "models/tiny.gguf" })',
@@ -87,11 +92,11 @@ def test__uploaded_file_details(network: str) -> None:
     if PRINT_RESPONSE:
         print(f"{current_func_name()}: response: {response}")
     expected_response = '(variant { Ok = record { filename = "models/tiny.gguf"; filesize = 1_185_376 : nat64; filesha256 = "047bf46455a544931cff6fef14d7910154c56afbc23ab1c5e56a72e69912c04b";} })'
-    assert response == expected_response
+    assert response == norm(expected_response)
 
 def test__set_max_tokens(network: str) -> None:
     response = call_canister_api(
-        dfx_json_path=DFX_JSON_PATH,
+        icp_yaml_path=ICP_YAML_PATH,
         canister_name=CANISTER_NAME,
         canister_method="set_max_tokens",
         canister_argument='(record { max_tokens_query = 5 : nat64; max_tokens_update = 5 : nat64 })',
@@ -103,7 +108,7 @@ def test__set_max_tokens(network: str) -> None:
 
 def test__get_max_tokens(network: str) -> None:
     response = call_canister_api(
-        dfx_json_path=DFX_JSON_PATH,
+        icp_yaml_path=ICP_YAML_PATH,
         canister_name=CANISTER_NAME,
         canister_method="get_max_tokens",
         canister_argument='()',
@@ -112,11 +117,11 @@ def test__get_max_tokens(network: str) -> None:
     if PRINT_RESPONSE:
         print(f"{current_func_name()}: response: {response}")
     expected_response = '(record { max_tokens_query = 5 : nat64; max_tokens_update = 5 : nat64;})'
-    assert response == expected_response
+    assert response == norm(expected_response)
 
 def test__ready(network: str) -> None:
     response = call_canister_api(
-        dfx_json_path=DFX_JSON_PATH,
+        icp_yaml_path=ICP_YAML_PATH,
         canister_name=CANISTER_NAME,
         canister_method="ready",
         canister_argument="()",
@@ -125,11 +130,11 @@ def test__ready(network: str) -> None:
     if PRINT_RESPONSE:
         print(f"{current_func_name()}: response: {response}")
     expected_response = '(variant { Ok = record { status_code = 200 : nat16;} })'
-    assert response == expected_response
+    assert response == norm(expected_response)
 
 def test__remove_prompt_cache_1(network: str) -> None:
     response = call_canister_api(
-        dfx_json_path=DFX_JSON_PATH,
+        icp_yaml_path=ICP_YAML_PATH,
         canister_name=CANISTER_NAME,
         canister_method="remove_prompt_cache",
         canister_argument='(record { args = vec {"--prompt-cache"; "prompt.cache"} })',
@@ -145,7 +150,7 @@ def test__new_chat_err(identity_anonymous: Dict[str, str], network: str) -> None
     assert identity_anonymous["principal"] == "2vxsx-fae"
 
     response = call_canister_api(
-        dfx_json_path=DFX_JSON_PATH,
+        icp_yaml_path=ICP_YAML_PATH,
         canister_name=CANISTER_NAME,
         canister_method="new_chat",
         canister_argument='(record { args = vec {"--prompt-cache"; "prompt.cache"} })',
@@ -157,7 +162,7 @@ def test__new_chat_err(identity_anonymous: Dict[str, str], network: str) -> None
 
 def test__new_chat_1(network: str) -> None:
     response = call_canister_api(
-        dfx_json_path=DFX_JSON_PATH,
+        icp_yaml_path=ICP_YAML_PATH,
         canister_name=CANISTER_NAME,
         canister_method="new_chat",
         canister_argument='(record { args = vec {"--prompt-cache"; "prompt.cache"} })',
@@ -173,7 +178,7 @@ def test__run_update_err(identity_anonymous: Dict[str, str], network: str) -> No
     assert identity_anonymous["principal"] == "2vxsx-fae"
 
     response = call_canister_api(
-        dfx_json_path=DFX_JSON_PATH,
+        icp_yaml_path=ICP_YAML_PATH,
         canister_name=CANISTER_NAME,
         canister_method="run_update",
         canister_argument='(record { args = vec {"--prompt-cache"; "prompt.cache"; "--prompt-cache-all"; "--samplers"; "temperature"; "--temp"; "0.0"; "-n"; "3"; "-p"; "Joe loves writing stories"} })',
@@ -185,7 +190,7 @@ def test__run_update_err(identity_anonymous: Dict[str, str], network: str) -> No
 
 def test__run_update_1(network: str) -> None:
     response = call_canister_api(
-        dfx_json_path=DFX_JSON_PATH,
+        icp_yaml_path=ICP_YAML_PATH,
         canister_name=CANISTER_NAME,
         canister_method="run_update",
         canister_argument='(record { args = vec {"--prompt-cache"; "prompt.cache"; "--prompt-cache-all"; "--samplers"; "temperature"; "--temp"; "0.0"; "-n"; "3"; "-p"; "Joe loves writing stories"} })',
@@ -194,11 +199,11 @@ def test__run_update_1(network: str) -> None:
     if PRINT_RESPONSE:
         print(f"{current_func_name()}: response: {response}")
     expected_response = '(variant { Ok = record { output = ""; conversation = " Joe"; error = ""; status_code = 200 : nat16; prompt_remaining = " loves writing stories"; generated_eog = false;} })'
-    assert response == expected_response
+    assert strip_token_accounting(response) == norm(expected_response)
 
 def test__copy_prompt_cache_save(network: str) -> None:
     response = call_canister_api(
-        dfx_json_path=DFX_JSON_PATH,
+        icp_yaml_path=ICP_YAML_PATH,
         canister_name=CANISTER_NAME,
         canister_method="copy_prompt_cache",
         canister_argument='(record { from = "prompt.cache"; to = "prompt-save.cache"} )',
@@ -210,7 +215,7 @@ def test__copy_prompt_cache_save(network: str) -> None:
 
 def test__run_update_2(network: str) -> None:
     response = call_canister_api(
-        dfx_json_path=DFX_JSON_PATH,
+        icp_yaml_path=ICP_YAML_PATH,
         canister_name=CANISTER_NAME,
         canister_method="run_update",
         canister_argument='(record { args = vec {"--prompt-cache"; "prompt.cache"; "--prompt-cache-all"; "--samplers"; "temperature"; "--temp"; "0.0"; "-n"; "3"; "-p"; "Joe loves writing stories"} })',
@@ -219,11 +224,11 @@ def test__run_update_2(network: str) -> None:
     if PRINT_RESPONSE:
         print(f"{current_func_name()}: response: {response}")
     expected_response = '(variant { Ok = record { output = ""; conversation = " Joe loves wr"; error = ""; status_code = 200 : nat16; prompt_remaining = "iting stories"; generated_eog = false;} })'
-    assert response == expected_response
+    assert strip_token_accounting(response) == norm(expected_response)
 
 def test__run_update_3(network: str) -> None:
     response = call_canister_api(
-        dfx_json_path=DFX_JSON_PATH,
+        icp_yaml_path=ICP_YAML_PATH,
         canister_name=CANISTER_NAME,
         canister_method="run_update",
         canister_argument='(record { args = vec {"--prompt-cache"; "prompt.cache"; "--prompt-cache-all"; "--samplers"; "temperature"; "--temp"; "0.0"; "-n"; "3"; "-p"; "Joe loves writing stories"} })',
@@ -232,11 +237,11 @@ def test__run_update_3(network: str) -> None:
     if PRINT_RESPONSE:
         print(f"{current_func_name()}: response: {response}")
     expected_response = '(variant { Ok = record { output = ""; conversation = " Joe loves writing stori"; error = ""; status_code = 200 : nat16; prompt_remaining = "es"; generated_eog = false;} })'
-    assert response == expected_response
+    assert strip_token_accounting(response) == norm(expected_response)
 
 def test__run_update_4(network: str) -> None:
     response = call_canister_api(
-        dfx_json_path=DFX_JSON_PATH,
+        icp_yaml_path=ICP_YAML_PATH,
         canister_name=CANISTER_NAME,
         canister_method="run_update",
         canister_argument='(record { args = vec {"--prompt-cache"; "prompt.cache"; "--prompt-cache-all"; "--samplers"; "temperature"; "--temp"; "0.0"; "-n"; "3"; "-p"; "Joe loves writing stories"} })',
@@ -245,11 +250,11 @@ def test__run_update_4(network: str) -> None:
     if PRINT_RESPONSE:
         print(f"{current_func_name()}: response: {response}")
     expected_response = '(variant { Ok = record { output = ". He li"; conversation = " Joe loves writing stories. He"; error = ""; status_code = 200 : nat16; prompt_remaining = ""; generated_eog = false;} })'
-    assert response == expected_response
+    assert strip_token_accounting(response) == norm(expected_response)
 
 def test__run_update_5(network: str) -> None:
     response = call_canister_api(
-        dfx_json_path=DFX_JSON_PATH,
+        icp_yaml_path=ICP_YAML_PATH,
         canister_name=CANISTER_NAME,
         canister_method="run_update",
         canister_argument='(record { args = vec {"--prompt-cache"; "prompt.cache"; "--prompt-cache-all"; "--samplers"; "temperature"; "--temp"; "0.0"; "-n"; "3"; "-p"; ""} })',
@@ -258,11 +263,11 @@ def test__run_update_5(network: str) -> None:
     if PRINT_RESPONSE:
         print(f"{current_func_name()}: response: {response}")
     expected_response = '(variant { Ok = record { output = " liked to"; conversation = " Joe loves writing stories. He liked"; error = ""; status_code = 200 : nat16; prompt_remaining = ""; generated_eog = false;} })'
-    assert response == expected_response
+    assert strip_token_accounting(response) == norm(expected_response)
 
 def test__get_chats_ok(network: str) -> None:
     response = call_canister_api(
-        dfx_json_path=DFX_JSON_PATH,
+        icp_yaml_path=ICP_YAML_PATH,
         canister_name=CANISTER_NAME,
         canister_method="get_chats",
         canister_argument='()',
@@ -272,9 +277,58 @@ def test__get_chats_ok(network: str) -> None:
         print(f"{current_func_name()}: response: {response}")
     assert 'Ok' in response
 
+
+def test__get_chats_decodes_saved_chat(network: str) -> None:
+    """Regression for issue #24: get_chats was undecodable by clients once a chat
+    existed, because llama_cpp.did declared the field as `timestamp_ns` while the
+    canister sends `timestamp`. Candid field names are hashed, so they never
+    matched and the candid decode failed with 'Failed to deserialize idl blob'.
+
+    This test saves a chat (chats_resume -> new_chat -> run_update) and then calls
+    get_chats. call_canister_api decodes the response with the deployed .did, so a
+    field-name mismatch makes this fail. It also asserts the field is named
+    `timestamp` (a YYYY-MM-DD_HH-MM-SS string, not nanoseconds), not `timestamp_ns`.
+    """
+    # Turn on chat saving and create one chat with content.
+    call_canister_api(
+        icp_yaml_path=ICP_YAML_PATH,
+        canister_name=CANISTER_NAME,
+        canister_method="chats_resume",
+        canister_argument='()',
+        network=network,
+    )
+    call_canister_api(
+        icp_yaml_path=ICP_YAML_PATH,
+        canister_name=CANISTER_NAME,
+        canister_method="new_chat",
+        canister_argument='(record { args = vec {"--prompt-cache"; "prompt.cache"} })',
+        network=network,
+    )
+    call_canister_api(
+        icp_yaml_path=ICP_YAML_PATH,
+        canister_name=CANISTER_NAME,
+        canister_method="run_update",
+        canister_argument='(record { args = vec {"--prompt-cache"; "prompt.cache"; "--prompt-cache-all"; "-p"; "Joe loves"; "-n"; "1"} })',
+        network=network,
+    )
+
+    response = call_canister_api(
+        icp_yaml_path=ICP_YAML_PATH,
+        canister_name=CANISTER_NAME,
+        canister_method="get_chats",
+        canister_argument='()',
+        network=network,
+    )
+    if PRINT_RESPONSE:
+        print(f"{current_func_name()}: response: {response}")
+    # Must decode (the client uses the .did) and carry the correctly-named field.
+    assert 'Ok' in response, response
+    assert 'timestamp =' in response, response
+    assert 'timestamp_ns' not in response, response
+
 def test__remove_prompt_cache_1(network: str) -> None:
     response = call_canister_api(
-        dfx_json_path=DFX_JSON_PATH,
+        icp_yaml_path=ICP_YAML_PATH,
         canister_name=CANISTER_NAME,
         canister_method="remove_prompt_cache",
         canister_argument='(record { args = vec {"--prompt-cache"; "prompt.cache"} })',
@@ -286,7 +340,7 @@ def test__remove_prompt_cache_1(network: str) -> None:
 
 def test__copy_prompt_cache_restore(network: str) -> None:
     response = call_canister_api(
-        dfx_json_path=DFX_JSON_PATH,
+        icp_yaml_path=ICP_YAML_PATH,
         canister_name=CANISTER_NAME,
         canister_method="copy_prompt_cache",
         canister_argument='(record { from = "prompt-save.cache"; to = "prompt.cache"} )',
@@ -298,7 +352,7 @@ def test__copy_prompt_cache_restore(network: str) -> None:
 
 def test__chats_pause(network: str) -> None:
     response = call_canister_api(
-        dfx_json_path=DFX_JSON_PATH,
+        icp_yaml_path=ICP_YAML_PATH,
         canister_name=CANISTER_NAME,
         canister_method="chats_pause",
         canister_argument='()',
@@ -307,11 +361,11 @@ def test__chats_pause(network: str) -> None:
     if PRINT_RESPONSE:
         print(f"{current_func_name()}: response: {response}")
     expected_response = '(variant { Ok = record { status_code = 200 : nat16;} })'
-    assert response == expected_response
+    assert response == norm(expected_response)
 
 def test__get_chats_err(network: str) -> None:
     response = call_canister_api(
-        dfx_json_path=DFX_JSON_PATH,
+        icp_yaml_path=ICP_YAML_PATH,
         canister_name=CANISTER_NAME,
         canister_method="get_chats",
         canister_argument='()',
@@ -323,7 +377,7 @@ def test__get_chats_err(network: str) -> None:
 
 def test__new_chat_2(network: str) -> None:
     response = call_canister_api(
-        dfx_json_path=DFX_JSON_PATH,
+        icp_yaml_path=ICP_YAML_PATH,
         canister_name=CANISTER_NAME,
         canister_method="new_chat",
         canister_argument='(record { args = vec {"--prompt-cache"; "prompt.cache"} })',
@@ -335,7 +389,7 @@ def test__new_chat_2(network: str) -> None:
 
 def test__run_update_2_2(network: str) -> None:
     response = call_canister_api(
-        dfx_json_path=DFX_JSON_PATH,
+        icp_yaml_path=ICP_YAML_PATH,
         canister_name=CANISTER_NAME,
         canister_method="run_update",
         canister_argument='(record { args = vec {"--prompt-cache"; "prompt.cache"; "--prompt-cache-all"; "--samplers"; "temperature"; "--temp"; "0.0"; "-n"; "3"; "-p"; "Joe loves writing stories"} })',
@@ -344,11 +398,11 @@ def test__run_update_2_2(network: str) -> None:
     if PRINT_RESPONSE:
         print(f"{current_func_name()}: response: {response}")
     expected_response = '(variant { Ok = record { output = ""; conversation = " Joe loves wr"; error = ""; status_code = 200 : nat16; prompt_remaining = "iting stories"; generated_eog = false;} })'
-    assert response == expected_response
+    assert strip_token_accounting(response) == norm(expected_response)
 
 def test__run_update_2_3(network: str) -> None:
     response = call_canister_api(
-        dfx_json_path=DFX_JSON_PATH,
+        icp_yaml_path=ICP_YAML_PATH,
         canister_name=CANISTER_NAME,
         canister_method="run_update",
         canister_argument='(record { args = vec {"--prompt-cache"; "prompt.cache"; "--prompt-cache-all"; "--samplers"; "temperature"; "--temp"; "0.0"; "-n"; "3"; "-p"; "Joe loves writing stories"} })',
@@ -357,11 +411,11 @@ def test__run_update_2_3(network: str) -> None:
     if PRINT_RESPONSE:
         print(f"{current_func_name()}: response: {response}")
     expected_response = '(variant { Ok = record { output = ""; conversation = " Joe loves writing stori"; error = ""; status_code = 200 : nat16; prompt_remaining = "es"; generated_eog = false;} })'
-    assert response == expected_response
+    assert strip_token_accounting(response) == norm(expected_response)
 
 def test__run_update_2_4(network: str) -> None:
     response = call_canister_api(
-        dfx_json_path=DFX_JSON_PATH,
+        icp_yaml_path=ICP_YAML_PATH,
         canister_name=CANISTER_NAME,
         canister_method="run_update",
         canister_argument='(record { args = vec {"--prompt-cache"; "prompt.cache"; "--prompt-cache-all"; "--samplers"; "temperature"; "--temp"; "0.0"; "-n"; "3"; "-p"; "Joe loves writing stories"} })',
@@ -370,11 +424,11 @@ def test__run_update_2_4(network: str) -> None:
     if PRINT_RESPONSE:
         print(f"{current_func_name()}: response: {response}")
     expected_response = '(variant { Ok = record { output = ". He li"; conversation = " Joe loves writing stories. He"; error = ""; status_code = 200 : nat16; prompt_remaining = ""; generated_eog = false;} })'
-    assert response == expected_response
+    assert strip_token_accounting(response) == norm(expected_response)
 
 def test__run_update_2_5(network: str) -> None:
     response = call_canister_api(
-        dfx_json_path=DFX_JSON_PATH,
+        icp_yaml_path=ICP_YAML_PATH,
         canister_name=CANISTER_NAME,
         canister_method="run_update",
         canister_argument='(record { args = vec {"--prompt-cache"; "prompt.cache"; "--prompt-cache-all"; "--samplers"; "temperature"; "--temp"; "0.0"; "-n"; "3"; "-p"; ""} })',
@@ -383,11 +437,11 @@ def test__run_update_2_5(network: str) -> None:
     if PRINT_RESPONSE:
         print(f"{current_func_name()}: response: {response}")
     expected_response = '(variant { Ok = record { output = " liked to"; conversation = " Joe loves writing stories. He liked"; error = ""; status_code = 200 : nat16; prompt_remaining = ""; generated_eog = false;} })'
-    assert response == expected_response
+    assert strip_token_accounting(response) == norm(expected_response)
 
 def test__remove_prompt_cache_cleanup(network: str) -> None:
     response = call_canister_api(
-        dfx_json_path=DFX_JSON_PATH,
+        icp_yaml_path=ICP_YAML_PATH,
         canister_name=CANISTER_NAME,
         canister_method="remove_prompt_cache",
         canister_argument='(record { args = vec {"--prompt-cache"; "prompt.cache"} })',
@@ -396,7 +450,7 @@ def test__remove_prompt_cache_cleanup(network: str) -> None:
     assert "(variant { Ok" in response
 
     response = call_canister_api(
-        dfx_json_path=DFX_JSON_PATH,
+        icp_yaml_path=ICP_YAML_PATH,
         canister_name=CANISTER_NAME,
         canister_method="remove_prompt_cache",
         canister_argument='(record { args = vec {"--prompt-cache"; "prompt-save.cache"} })',
@@ -411,7 +465,7 @@ def test__run_query_err(identity_anonymous: Dict[str, str], network: str) -> Non
     assert identity_anonymous["principal"] == "2vxsx-fae"
 
     response = call_canister_api(
-        dfx_json_path=DFX_JSON_PATH,
+        icp_yaml_path=ICP_YAML_PATH,
         canister_name=CANISTER_NAME,
         canister_method="run_query",
         canister_argument='(record { args = vec {"--prompt"; "Patrick loves ice-cream. On a hot day "; "--n-predict"; "20"; "--ctx-size"; "128"} })',
@@ -421,7 +475,7 @@ def test__run_query_err(identity_anonymous: Dict[str, str], network: str) -> Non
 
 def test__run_query(network: str) -> None:
     response = call_canister_api(
-        dfx_json_path=DFX_JSON_PATH,
+        icp_yaml_path=ICP_YAML_PATH,
         canister_name=CANISTER_NAME,
         canister_method="run_query",
         canister_argument='(record { args = vec {"--prompt"; "Patrick loves ice-cream. On a hot day "; "--n-predict"; "20"; "--ctx-size"; "128"} })',
@@ -431,7 +485,7 @@ def test__run_query(network: str) -> None:
 
 def test__remove_prompt_cache(network: str) -> None:
     response = call_canister_api(
-        dfx_json_path=DFX_JSON_PATH,
+        icp_yaml_path=ICP_YAML_PATH,
         canister_name=CANISTER_NAME,
         canister_method="remove_prompt_cache",
         canister_argument='(record { args = vec {"--prompt-cache"; "prompt.cache"} })',
@@ -441,7 +495,7 @@ def test__remove_prompt_cache(network: str) -> None:
 
 def test__remove_log_file(network: str) -> None:
     response = call_canister_api(
-        dfx_json_path=DFX_JSON_PATH,
+        icp_yaml_path=ICP_YAML_PATH,
         canister_name=CANISTER_NAME,
         canister_method="remove_log_file",
         canister_argument='(record { args = vec {"--log-file"; "main.log"} })',
@@ -451,11 +505,11 @@ def test__remove_log_file(network: str) -> None:
 
 def test__log_resume(network: str) -> None:
     response = call_canister_api(
-        dfx_json_path=DFX_JSON_PATH,
+        icp_yaml_path=ICP_YAML_PATH,
         canister_name=CANISTER_NAME,
         canister_method="log_resume",
         canister_argument='()',
         network=network,
     )
     expected_response = '(variant { Ok = record { status_code = 200 : nat16;} })'
-    assert response == expected_response
+    assert response == norm(expected_response)

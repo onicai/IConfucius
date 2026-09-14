@@ -9,7 +9,7 @@
 NETWORK_TYPE="local"
 NUM_LLMS_DEPLOYED=1
 
-MAX_TOKENS=12 # qwen2.5-0.5b-instruct-q8_0.gguf
+MAX_TOKENS=25 # qwen2.5-0.5b-instruct-q8_0.gguf
 
 # Parse command line arguments for network type
 while [ $# -gt 0 ]; do

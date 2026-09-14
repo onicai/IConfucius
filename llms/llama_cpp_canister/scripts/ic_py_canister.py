@@ -1,68 +1,83 @@
-"""Returns the ic-py Canister instance, for calling the endpoints."""
+"""Returns the icp-py-core Canister instance, for calling the endpoints."""
 
+import json
+import os
 import sys
 import subprocess
 from pathlib import Path
-from typing import Optional
-from ic.canister import Canister  # type: ignore
-from ic.client import Client  # type: ignore
-from ic.identity import Identity  # type: ignore
-from ic.agent import Agent  # type: ignore
+from typing import Any, List, Optional
+from icp_core import Agent, Identity, Client, Canister
 from icpp.run_shell_cmd import run_shell_cmd
 
 ROOT_PATH = Path(__file__).parent.parent
 
-# We use dfx to get some information.
-DFX = "dfx"
+# We use the `icp` CLI to look up the network URL, the identity's private key,
+# and canister ids. (This project migrated from dfx to icp-cli. Unlike dfx, icp
+# emits no deprecation banner on stdout, so no output-scrubbing is needed.)
+ICP = "icp"
+
+# The wasm QA deploys as ${ICPP_PRO_TEST_IDENTITY} (see the Makefile), and only
+# a controller may upload. So when that variable is set, sign as that identity
+# rather than as the machine-wide active one - otherwise the upload would be
+# rejected by a canister this process just deployed under a different identity.
+IDENTITY_ENV_VAR = "ICPP_PRO_TEST_IDENTITY"
 
 
-def run_dfx_command(cmd: str, quiet: bool = False) -> Optional[str]:
-    """Runs dfx command as a subprocess"""
+def run_icp_command(cmd: str, quiet: bool = False) -> Optional[str]:
+    """Runs an `icp` command as a subprocess and returns its stripped stdout."""
     try:
         return run_shell_cmd(cmd, capture_output=True).rstrip("\n")
     except subprocess.CalledProcessError as e:
         if not quiet:
-            print(f"Failed dfx command: '{cmd}' with error: \n{e.output}")
+            print(f"Failed icp command: '{cmd}' with error: \n{e.output}")
     return None
 
 
+def extract_variant(response: List[Any]) -> Any:
+    """Extract variant result from icp-py-core response.
+
+    icp-py-core returns: [{'type': 'variant', 'value': {'Ok': {...}}}]
+    old ic-py returned:  [{'Ok': {...}}]
+    This helper normalizes both formats to {'Ok': {...}} or {'Err': ...}.
+    """
+    item = response[0]
+    if "value" in item:
+        return item["value"]
+    return item
+
+
 def get_agent(network: str = "local") -> Agent:
-    """Returns an ic_py Agent instance"""
+    """Returns an icp-py-core Agent instance.
 
-    # Check if the network is up
-    print(f"--\nChecking if the {network} network is up...")
-    run_dfx_command(f"{DFX} ping {network} ")
-    print("Ok!")
+    `network` is the name of an environment in `icp.yaml` (e.g. "local" or
+    "production"). icp-cli assigns the local network a random ephemeral port on
+    every start, so the URL is read back from `icp network status` rather than
+    hardcoded.
+    """
 
-    # Set the network URL
-    if network == "local":
-        replica_port = run_dfx_command(f"{DFX} info replica-port  ", quiet=True)
-        webserver_port = run_dfx_command(f"{DFX} info webserver-port  ")
-        networks_json_path = run_dfx_command(f"{DFX} info networks-json-path  ")
-        print(f"replica-port       = {replica_port}")
-        print(f"webserver-port     = {webserver_port}")
-        print(f"networks-json-path = {networks_json_path}")
-
-        network_url = f"http://localhost:{replica_port}"
-        if replica_port is None:
-            if webserver_port is not None:
-                network_url = f"http://localhost:{webserver_port}"
-            else:
-                print("Error: replica_port and webserver_port are both None.")
-                sys.exit(1)
-
-    else:
-        # https://smartcontracts.org/docs/interface-spec/index.html#http-interface
-        network_url = "https://ic0.app"
-
+    # Read the network URL from icp (works for both the managed local network
+    # and connected networks like mainnet).
+    print(f"--\nReading the '{network}' network status...")
+    status_json = run_icp_command(f"{ICP} network status -e {network} --json")
+    if status_json is None:
+        print(f"Error: could not get network status for environment '{network}'.")
+        print("If this is the local network, start it first:  icp network start -d")
+        sys.exit(1)
+    # Strip any trailing slash: icp reports the api_url with one (e.g.
+    # "http://localhost:61795/"), but icp-py-core appends "/api/v3/...", which
+    # would otherwise produce a "//api/v3" double slash that the replica rejects.
+    network_url = json.loads(status_json)["api_url"].rstrip("/")
     print(f"Network URL        = {network_url}")
 
-    # Get the name of the current identity
-    identity_whoami = run_dfx_command(f"{DFX} identity whoami ")
+    # Get the name of the identity to sign as: ${ICPP_PRO_TEST_IDENTITY} when
+    # set, else the machine-wide active one (`dfx identity whoami`'s successor).
+    identity_whoami = os.environ.get(IDENTITY_ENV_VAR, "").strip() or run_icp_command(
+        f"{ICP} identity default"
+    )
     print(f"Using identity = {identity_whoami}")
 
-    # Get the private key of the current identity
-    private_key = run_dfx_command(f"{DFX} identity export {identity_whoami} ")
+    # Get the private key (PEM) of that identity.
+    private_key = run_icp_command(f"{ICP} identity export {identity_whoami}")
 
     # Create an Identity instance using the private key
     identity = Identity.from_pem(private_key)
@@ -82,16 +97,17 @@ def get_canister(
     network: str = "local",
     canister_id: Optional[str] = "",
 ) -> Canister:
-    """Returns an ic_py Canister instance"""
+    """Returns an icp-py-core Canister instance"""
 
     agent = get_agent(network=network)
 
-    # Try to get the id of the canister if not provided explicitly
-    # This only works from the same directory as where you deployed from.
-    # So we also provide the option to just pass in the canister_id directly
+    # Try to get the id of the canister if not provided explicitly.
+    # `icp canister status <name> --id-only` reads icp-cli's id store, so it
+    # resolves the id even when the network is down. We also provide the option
+    # to just pass in the canister_id directly.
     if canister_id == "":
-        canister_id = run_dfx_command(
-            f"{DFX} canister --network {network} id {canister_name} "
+        canister_id = run_icp_command(
+            f"{ICP} canister status {canister_name} -e {network} --id-only"
         )
     print(f"Canister ID = {canister_id}")
 
@@ -104,4 +120,4 @@ def get_canister(
         canister_did = f.read()
 
     # Create a Canister instance
-    return Canister(agent=agent, canister_id=canister_id, candid=canister_did)
+    return Canister(agent=agent, canister_id=canister_id, candid_str=canister_did)

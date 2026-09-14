@@ -6,6 +6,16 @@ export PYTHONPATH="${PYTHONPATH}:$(realpath $LLAMA_CPP_CANISTER_PATH)"
 #######################################################################
 # run from parent folder as:
 # scripts/3-upload-model.sh --network [local|testing|development|prd]
+#
+# Prerequisites (llama_cpp_canister >= v0.16.6 upload flow):
+# - icp-cli installed (scripts.upload resolves the network URL and the
+#   identity's private key via `icp network status` / `icp identity export`)
+# - the dfx deployer identity imported into icp-cli under the same name
+#   and set as default, or exported as ICPP_PRO_TEST_IDENTITY=<name>
+# - a dedicated conda env with the vendored python deps:
+#     pip install -r ../llama_cpp_canister/requirements.txt
+#   (icp-py-core conflicts with ic-py used by the root agent scripts, so
+#   never install it into the main IConfucius env)
 #######################################################################
 
 # Default network type is local
@@ -38,8 +48,16 @@ done
 
 echo "Using network type: $NETWORK_TYPE"
 
-# The upstream llama_cpp_canister scripts pass the network type directly to dfx.
-UPSTREAM_NETWORK_TYPE="$NETWORK_TYPE"
+# The upstream scripts.upload takes an icp.yaml environment name:
+# "local" for the local replica, "production" for ic mainnet.
+if [ "$NETWORK_TYPE" = "local" ]; then
+    UPSTREAM_NETWORK_TYPE="local"
+else
+    UPSTREAM_NETWORK_TYPE="production"
+fi
+
+# sha256 of qwen2.5-0.5b-instruct-q8_0.gguf, from HuggingFace
+HF_SHA256="ca59ca7f13d0e15a8cfa77bd17e65d24f6844b554a7b6c12e07a5f89ff76844e"
 
 #######################################################################
 echo " "
@@ -66,7 +84,11 @@ do
     echo " "
     echo "--------------------------------------------------"
     echo "Upload the model ($MODEL) to llm_$i"
-    python -m scripts.upload --network $UPSTREAM_NETWORK_TYPE --canister llm_$i --canister-filename models/model.gguf $MODEL
+    # --canister-id bypasses the icp.yaml canister-name lookup (llm_$i only
+    # exists in our dfx.json); --filetype gguf is required so the canister
+    # initializes inference (the upstream default is "other").
+    CANISTER_ID=$(dfx canister id llm_$i --network $NETWORK_TYPE)
+    python -m scripts.upload --network $UPSTREAM_NETWORK_TYPE --canister-id $CANISTER_ID --filetype gguf --canister-filename models/model.gguf --hf-sha256 $HF_SHA256 $MODEL
 
     if [ $? -ne 0 ]; then
         echo "scripts.upload for llm_$i exited with an error."
