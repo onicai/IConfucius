@@ -9,7 +9,10 @@
 NETWORK_TYPE="local"
 NUM_LLMS_DEPLOYED=1
 
-MAX_TOKENS=25 # Qwen3-0.6B-Q8_0.gguf
+# Qwen3-0.6B-Q8_0.gguf: update=20 (not 25 — at 25 some run_updates exceed the
+# 40B instruction limit, seen with the German prompts), query=1 per upstream.
+MAX_TOKENS_QUERY=1
+MAX_TOKENS_UPDATE=20
 
 # Parse command line arguments for network type
 while [ $# -gt 0 ]; do
@@ -37,7 +40,7 @@ echo "Using network type: $NETWORK_TYPE"
 #######################################################################
 echo " "
 echo "==================================================="
-echo "set_max_tokens to $MAX_TOKENS for $NUM_LLMS_DEPLOYED llms"
+echo "set_max_tokens to query=$MAX_TOKENS_QUERY update=$MAX_TOKENS_UPDATE for $NUM_LLMS_DEPLOYED llms"
 llm_id_start=0
 llm_id_end=$((NUM_LLMS_DEPLOYED - 1))
 
@@ -58,9 +61,9 @@ do
 
     echo " "
     echo "--------------------------------------------------"
-    echo "Setting max tokens to ($MAX_TOKENS) for llm_$i"
+    echo "Setting max tokens to (query=$MAX_TOKENS_QUERY update=$MAX_TOKENS_UPDATE) for llm_$i"
     output=$(dfx canister call llm_$i set_max_tokens \
-            '(record { max_tokens_query = '"$MAX_TOKENS"' : nat64; max_tokens_update = '"$MAX_TOKENS"' : nat64 })' \
+            '(record { max_tokens_query = '"$MAX_TOKENS_QUERY"' : nat64; max_tokens_update = '"$MAX_TOKENS_UPDATE"' : nat64 })' \
             --network "$NETWORK_TYPE")
 
 
@@ -69,7 +72,7 @@ do
         echo $output
         exit 1
     else
-        echo "llm_$i set_max_tokens to $MAX_TOKENS succeeded."
+        echo "llm_$i set_max_tokens to query=$MAX_TOKENS_QUERY update=$MAX_TOKENS_UPDATE succeeded."
         echo 🎉
     fi
 done
