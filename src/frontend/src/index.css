@@ -53,6 +53,7 @@ form {
 
 .segmented {
   display: inline-flex;
+  margin-bottom: 1.5rem;
   border: 1px solid #3d7a5c;
   border-radius: 8px;
   overflow: hidden;
@@ -157,15 +158,4 @@ button.generate:disabled {
   border: 1px solid #c96f52;
   border-radius: 8px;
   color: #7a2e14;
-}
-
-.page-footer {
-  margin-top: 3rem;
-  font-size: 0.75rem;
-  color: #8a8071;
-  word-break: break-all;
-}
-
-.page-footer code {
-  font-size: 0.75rem;
 }

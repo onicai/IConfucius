@@ -1,7 +1,7 @@
 import { Actor, HttpAgent } from '@icp-sdk/core/agent';
 import { Ed25519KeyIdentity } from '@icp-sdk/core/identity';
 
-export const CANISTER_ID =
+const CANISTER_ID =
   import.meta.env.VITE_ICONFUCIUS_CANISTER_ID ?? 'dpljb-diaaa-aaaaa-qafsq-cai';
 const HOST = 'https://icp0.io';
 
@@ -38,7 +38,7 @@ const idlFactory = ({ IDL }) => {
 
 // Ephemeral non-anonymous identity, regenerated on every page load.
 // IConfuciusSays rejects anonymous callers but accepts any principal.
-export const identity = Ed25519KeyIdentity.generate();
+const identity = Ed25519KeyIdentity.generate();
 
 const agent = HttpAgent.createSync({ host: HOST, identity });
 
@@ -47,12 +47,27 @@ export const actor = Actor.createActor(idlFactory, {
   canisterId: CANISTER_ID,
 });
 
-export function apiErrorToMessage(err) {
+const ERROR_STRINGS = {
+  English: {
+    unauthorized: 'The canister rejected this caller.',
+    statusCode: (code) => `The canister returned status ${code}.`,
+    insufficientCycles: 'IConfucius is out of cycles. Please try again later.',
+    unexpected: (variant) => `Unexpected error: ${variant}`,
+  },
+  Chinese: {
+    unauthorized: '容器拒绝了此调用者。',
+    statusCode: (code) => `容器返回状态码 ${code}。`,
+    insufficientCycles: 'IConfucius 的 cycles 已耗尽，请稍后再试。',
+    unexpected: (variant) => `意外错误：${variant}`,
+  },
+};
+
+export function apiErrorToMessage(err, language) {
+  const t = ERROR_STRINGS[language] ?? ERROR_STRINGS.English;
   if ('Other' in err) return err.Other;
-  if ('Unauthorized' in err) return 'The canister rejected this caller.';
-  if ('StatusCode' in err) return `The canister returned status ${err.StatusCode}.`;
-  if ('InsuffientCycles' in err)
-    return 'IConfucius is out of cycles. Please try again later.';
+  if ('Unauthorized' in err) return t.unauthorized;
+  if ('StatusCode' in err) return t.statusCode(err.StatusCode);
+  if ('InsuffientCycles' in err) return t.insufficientCycles;
   // Nat values decode as BigInt, so avoid JSON.stringify here.
-  return `Unexpected error: ${Object.keys(err)[0]}`;
+  return t.unexpected(Object.keys(err)[0]);
 }
