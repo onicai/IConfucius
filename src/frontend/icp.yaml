@@ -1,0 +1,17 @@
+# icp-cli project for the IConfucius try-it-out frontend (standalone; the
+# Motoko backend keeps its dfx project at src/IConfucius/).
+canisters:
+  - name: frontend
+    recipe:
+      type: "@dfinity/static-site@v0.3.3"
+      configuration:
+        build:
+          - npm ci
+          - npm run build
+        dir: dist
+
+networks:
+  - name: local
+    mode: managed
+    gateway:
+      port: 0
