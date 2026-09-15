@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { makeHalfCookieGeometry } from './cookieGeometry.js';
 import { makeNoiseBumpTexture } from './textures.js';
 
-const REST_ROT = [-0.5, 0.6, 0]; // iconic crescent profile, interior cavity visible
+const REST_ROT = [0.6, -0.6, 0.1]; // resting on the fold belly, cheek to camera
 const SPLIT_T = 0.15; // crack timeline: anticipation ends, halves fly
 
 // wrap an angle to its nearest equivalent of target so damp takes the short way
@@ -25,19 +25,19 @@ export default function Cookie({ stage, reducedMotion, crackT0Ref, onSettled, on
     const noise = makeNoiseBumpTexture();
     return [
       new THREE.MeshPhysicalMaterial({
-        color: '#d9a85c',
-        roughness: 0.55,
+        color: '#e6c298',
+        roughness: 0.62,
         metalness: 0,
-        clearcoat: 0.3,
-        clearcoatRoughness: 0.55,
+        clearcoat: 0.15,
+        clearcoatRoughness: 0.6,
         bumpMap: noise,
-        bumpScale: 0.9,
+        bumpScale: 0.4,
       }),
       new THREE.MeshStandardMaterial({
-        color: '#eed3a0',
+        color: '#f2ddb8',
         roughness: 1.0,
         bumpMap: noise,
-        bumpScale: 2.0,
+        bumpScale: 1.4,
       }),
     ];
   }, []);

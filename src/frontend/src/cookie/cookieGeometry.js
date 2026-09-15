@@ -2,10 +2,12 @@ import * as THREE from 'three';
 
 export const R = 1.0; // dough disc radius
 const T = 0.075; // dough thickness
-const RHO1 = 0.62; // taco-fold bend radius
+const EGG_W = 0.55; // cross-section half-width (cheek plumpness)
+const EGG_H = 1.0; // cross-section height (fold belly to mouth seam)
+const TMAX = 2.95; // lip sweep in radians (< π leaves a hairline mouth slit)
 const RHO2 = 1.3; // corner-curl bend radius (~90° total horn bend)
-const NR = 14;
-const NT = 28;
+const NR = 16;
+const NT = 36;
 const NZ = 2;
 const JAG = 0.02; // crack-face jitter
 
@@ -18,11 +20,18 @@ function hash(x, y, z) {
 // Map a point of the FLAT thick disc into the folded cookie shape.
 // Flat coords: x along the fold line, y across it, z thickness (±T/2).
 export function deform(v) {
-  // taco fold: wrap the (y,z) plane onto a cylinder of radius RHO1 (axis = X);
-  // a point at thickness offset z sits at radius RHO1 - z (exact thick bend)
-  const a1 = v.y / RHO1;
-  const y1 = (RHO1 - v.z) * Math.sin(a1);
-  const z1 = RHO1 - (RHO1 - v.z) * Math.cos(a1);
+  // clam fold: sweep each lip along an egg-shaped cross-section — round belly
+  // at the fold (t = 0), plump cheeks at t = π/2, lip edges converging to a
+  // near-closed mouth seam at t ≈ TMAX. The sweep is normalized by the local
+  // disc chord so the lips touch along the whole length, and the egg scales
+  // with the chord so the body tapers to points at the horns.
+  const chord = Math.sqrt(Math.max(R * R - v.x * v.x, 1e-4));
+  const s = chord / R;
+  const t = Math.min((Math.abs(v.y) / chord) * TMAX, TMAX);
+  const sgn = v.y >= 0 ? 1 : -1;
+  const halfH = (EGG_H * s) / 2;
+  const y1 = sgn * (EGG_W * s - v.z) * Math.sin(t);
+  const z1 = halfH - (halfH - v.z) * Math.cos(t);
   // corner curl: bend the fold line the opposite way so the horns at x = ±R
   // dip and come toward each other
   const a2 = v.x / RHO2;
