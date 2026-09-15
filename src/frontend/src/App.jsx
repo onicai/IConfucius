@@ -1,5 +1,17 @@
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { actor, apiErrorToMessage } from './ic.js';
+
+const CookieExperience = lazy(() => import('./cookie/CookieExperience.jsx'));
+const preloadCookie = () => import('./cookie/CookieExperience.jsx');
+
+const WEBGL_OK = (() => {
+  try {
+    const c = document.createElement('canvas');
+    return !!(c.getContext('webgl2') || c.getContext('webgl'));
+  } catch {
+    return false;
+  }
+})();
 
 const STRINGS = {
   English: {
@@ -13,6 +25,8 @@ const STRINGS = {
     hint: 'The quote is written token by token by an on-chain LLM — this typically takes 30–90 seconds.',
     attribution: (topic) => `— IConfucius, on ${topic}`,
     callFailed: (msg) => `Call failed — please try again. (${msg})`,
+    cookieReady: 'Your wisdom cookie is ready!',
+    crack: 'Crack it open',
   },
   Chinese: {
     htmlLang: 'zh',
@@ -25,6 +39,8 @@ const STRINGS = {
     hint: '名言由链上大语言模型逐字生成——通常需要 30 至 90 秒。',
     attribution: (topic) => `——IConfucius，论${topic}`,
     callFailed: (msg) => `调用失败——请重试。（${msg}）`,
+    cookieReady: '你的智慧饼干好了！',
+    crack: '掰开饼干',
   },
   Dutch: {
     htmlLang: 'nl',
@@ -37,6 +53,8 @@ const STRINGS = {
     hint: 'Het citaat wordt token voor token geschreven door een on-chain LLM — dit duurt meestal 30–90 seconden.',
     attribution: (topic) => `— IConfucius, over ${topic}`,
     callFailed: (msg) => `Aanroep mislukt — probeer het opnieuw. (${msg})`,
+    cookieReady: 'Je wijsheidskoekje is klaar!',
+    crack: 'Breek het open',
   },
   German: {
     htmlLang: 'de',
@@ -49,6 +67,8 @@ const STRINGS = {
     hint: 'Das Zitat wird Token für Token von einem On-Chain-LLM geschrieben — das dauert in der Regel 30–90 Sekunden.',
     attribution: (topic) => `— IConfucius, über ${topic}`,
     callFailed: (msg) => `Aufruf fehlgeschlagen — bitte erneut versuchen. (${msg})`,
+    cookieReady: 'Dein Weisheitskeks ist fertig!',
+    crack: 'Brich ihn auf',
   },
   Hindi: {
     htmlLang: 'hi',
@@ -61,6 +81,8 @@ const STRINGS = {
     hint: 'सूक्ति ऑन-चेन LLM द्वारा टोकन-दर-टोकन लिखी जाती है — इसमें आमतौर पर 30–90 सेकंड लगते हैं।',
     attribution: (topic) => `— IConfucius, ${topic} पर`,
     callFailed: (msg) => `कॉल विफल — कृपया पुनः प्रयास करें। (${msg})`,
+    cookieReady: 'आपकी ज्ञान-कुकी तैयार है!',
+    crack: 'इसे तोड़कर खोलें',
   },
 };
 
@@ -77,6 +99,19 @@ const LANGUAGES = [
   // { key: 'Hindi', label: 'हिन्दी' },
 ];
 
+function LoadingBlock({ t, elapsed, spinner }) {
+  return (
+    <div className="loading">
+      {spinner && <div className="spinner" />}
+      <p>
+        {t.meditating(elapsed)}
+        <br />
+        <span className="hint">{t.hint}</span>
+      </p>
+    </div>
+  );
+}
+
 export default function App() {
   const [language, setLanguage] = useState('English');
   const [topic, setTopic] = useState('');
@@ -86,6 +121,8 @@ export default function App() {
   const [errorMsg, setErrorMsg] = useState('');
   const [paused, setPaused] = useState(false);
   const [elapsed, setElapsed] = useState(0);
+  const [revealed, setRevealed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const timerRef = useRef(null);
   const t = STRINGS[language];
 
@@ -114,6 +151,8 @@ export default function App() {
     setQuote('');
     setErrorMsg('');
     setElapsed(0);
+    setRevealed(false);
+    setAttempt((a) => a + 1);
     const startTime = Date.now();
     timerRef.current = setInterval(() => {
       setElapsed(Math.floor((Date.now() - startTime) / 1000));
@@ -166,6 +205,7 @@ export default function App() {
           maxLength={100}
           placeholder={t.placeholder}
           onChange={(e) => setTopic(e.target.value)}
+          onFocus={WEBGL_OK ? preloadCookie : undefined}
           disabled={phase === 'loading' || paused}
         />
         <button type="submit" className="generate" disabled={!canGenerate}>
@@ -173,19 +213,23 @@ export default function App() {
         </button>
       </form>
 
-      {phase === 'loading' && (
-        <div className="loading">
-          <div className="spinner" />
-          <p>
-            {t.meditating(elapsed)}
-            <br />
-            <span className="hint">{t.hint}</span>
-          </p>
-        </div>
+      {WEBGL_OK && (phase === 'loading' || phase === 'done') && (
+        <Suspense fallback={null}>
+          <CookieExperience
+            key={attempt}
+            phase={phase}
+            quote={quote}
+            crackLabel={t.crack}
+            readyLabel={t.cookieReady}
+            onRevealed={() => setRevealed(true)}
+          />
+        </Suspense>
       )}
 
-      {phase === 'done' && (
-        <blockquote className="quote">
+      {phase === 'loading' && <LoadingBlock t={t} elapsed={elapsed} spinner={!WEBGL_OK} />}
+
+      {phase === 'done' && (revealed || !WEBGL_OK) && (
+        <blockquote className={`quote${WEBGL_OK ? ' reveal' : ''}`}>
           <p>{quote}</p>
           <footer>{t.attribution(quoteTopic)}</footer>
         </blockquote>
