@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { makeHalfCookieGeometry } from './cookieGeometry.js';
 import { makeNoiseBumpTexture } from './textures.js';
 
-const REST_ROT = [0.6, -0.6, 0.1]; // resting on the fold belly, cheek to camera
+const REST_ROT = [1.35, 0.5, 0.15]; // plump fold-back 3/4: reads as a whole solid cookie
 const SPLIT_T = 0.15; // crack timeline: anticipation ends, halves fly
 
 // wrap an angle to its nearest equivalent of target so damp takes the short way

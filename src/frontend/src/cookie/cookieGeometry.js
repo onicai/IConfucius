@@ -4,8 +4,9 @@ export const R = 1.0; // dough disc radius
 const T = 0.075; // dough thickness
 const EGG_W = 0.55; // cross-section half-width (cheek plumpness)
 const EGG_H = 1.0; // cross-section height (fold belly to mouth seam)
-const TMAX = 2.95; // lip sweep in radians (< π leaves a hairline mouth slit)
-const RHO2 = 1.3; // corner-curl bend radius (~90° total horn bend)
+const TMAX = 3.34; // lip sweep in radians (lips overlap past π to a closed seam)
+const BEND_A = 0.62; // half-bend angle of the central pinch (radians)
+const BEND_W = 0.42; // transition-zone width of the central pinch
 const NR = 16;
 const NT = 36;
 const NZ = 2;
@@ -32,11 +33,12 @@ export function deform(v) {
   const halfH = (EGG_H * s) / 2;
   const y1 = sgn * (EGG_W * s - v.z) * Math.sin(t);
   const z1 = halfH - (halfH - v.z) * Math.cos(t);
-  // corner curl: bend the fold line the opposite way so the horns at x = ±R
-  // dip and come toward each other
-  const a2 = v.x / RHO2;
-  const x2 = (RHO2 + z1) * Math.sin(a2);
-  const z2 = (RHO2 + z1) * Math.cos(a2) - RHO2;
+  // central pinch: rotate each lobe near-rigidly toward the mouth side with a
+  // saturating (tanh) angle profile, so the cookie is two plump lobes meeting
+  // at a kink — the V-notch forms on the mouth seam, the fold belly stays smooth
+  const a2 = BEND_A * Math.tanh(v.x / BEND_W);
+  const x2 = v.x * Math.cos(a2) - z1 * Math.sin(a2);
+  const z2 = v.x * Math.sin(a2) + z1 * Math.cos(a2);
   // a whisper of dough noise so the silhouette is not mathematically perfect
   const n = (hash(v.x * 5.1, v.y * 5.1, 0) - 0.5) * 0.012;
   v.set(x2, y1 + n, z2 + n);
