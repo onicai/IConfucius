@@ -7,12 +7,13 @@ const reducedMotion =
   window.matchMedia &&
   window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-// Sub-states: tumbling -> settling -> invite -> cracking -> revealed
+// Sub-states: resting -> tumbling -> settling -> invite -> cracking -> revealed
 export default function CookieExperience({ phase, quote, crackLabel, readyLabel, onRevealed }) {
-  const [stage, setStage] = useState('tumbling');
+  const [stage, setStage] = useState('resting');
 
   useEffect(() => {
-    if (phase === 'loading') setStage('tumbling');
+    if (phase === 'idle' || phase === 'error') setStage('resting');
+    else if (phase === 'loading') setStage('tumbling');
     else if (phase === 'done') setStage((s) => (s === 'tumbling' ? 'settling' : s));
   }, [phase]);
 

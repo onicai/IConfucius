@@ -18,6 +18,8 @@ export default function Cookie({ stage, reducedMotion, crackT0Ref, onSettled, on
   const right = useRef();
   const wrapped = useRef(false);
   const halves = useRef(null); // physics state, seeded at crack time
+  const prevStage = useRef(null);
+  const tumbleT0 = useRef(0);
 
   const geoL = useMemo(() => makeHalfCookieGeometry(-1), []);
   const geoR = useMemo(() => makeHalfCookieGeometry(1), []);
@@ -62,15 +64,29 @@ export default function Cookie({ stage, reducedMotion, crackT0Ref, onSettled, on
     if (!g) return;
     const t = state.clock.elapsedTime;
     const damp = THREE.MathUtils.damp;
+    if (prevStage.current !== stage) {
+      if (stage === 'tumbling') tumbleT0.current = t;
+      prevStage.current = stage;
+    }
 
-    if (stage === 'tumbling') {
+    if (stage === 'resting') {
+      // idle pose: table rest with a slow breathing sway
+      g.rotation.x = damp(g.rotation.x, REST_ROT[0], 4, dt);
+      g.rotation.z = damp(g.rotation.z, REST_ROT[2], 4, dt);
+      g.rotation.y = damp(g.rotation.y, REST_ROT[1] + (reducedMotion ? 0 : 0.12 * Math.sin(t * 0.5)), 4, dt);
+      g.position.y = damp(g.position.y, reducedMotion ? 0 : 0.02 * Math.sin(t * 0.8), 4, dt);
+      g.scale.setScalar(damp(g.scale.x, 1, 8, dt));
+    } else if (stage === 'tumbling') {
       if (reducedMotion) {
         g.rotation.set(0.35, g.rotation.y + 0.1 * dt, 0);
       } else {
-        g.rotation.x = 0.55 * Math.sin(t * 1.7) + 0.25 * Math.sin(t * 2.9 + 1.3);
-        g.rotation.y = t * 0.9 + 0.4 * Math.sin(t * 1.3 + 0.7);
-        g.rotation.z = 0.3 * Math.sin(t * 0.8 + 2.1);
-        g.position.y = 0.08 * Math.sin(t * 1.1);
+        // damp toward the moving tumble targets so entry from rest is smooth;
+        // tumble-local clock so the spin starts from zero, not absolute time
+        const tt = t - tumbleT0.current;
+        g.rotation.x = damp(g.rotation.x, 0.55 * Math.sin(tt * 1.7) + 0.25 * Math.sin(tt * 2.9 + 1.3), 6, dt);
+        g.rotation.y = damp(g.rotation.y, REST_ROT[1] + tt * 0.9 + 0.4 * Math.sin(tt * 1.3 + 0.7), 6, dt);
+        g.rotation.z = damp(g.rotation.z, 0.3 * Math.sin(tt * 0.8 + 2.1), 6, dt);
+        g.position.y = damp(g.position.y, 0.08 * Math.sin(tt * 1.1), 6, dt);
       }
     } else if (stage === 'settling') {
       if (!wrapped.current) {

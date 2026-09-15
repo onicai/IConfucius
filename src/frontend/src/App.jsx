@@ -213,7 +213,7 @@ export default function App() {
         </button>
       </form>
 
-      {WEBGL_OK && (phase === 'loading' || phase === 'done') && (
+      {WEBGL_OK && (
         <Suspense fallback={null}>
           <CookieExperience
             key={attempt}
