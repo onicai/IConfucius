@@ -25,7 +25,7 @@ NUM_LLMS_DEPLOYED=1
 # The gguf model file to upload (Relative to the vendored llama_cpp_canister
 # root folder). Models live in the shared models folder of a sibling checkout
 # of onicai/llama_cpp_canister: ~/github/repos/llama_cpp_canister/models
-MODEL="../../../llama_cpp_canister/models/Qwen/Qwen3-0.6B-GGUF/Qwen3-0.6B-Q8_0.gguf"
+MODEL="../../../llama_cpp_canister/models/google/gemma-3-1b-it-GGUF/gemma-3-1b-it-Q4_K_M.gguf"
 
 # Parse command line arguments for network type
 while [ $# -gt 0 ]; do
@@ -58,8 +58,8 @@ else
     UPSTREAM_NETWORK_TYPE="production"
 fi
 
-# sha256 of Qwen3-0.6B-Q8_0.gguf, from HuggingFace
-HF_SHA256="9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031"
+# sha256 of gemma-3-1b-it-Q4_K_M.gguf, from HuggingFace (ggml-org)
+HF_SHA256="8ccc5cd1f1b3602548715ae25a66ed73fd5dc68a210412eea643eb20eb75a135"
 
 #######################################################################
 echo " "

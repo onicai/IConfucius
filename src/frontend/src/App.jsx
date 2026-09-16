@@ -91,12 +91,7 @@ const LANGUAGES = [
   { key: 'Chinese', label: '中文' },
   { key: 'Dutch', label: 'Nederlands' },
   { key: 'German', label: 'Deutsch' },
-  // Hindi is wired up end to end but disabled: llama_cpp_canister returns
-  // generation chunks as candid Text without UTF-8 boundary handling, and
-  // Devanagari byte-level tokens split codepoints at nearly every chunk
-  // boundary, trapping the ctrlb canister. Re-enable once the upstream
-  // canister holds back incomplete UTF-8 tail bytes between calls.
-  // { key: 'Hindi', label: 'हिन्दी' },
+  { key: 'Hindi', label: 'हिन्दी' }, // live: Gemma-3-1B on llama_cpp_canister 0.16.8
 ];
 
 function LoadingBlock({ t, elapsed, spinner }) {

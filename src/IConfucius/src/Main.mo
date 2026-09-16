@@ -464,61 +464,35 @@ persistent actor class IConfuciusCtrlbCanister() {
             systemPrompt := "You are Confucius, the ancient philosopher. You finish quotes in a profound and compassionate manner.";
             userPromptRepetitive := "Write a profound and thought provoking quote about ";
             userPromptVarying := quoteTopic # ". Provide only the quote, nothing else.";
-        
-            promptRepetitive := "<|im_start|>system\n" # systemPrompt # "<|im_end|>\n" #
-            "<|im_start|>user\n" # userPromptRepetitive;
-            prompt := promptRepetitive # userPromptVarying # 
-            "<|im_end|>\n" # 
-            "<|im_start|>assistant\n" #
-            "<think>\n\n</think>\n\n"; // Qwen3 non-thinking mode: pre-filled empty think block
         } else if (quoteLanguage == "cn") {
             systemPrompt := "你是孔子，古代哲学家。你以一种深刻而富有同情心的方式结束引用。";
             userPromptRepetitive := "写一句关于 ";
             userPromptVarying := quoteTopic # " 只提供名言，其他不作提供。";
-        
-            promptRepetitive := "<|im_start|>system\n" # systemPrompt # "<|im_end|>\n" #
-            "<|im_start|>user\n" # userPromptRepetitive;
-            prompt := promptRepetitive # userPromptVarying # 
-            "<|im_end|>\n" # 
-            "<|im_start|>assistant\n" #
-            "<think>\n\n</think>\n\n"; // Qwen3 non-thinking mode: pre-filled empty think block
         } else if (quoteLanguage == "nl") {
             systemPrompt := "Je bent Confucius, de oude filosoof. Je eindigt citaten op een diepgaande en medelevende manier.";
             userPromptRepetitive := "Schrijf een diepzinnig en inspirerend citaat over ";
             userPromptVarying := quoteTopic # ". Geef alleen het citaat op, niets anders.";
-        
-            promptRepetitive := "<|im_start|>system\n" # systemPrompt # "<|im_end|>\n" #
-            "<|im_start|>user\n" # userPromptRepetitive;
-            prompt := promptRepetitive # userPromptVarying # 
-            "<|im_end|>\n" # 
-            "<|im_start|>assistant\n" #
-            "<think>\n\n</think>\n\n"; // Qwen3 non-thinking mode: pre-filled empty think block
         } else if (quoteLanguage == "de") {
             systemPrompt := "Du bist Konfuzius, der antike Philosoph. Du beendest Zitate auf eine tiefgründige und mitfühlende Weise.";
             userPromptRepetitive := "Schreibe ein tiefgründiges und nachdenkliches Zitat über ";
             userPromptVarying := quoteTopic # ". Gib nur das Zitat an, nichts anderes.";
-
-            promptRepetitive := "<|im_start|>system\n" # systemPrompt # "<|im_end|>\n" #
-            "<|im_start|>user\n" # userPromptRepetitive;
-            prompt := promptRepetitive # userPromptVarying #
-            "<|im_end|>\n" #
-            "<|im_start|>assistant\n" #
-            "<think>\n\n</think>\n\n"; // Qwen3 non-thinking mode: pre-filled empty think block
         } else if (quoteLanguage == "hi") {
             systemPrompt := "आप कन्फ्यूशियस हैं, प्राचीन दार्शनिक। आप उद्धरणों को गहन और करुणामय ढंग से पूर्ण करते हैं।";
             userPromptRepetitive := "इस विषय पर एक गहन और विचारोत्तेजक सूक्ति लिखिए: ";
             userPromptVarying := quoteTopic # "। केवल सूक्ति दीजिए, और कुछ नहीं।";
-
-            promptRepetitive := "<|im_start|>system\n" # systemPrompt # "<|im_end|>\n" #
-            "<|im_start|>user\n" # userPromptRepetitive;
-            prompt := promptRepetitive # userPromptVarying #
-            "<|im_end|>\n" #
-            "<|im_start|>assistant\n" #
-            "<think>\n\n</think>\n\n"; // Qwen3 non-thinking mode: pre-filled empty think block
         } else {
             return #Err(#Other("Unsupported language: " # quoteLanguage));
         };
-        
+
+        // Gemma-3 chat template: no system role — the system text folds into the
+        // user turn, and generation begins after <start_of_turn>model. (Gemma has
+        // no <think> block; that was Qwen3.) promptRepetitive is the cache-key
+        // prefix; prompt appends the varying topic and the model turn opener.
+        promptRepetitive := "<start_of_turn>user\n" # systemPrompt # "\n\n" # userPromptRepetitive;
+        prompt := promptRepetitive # userPromptVarying #
+        "<end_of_turn>\n" #
+        "<start_of_turn>model\n";
+
         return #Ok({
             quoteLanguage : Text = quoteLanguage;
             systemPrompt : Text = systemPrompt;

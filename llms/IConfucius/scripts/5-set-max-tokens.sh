@@ -9,10 +9,10 @@
 NETWORK_TYPE="local"
 NUM_LLMS_DEPLOYED=1
 
-# Qwen3-0.6B-Q8_0.gguf: update=20 (not 25 — at 25 some run_updates exceed the
-# 40B instruction limit, seen with the German prompts), query=1 per upstream.
+# gemma-3-1b-it-Q4_K_M.gguf: ceiling is 11 tokens/call (12 → IC0522), same for
+# Hindi and English (README-Language-Hindi.md). Use 10, one below the ceiling.
 MAX_TOKENS_QUERY=1
-MAX_TOKENS_UPDATE=20
+MAX_TOKENS_UPDATE=10
 
 # Parse command line arguments for network type
 while [ $# -gt 0 ]; do
