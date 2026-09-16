@@ -57,11 +57,13 @@ do
     echo " "
     echo "--------------------------------------------------"
     echo "Calling load_model for llm_$i"
-    # Gemma-3-1B-it load args per README-Language-Hindi.md: ctx 4096, batch and
-    # ubatch 8 (Gemma's larger vocab needs the small batch to stay under the 40B
-    # instruction limit), dual q8_0 KV cache. Heap after load ~869 MiB.
+    # Gemma-3-1B-it load args based on README-Language-Hindi.md, but ctx 2048
+    # (not the README's 4096): a quote is single-turn and never exceeds ~600
+    # tokens, so 2048 is ample, and the smaller KV cache leaves more heap
+    # headroom against a runaway-generation OOB near the 4 GiB wasm ceiling.
+    # batch/ubatch 8 keeps per-call under the 40B instruction limit; dual q8_0 KV.
     output=$(dfx canister call llm_$i load_model \
-            '(record { args = vec {"--model"; "models/model.gguf"; "--cache-type-k"; "q8_0"; "--cache-type-v"; "q8_0"; "--batch-size"; "8"; "--ubatch-size"; "8"; "--ctx-size"; "4096"} })' \
+            '(record { args = vec {"--model"; "models/model.gguf"; "--cache-type-k"; "q8_0"; "--cache-type-v"; "q8_0"; "--batch-size"; "8"; "--ubatch-size"; "8"; "--ctx-size"; "2048"} })' \
             --network "$NETWORK_TYPE")
 
     if ! echo "$output" | grep -q " Ok "; then
